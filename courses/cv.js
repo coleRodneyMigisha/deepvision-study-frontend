@@ -5,6 +5,8 @@ window.COURSE_CV = {
   id: "cv",
   code: "CSC3104",
   mark: "CV",
+  title: "Computer Vision & Deep Learning",
+  shortTitle: "Computer Vision",
   name: "DeepVision",
   subtitle: "Computer Vision & Deep Learning · oral exam & lab prep",
   examTitle: "Ten minutes, one Computer Vision examiner",

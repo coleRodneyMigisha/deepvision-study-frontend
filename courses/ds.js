@@ -7,7 +7,7 @@ window.COURSE_DS = {
   code: "DSC3103",
   title: "Data Science: Systems & Technologies",
   shortTitle: "Data Science",
-  subtitle: "7 modules · 7 interactive labs · 3 variations + AI daily challenges",
+  subtitle: "9 modules · 9 interactive labs (incl. sample_qtn & Test 02) · 3 variations + AI daily challenges",
   syllabus: [
     {
       title: "Data Profiling, Validation & Cleaning",
@@ -246,6 +246,74 @@ window.COURSE_DS = {
         title: "Hidden Technical Debt in Machine Learning Systems",
         desc: "Google's famous NeurIPS paper ('Hidden Technical Debt in ML Systems', Sculley et al.) showed that the ML model code itself is often less than 5% of a production ML system — the other 95% is data verification, feature extraction, serving infrastructure, and monitoring."
       }
+    },
+    {
+      title: "Practice Exam (sample_qtn): Milk Validation & Collisions",
+      subtitle: "Master rule ordering, record_id collisions & row conservation (sample_qtn.pdf)",
+      checkpointTime: 48,
+      captions: [
+        { time: 0, text: "In the DSC3103 Practice Question (sample_qtn.pdf), farmers deliver milk to collection centres (`data/raw/milk_raw.csv`) and we must validate, clean, join with `data/raw/centres.csv`, and load a Star Schema without ever modifying `data/raw/`." },
+        { time: 16, text: "Part (a) asks whether validation rules in `src/validate/rules.py` (`rule_valid_date`, `rule_duplicate_ids`, `rule_unknown_centre`) should run BEFORE or AFTER tidying the `centre` text (`strip().title()`). The answer is AFTER tidying `centre`!" },
+        { time: 32, text: "Why? If a clerk typed `' mbarara '` or `'MBARARA'`, running `rule_unknown_centre` before stripping whitespace and normalising case falsely flags a valid delivery as an unknown centre! Tidy formatting first, then check membership against `centres.csv`." },
+        { time: 48, text: "Checkpoint: why must BOTH rows of a `record_id` collision be rejected into `rejected_df` rather than keeping the first row, and what is the exact row-conservation invariant?" },
+        { time: 68, text: "An exact duplicate (every column identical) is just a double-saved record — we drop the extra copy and keep one. But a `record_id` collision has the SAME `record_id` with DIFFERENT values (e.g., 45 L vs 120 L or two different farmers)." },
+        { time: 88, text: "Keeping the first row of a collision is a silent guess that corrupts farmer payouts! Both rows must be quarantined into `rejected_df` with `reason='record_id_collision'`, and our code must assert: `rows_in == rows_kept + rows_rejected + exact_duplicates_removed`." }
+      ],
+      checkpoint: {
+        question: "In `sample_qtn.pdf`, why must validation rules on `centre` run AFTER tidying text, why are BOTH rows of a `record_id` collision rejected instead of keeping one, and what makes running the pipeline twice safe?",
+        hint: "Think about `' mbarara '` vs `'Mbarara'`, what happens if two different deliveries share `record_id = 1042`, and the 3 pillars of idempotency (`data/raw/` immutability, deterministic cleaning, atomic overwrite).",
+        keywords: ["after", "strip", "case", "whitespace", "false", "collision", "both", "ambiguous", "conflict", "exact duplicate", "immutable", "raw", "idempotent", "overwrite"],
+        idealAnswer: "Validation rules on `centre` must run AFTER stripping whitespace and standardising case (`strip().title()`) so valid centres like `' mbarara '` are not falsely rejected as unknown. For a `record_id` collision (same ID, different payload values), we reject BOTH rows because there is no way to know which delivery is genuine — keeping one arbitrarily would corrupt financial payouts, whereas exact duplicates have identical values so keeping one is safe. Running the pipeline twice is safe because `data/raw/milk_raw.csv` and `centres.csv` are never modified, cleaning is deterministic, and outputs overwrite `data/processed/q1_output.parquet` and DuckDB tables atomically."
+      },
+      terms: [
+        ["Exact duplicate", "All columns identical (`df.duplicated(keep='first')`); drop extra copies and keep 1 row."],
+        ["record_id collision", "Same `record_id` but different column values (`duplicated(subset=['record_id'], keep=False)` after dropping exact dupes); reject ALL colliding rows."],
+        ["Row conservation invariant", "`rows_in == rows_kept + rows_rejected + exact_duplicates_removed`."],
+        ["Boundary checksum", "SHA-256 hash of `data/raw/milk_raw.csv` logged at pipeline start to prove raw input integrity."],
+        ["Lossless reference join", "`LEFT JOIN` (or validated inner join after rejecting unknown centres) asserting `len(joined) == len(clean_df)`."]
+      ],
+      quiz: [
+        { q: "A raw milk file has 1,000 rows. There are 15 exact duplicate rows (to be removed), 6 pairs of `record_id` collisions (12 colliding rows total), and 23 rows with non-positive litres or unknown centres. How many rows are in `clean_df`?", o: ["950", "956", "962", "965"], a: 0, e: "rows_kept = rows_in (1,000) − exact_dupes_removed (15) − rows_rejected (12 collision rows + 23 bad rows = 35) = 950 rows." },
+        { q: "Why does `rule_unknown_centre` run AFTER `df['centre'] = df['centre'].str.strip().str.title()`?", o: ["To make Python run faster", "So syntactic formatting noise (' gulu ') is fixed before semantic membership check against centres.csv", "Because DuckDB requires uppercase", "To hide unknown centres"], a: 1, e: "Tidying whitespace/case first prevents rejecting legitimate deliveries that only differed in casing or trailing spaces." }
+      ],
+      fact: {
+        title: "Quarantine tables (`rejected_df`) in production pipelines",
+        desc: "Real cooperative and banking pipelines never silently `dropna()` bad records into a black hole. They split batches into `(clean_df, rejected_df)` with a `reason` column so clerks can fix rejected delivery slips without blocking the daily warehouse build."
+      }
+    },
+    {
+      title: "Practical Test 02 (dsc3103_test_02): Milk Star Schema & Analytics",
+      subtitle: "Conquer unknown dimension keys, 2-stage capacity SQL & partition pruning",
+      checkpointTime: 50,
+      captions: [
+        { time: 0, text: "Let's dissect `dsc3103_test_02` — the Milk Cooperative Practical Test! You were given `milk_clean.parquet` (20,000 rows across 6 months, `2026-03` to `2026-08`), `centres.csv` (5 centres), and `farmers.csv` (294 registered farmers)." },
+        { time: 17, text: "Trap #1 in Question 2(a): `milk_clean.parquet` has 300 distinct `farmer_id`s, meaning 6 farmers (408 deliveries!) are NOT in `farmers.csv`. If `dim_farmer` only loads `farmers.csv`, joining `fact_delivery` either drops 408 rows or leaves `farmer_key` NULL — failing Question 2(c)'s integrity checks!" },
+        { time: 34, text: "The Kimball solution: insert an explicit Unknown Member row (`farmer_key = 0, farmer_id = -1, farmer_name = 'Unknown'`) into `dim_farmer` via `UNION ALL`, and use `COALESCE(f.farmer_key, 0)` when building `fact_delivery`. All 20,000 rows survive with zero NULL keys!" },
+        { time: 50, text: "Checkpoint: how do you write `days_over_capacity` and `top_farmers_per_centre` in DuckDB SQL, and what happens when a farmer moves to a new centre in July?" },
+        { time: 70, text: "In Question 3(b), `capacity_litres` is a DAILY centre limit (e.g. Kiruhura = 950 L/day), NOT a single-delivery limit! You must use a CTE to `SUM(litres)` per `(centre, date_key)` first, then count days where `daily_litres > capacity_litres` (Kiruhura = 41 days, worst day = 1,203.5 L)." },
+        { time: 90, text: "In Question 3(c), exclude the Unknown farmer bucket (`WHERE f.farmer_key != 0`), group by `(centre, farmer_key)`, and rank with `RANK() OVER (PARTITION BY centre ORDER BY SUM(litres) DESC) <= 3`. And in Question 3(d), partitioning by `month` means querying April 2026 (`month='2026-04'`) reads just 1 of 6 files (3,201 rows instead of 20,000)!" }
+      ],
+      checkpoint: {
+        question: "In `dsc3103_test_02`, how should `dim_farmer` and `fact_delivery` handle the 6 unregistered `farmer_id`s so all 3 integrity checks pass? Also explain why `days_over_capacity` needs a two-stage aggregation and what happens when a farmer moves centres in July.",
+        hint: "Mention the `farmer_key = 0` ('Unknown') row + `COALESCE`, summing litres per `(centre, date)` in a CTE before comparing to `capacity_litres`, and how `fact_delivery` + SCD Type 2 preserve historical centre assignments.",
+        keywords: ["unknown", "coalesce", "surrogate", "20000", "null", "foreign key", "cte", "daily", "sum", "capacity", "window", "rank", "partition", "history", "scd"],
+        idealAnswer: "To preserve all 20,000 deliveries without NULL foreign keys, `dim_farmer` includes a dedicated Unknown member row (`farmer_key = 0, farmer_id = -1, farmer_name = 'Unknown'`) and `fact_delivery` maps unmatched `farmer_id`s via `COALESCE(f.farmer_key, 0)`. That satisfies all three integrity checks: `COUNT(*) == 20,000`, zero orphan foreign keys, and zero NULL keys. For `days_over_capacity`, `capacity_litres` is a daily centre limit, so a CTE must first compute `SUM(litres)` per `(centre, date_key)` before counting days where `daily_litres > capacity_litres`. When a farmer moves centres in July, earlier deliveries in `fact_delivery` keep their original `centre_key` so history is untouched; to also track home-centre history in `dim_farmer`, use SCD Type 2 (a new dimension row with `valid_from`/`valid_to`)."
+      },
+      terms: [
+        ["Unknown member row (`key = 0`)", "Default dimension record (`'Unknown'`) so unregistered business keys map cleanly without NULL FKs or dropped facts."],
+        ["Pre-computed measure (`revenue_ugx`)", "Stored once in `fact_delivery` (`litres * price_ugx_per_litre`) for consistent, fast aggregations."],
+        ["Two-stage CTE aggregation", "Aggregate atomic deliveries to daily centre totals in a CTE before comparing against daily `capacity_litres`."],
+        ["Window ranking (`RANK() OVER`)", "`RANK() OVER (PARTITION BY centre ORDER BY total_litres DESC)` to pick top-N per group."],
+        ["SCD Type 2", "Slowly Changing Dimension technique that adds a new versioned dimension row when an attribute changes, preserving history."]
+      ],
+      quiz: [
+        { q: "In `dsc3103_test_02`, `milk_clean.parquet` has 20,000 rows, `farmers.csv` has 294 farmers, and 408 deliveries come from 6 unregistered `farmer_id`s. With an Unknown row in `dim_farmer`, how many rows are in `dim_farmer` and `fact_delivery`?", o: ["294 and 19,592", "295 and 20,000", "300 and 20,000", "294 and 20,000"], a: 1, e: "294 registered farmers + 1 'Unknown' bucket row = 295 rows in dim_farmer (or 300 if each unregistered ID gets a placeholder row), and all 20,000 rows remain in fact_delivery!" },
+        { q: "`fact_delivery` is partitioned by `month` across 6 months (`2026-03` to `2026-08`). When DuckDB runs `EXPLAIN ANALYZE` for `WHERE month = '2026-04'`, how many Parquet files and rows are scanned?", o: ["6 files (20,000 rows)", "1 file (3,201 rows)", "12 files (6,402 rows)", "0 files"], a: 1, e: "Partition pruning skips the other 5 month folders completely and reads only the `month=2026-04` file containing 3,201 rows!" }
+      ],
+      fact: {
+        title: "Why Test 02's Unknown Member pattern is a Kimball classic",
+        desc: "In real agricultural cooperatives, new farmers deliver milk on their first day before their paper registration form is entered into `farmers.csv`. Dropping their deliveries would lose real milk inventory and money — which is why Kimball's 'Unknown Member' surrogate key (`0` or `-1`) is standard in every enterprise warehouse."
+      }
     }
   ],
 
@@ -297,21 +365,34 @@ window.COURSE_DS = {
       topic: "Model Serving & Docker",
       keywords: ["training-serving skew", "shared features", "make_features", "startup", "per-request", "pydantic", "422", "column order", "docker", "pinned"],
       idealAnswer: "First, training-serving skew: duplicating feature logic between training and API leads to silent prediction drift; fix it by importing `make_features()` and `FEATURE_COLUMNS` from a single shared module (`src/common/features.py`). Second, loading `model.joblib` inside the `/predict` handler instead of once at startup, which adds hundreds of milliseconds of disk I/O to every request. Third, missing input validation and unpinned environments: use strict Pydantic schemas (`Literal`, `Field(ge=0, le=500)`) to reject bad payloads with HTTP 422, and package the service in a Dockerfile with pinned `requirements.txt`."
+    },
+    {
+      prompt: "In the Milk Cooperative Practice Question (sample_qtn), why are both rows of a `record_id` collision rejected rather than keeping the first one, and why must `centre` text be tidied before running validation rules?",
+      topic: "Practice Exam (sample_qtn)",
+      keywords: ["collision", "both", "ambiguous", "exact duplicate", "rejected_df", "strip", "case", "unknown centre", "rows_in"],
+      idealAnswer: "Unlike an exact duplicate where every column matches, a `record_id` collision has two conflicting records claiming the same delivery ID with different litres, prices, or farmers. Keeping the first row arbitrarily guesses which record is true and corrupts payouts, so both rows must be rejected into `rejected_df` for human audit. Tidying `centre` text (`strip().title()`) must happen before `rule_unknown_centre` so deliveries with trailing spaces or lowercase names (`' mbarara '`) match `centres.csv` instead of being falsely rejected."
+    },
+    {
+      prompt: "In Practical Test 02 (dsc3103_test_02), some `farmer_id`s in `milk_clean.parquet` are missing from `farmers.csv`. How do you model this in `dim_farmer` and `fact_delivery` without losing rows or having NULL keys, and how does month partitioning speed up April 2026 queries?",
+      topic: "Practical Test 02 (dsc3103_test_02)",
+      keywords: ["unknown", "farmer_key", "coalesce", "left join", "20000", "null", "partition", "month", "pruning", "explain analyze"],
+      idealAnswer: "Add an explicit Unknown farmer row (`farmer_key = 0, farmer_id = -1, farmer_name = 'Unknown'`) to `dim_farmer` and left-join `milk_clean.parquet` using `COALESCE(f.farmer_key, 0)`. This keeps all 20,000 fact rows, ensures zero NULL keys, and guarantees referential integrity. Partitioning `fact_delivery` by `month` writes 6 separate monthly Parquet directories (`2026-03` to `2026-08`); a query for April 2026 uses partition pruning to scan only 1 of the 6 files (3,201 rows instead of 20,000), while unhelpful predicates (like filtering only by `farmer_key` across all months) still scan all 6 partitions."
     }
   ],
 
   formulas: [
     ["Null rate", "null_pct = (missing_count / total_rows) × 100%"],
     ["IQR & Tukey fences", "IQR = Q3 − Q1,  bounds = [Q1 − 1.5·IQR, Q3 + 1.5·IQR]"],
-    ["Z-score standardisation", "z = (x − μ) / σ"],
+    ["Row conservation (sample_qtn)", "rows_in = rows_kept + rows_rejected + exact_duplicates_removed"],
     ["Idempotency law", "f(f(D)) = f(D)  (state after N runs = state after 1 run)"],
     ["Columnar scan savings", "IO_parquet ≈ IO_row × (k_selected / k_total) ÷ compression_ratio"],
     ["Star schema fact grain", "|Fact| ≤ |dim_date| × |dim_market| × |dim_commodity|"],
+    ["Unknown dimension mapping", "farmer_key = COALESCE(dim_farmer.farmer_key, 0)  -- 0 = 'Unknown'"],
+    ["Window top-N per group", "RANK() OVER (PARTITION BY centre ORDER BY total_litres DESC) <= 3"],
     ["Airflow exponential backoff", "delay(k) = base_delay × 2^(k−1),  total = base × (2^R − 1)"],
     ["Spark partition waves", "waves = ⌈num_partitions / total_executor_cores⌉"],
     ["Partial aggregate reduction", "rows_shuffled ≤ num_partitions × num_distinct_keys"],
-    ["Tumbling window bounds", "W_start = ⌊event_ts / S⌋ · S,  W_end = W_start + S"],
-    ["Streaming watermark", "W(t) = max_{e ≤ t}(event_ts(e)) − L_allowed"],
+    ["Tumbling window & watermark", "W_start = ⌊ts/S⌋·S,   Watermark W(t) = max(event_ts) − L"],
     ["Serving batch throughput", "T_N = T_startup_load + N · T_infer  vs  N · (T_load + T_infer)"]
   ],
 
@@ -503,6 +584,60 @@ window.COURSE_DS = {
         tol: 0,
         hint: "Add 4 numeric/temporal features + 4 market indicators + 4 commodity indicators.",
         explain: "4 numeric/calendar features (`rainfall_mm`, `is_rainy`, `month`, `day_of_week`) + 4 market columns + 4 commodity columns = 12 features."
+      }
+    ],
+    /* Lab 7: Practice Exam (sample_qtn): Milk Validation & Collisions */
+    [
+      {
+        title: "Row Conservation with Exact Duplicates & Collisions",
+        q: "A raw milk batch has <b>500 rows</b>. During `clean_milk()`, you remove <b>14 exact duplicate copies</b> (`keep='first'`), find <b>6 `record_id` keys</b> that each have <b>2 conflicting rows</b> (collisions), and reject <b>24 additional rows</b> for invalid dates or non-positive litres. How many rows are in `clean_df`?",
+        answer: 450,
+        tol: 0,
+        hint: "6 colliding record_ids × 2 rows each = 12 rows rejected for collision. Total rejected = 12 + 24 = 36. Subtract 14 exact dupes and 36 rejected rows from 500.",
+        explain: "Row conservation: 500 raw − 14 exact duplicates removed − (6 × 2 = 12 collision rows rejected) − 24 domain-rejected rows = 450 clean rows."
+      },
+      {
+        title: "Rule Ordering Trap: Tidying Centre Before Validation",
+        q: "In `milk_raw.csv` (400 rows), <b>45 rows</b> have `centre = ' mbarara '` (with spaces/lowercase) and <b>9 rows</b> have `centre = 'Kampala'` (not one of the 5 cooperative centres). How many fewer false rejections occur when `rule_unknown_centre` runs <b>after</b> `.str.strip().str.title()` instead of before?",
+        answer: 45,
+        tol: 0,
+        hint: "All 45 `' mbarara '` rows normalize to `'Mbarara'` (valid) after tidying, whereas `'Kampala'` remains unknown.",
+        explain: "Before tidying, 45 + 9 = 54 rows fail `rule_unknown_centre`. After `.str.strip().str.title()`, only the 9 `'Kampala'` rows fail — saving 45 valid Mbarara deliveries from false rejection!"
+      },
+      {
+        title: "Reference Join Unmatched Centre Rate",
+        q: "You run `join_centres(clean_df, centres_df)` with `how='left'` on <b>450 clean rows</b>. In the result, <b>432 rows</b> have a non-null `daily_capacity_litres`. What percentage of clean deliveries came from unregistered centres?",
+        answer: 4,
+        tol: 0,
+        hint: "Unmatched rows = 450 − 432 = 18. Compute (18 / 450) × 100.",
+        explain: "450 − 432 = 18 unmatched rows (where `daily_capacity_litres` is NaN). 18 / 450 = 0.04 = 4%."
+      }
+    ],
+    /* Lab 8: Practical Test 02 (dsc3103_test_02): Milk Star Schema & Analytics */
+    [
+      {
+        title: "Unregistered Farmer Deliveries in `milk_clean.parquet`",
+        q: "In `dsc3103_test_02`, `milk_clean.parquet` has <b>20,000 rows</b> across <b>300 distinct `farmer_id`s</b>, while `farmers.csv` only contains <b>294 registered farmers</b>. The 6 unregistered farmers (`113, 126, 172, 226, 255, 334`) have <b>61, 68, 69, 67, 75, and 68</b> deliveries respectively. How many rows in `fact_delivery` map to the Unknown Farmer (`farmer_key = 0`)?",
+        answer: 408,
+        tol: 0,
+        hint: "Sum the deliveries of the 6 unregistered farmers: 61 + 68 + 69 + 67 + 75 + 68.",
+        explain: "61 + 68 + 69 + 67 + 75 + 68 = 408 deliveries! Using `LEFT JOIN dim_farmer` + `COALESCE(f.farmer_key, 0)` preserves all 20,000 rows while mapping these 408 rows to `farmer_key = 0 ('Unknown')`."
+      },
+      {
+        title: "Two-Stage Capacity Aggregation (Kiruhura Days Over Capacity)",
+        q: "In `dsc3103_test_02`, Kiruhura's `daily_capacity_litres` is <b>950 L</b>. A single delivery is only ~24 L (`max = 46.8 L`), so checking `f.litres > c.daily_capacity_litres` row-by-row gives <b>0 days</b>. When properly aggregated by `(centre_key, date_key)` first across the 184 days, how many days did Kiruhura exceed its 950 L daily capacity?",
+        answer: 41,
+        tol: 0,
+        hint: "Inspect the actual DuckDB result from `days_over_capacity(con)` for Kiruhura (capacity 950 L, worst day 1,203.5 L).",
+        explain: "In the actual test dataset, Kiruhura exceeded 950 L/day on 41 out of 184 days (peaking at 1,203.5 L), followed by Masaka (36 days), Mbale (32 days), Gulu (28 days), and Mbarara (23 days)."
+      },
+      {
+        title: "April 2026 Partition Pruning & Row Count",
+        q: "`milk_clean.parquet` spans 6 months (`2026-03` through `2026-08`) with monthly row counts: Mar=`3,311`, Apr=`3,201`, May=`3,463`, Jun=`3,303`, Jul=`3,353`, Aug=`3,369` (total = `20,000`). When partitioned by `year_month`, how many rows are scanned by a query filtering `WHERE delivery_date >= '2026-04-01' AND delivery_date < '2026-05-01'`?",
+        answer: 3201,
+        tol: 0,
+        hint: "Partition pruning reads ONLY `year_month=2026-04/*.parquet` and skips the other 5 monthly folders.",
+        explain: "DuckDB prunes 5 of the 6 monthly partitions and scans only the `year_month=2026-04` partition containing 3,201 rows (saving 84% of file I/O)."
       }
     ]
   ],
@@ -771,6 +906,87 @@ window.COURSE_DS = {
       txt("rainfall = 8.2 mm → is_rainy = 0", 545, 236, {a:"center", mono:true, s:11.5});
       txt("predicted_price = 2,889.58 UGX ✗", 545, 258, {a:"center", mono:true, s:12, w:700, c:C.rust});
       formulaBar("Silent skew error = −37.67 UGX with HTTP 200 OK! Shared feature code eliminates skew.");
+    }
+  },
+  /* 7 — Practice Exam (sample_qtn): Milk Validation & Collisions */
+  (ci, p, t) => {
+    if (ci <= 2){
+      heading("Exact Duplicates vs record_id Collisions (sample_qtn)", "Keep 1 copy of exact duplicates · Reject BOTH rows on record_id collisions");
+      // Two comparison boxes
+      rect(36, 96, 310, 150, {f:C.sageL, s:C.sage, lw:2, r:8});
+      tag("Case A: Exact Duplicate", 46, 122, {f:C.sage, c:"#fff"});
+      txt("Row 1: (id=101, Mbarara, 40L, 2026-03-01)", 50, 150, {mono:true, s:10.5});
+      txt("Row 2: (id=101, Mbarara, 40L, 2026-03-01)", 50, 172, {mono:true, s:10.5});
+      txt("Action: Drop 2nd copy (keep='first')", 50, 200, {s:12, w:700, c:C.sage});
+      txt("Preserves 1 legitimate farmer delivery ✓", 50, 222, {s:11.5, c:C.ink2});
+
+      rect(374, 96, 310, 150, {f:C.rustL, s:C.rust, lw:2, r:8});
+      tag("Case B: record_id Collision", 384, 122, {f:C.rust, c:"#fff"});
+      txt("Row 1: (id=102, Masaka,  50L, 2026-03-01)", 388, 150, {mono:true, s:10.5});
+      txt("Row 2: (id=102, Kiruhura, 12L, 2026-03-02)", 388, 172, {mono:true, s:10.5});
+      txt("Action: Reject BOTH into rejected_df!", 388, 200, {s:12, w:700, c:C.rust});
+      txt("Arbitrary pick corrupts payouts ✗", 388, 222, {s:11.5, c:C.ink2});
+
+      formulaBar("assert rows_in == len(clean_df) + len(rejected_df) + exact_dupes_removed");
+    } else {
+      heading("Rule Ordering: Text Tidying Before Domain Rules", "Never reject ' mbarara ' just because of whitespace or lowercase noise");
+      rect(50, 102, 280, 138, {f:C.rustL, s:C.rust, r:8});
+      txt("Wrong Order (Validate First)", 190, 130, {a:"center", s:13, w:700, c:C.rust});
+      txt("' mbarara ' in allowed_centres? ✗ False", 190, 160, {a:"center", mono:true, s:11});
+      txt("45 valid deliveries rejected!", 190, 185, {a:"center", s:12, c:C.rust, w:600});
+
+      rect(390, 102, 280, 138, {f:C.sageL, s:C.sage, r:8});
+      txt("Correct Order (Tidy First)", 530, 130, {a:"center", s:13, w:700, c:C.sage});
+      txt("s.str.strip().str.title() → 'Mbarara'", 530, 160, {a:"center", mono:true, s:11});
+      txt("'Mbarara' in allowed_centres? ✓ True", 530, 185, {a:"center", s:12, c:C.sage, w:600});
+      formulaBar("clean_milk(df) returns (clean_df, rejected_df) with 100% row conservation");
+    }
+  },
+  /* 8 — Practical Test 02 (dsc3103_test_02): Milk Star Schema & Analytics */
+  (ci, p, t) => {
+    if (ci <= 2){
+      heading("Star Schema with 6 Unregistered Farmers (dsc3103_test_02)", "20,000 deliveries · 294 known farmers · 6 unregistered farmers = 408 deliveries");
+      // Fact Delivery box in center
+      rect(230, 96, 260, 150, {f:C.navyL, s:C.navy, lw:2, r:8});
+      txt("fact_delivery (20,000 rows)", 360, 124, {a:"center", s:13, w:700, c:C.navy});
+      txt("delivery_key, date_key", 360, 148, {a:"center", mono:true, s:11});
+      txt("farmer_key, centre_key", 360, 168, {a:"center", mono:true, s:11});
+      txt("litres, fat_content, price_ugx, revenue_ugx", 360, 188, {a:"center", mono:true, s:10});
+      txt("Zero NULL keys · 100% FK integrity", 360, 218, {a:"center", s:11.5, w:600, c:C.sage});
+
+      // dim_farmer left
+      rect(20, 110, 180, 120, {f:C.goldXL, s:C.gold, r:8});
+      txt("dim_farmer (295 rows)", 110, 136, {a:"center", s:12, w:700, c:C.goldD});
+      txt("farmer_key = 0 ('Unknown')", 110, 162, {a:"center", mono:true, s:10.5, c:C.rust, w:700});
+      txt("1..294: registered farmers", 110, 184, {a:"center", s:11, c:C.ink2});
+      txt("COALESCE(f.key, 0) maps 408 rows", 110, 206, {a:"center", s:10.5, c:C.goldD});
+      arrow(200, 165, 230, 165, C.gold, 2);
+
+      // dim_centre right
+      rect(520, 110, 180, 120, {f:C.sageL, s:C.sage, r:8});
+      txt("dim_centre (5 rows)", 610, 136, {a:"center", s:12, w:700, c:C.sage});
+      txt("Kiruhura: 950 L/day", 610, 162, {a:"center", s:11});
+      txt("Masaka:   750 L/day", 610, 182, {a:"center", s:11});
+      txt("Mbarara, Mbale, Gulu", 610, 202, {a:"center", s:11});
+      arrow(520, 165, 490, 165, C.sage, 2);
+
+      formulaBar("LEFT JOIN dim_farmer f ON raw.farmer_id = f.farmer_id  →  COALESCE(f.farmer_key, 0)");
+    } else {
+      heading("Two-Stage Aggregation: Days Over Daily Capacity", "Sum deliveries per day FIRST · Single delivery is ~24 L, capacity is 300–950 L");
+      const centres = [
+        ["Kiruhura", 950, 41, 1203.5, C.rust],
+        ["Masaka",   750, 36,  997.0, C.rust],
+        ["Mbale",    400, 32,  702.0, C.goldD],
+        ["Gulu",     300, 28,  471.8, C.goldD],
+        ["Mbarara",  750, 23,  989.6, C.sage]
+      ];
+      centres.forEach(([cName, cap, days, peak, col], i) => {
+        const y = 98 + i * 32;
+        txt(`${cName} (cap ${cap} L/d):`, 40, y + 16, {s:12, w:600});
+        rect(220, y + 2, days * 7.5, 20, {f:col, r:4});
+        txt(`${days} days over capacity (peak ${peak} L)`, 228 + days*7.5, y + 16, {mono:true, s:11, w:600, c:C.ink});
+      });
+      formulaBar("WITH daily AS (SELECT centre_key, date_key, SUM(litres) AS tot GROUP BY 1,2) SELECT ... WHERE tot > cap");
     }
   }
   ],
@@ -1128,6 +1344,120 @@ watermark = max_event_ts - allowed_lateness
         $("ds6-lwork").textContent = `Saves ${((perReqMs - startupMs)/1000).toFixed(2)} seconds across ${n} requests (${(perReqMs/startupMs).toFixed(1)}× speedup)`;
       };
       ["ds6-r","ds6-dl","ds6-inf","ds6-n"].forEach(id=>$(id).oninput=upd);
+      upd();
+    }
+  },
+  /* Lab 7: Practice Exam (sample_qtn): Milk Validation & Collisions */
+  {
+    title: "Milk Validation Funnel, Rule Ordering & Collision Simulator",
+    html: () => `
+    <div class="lab-grid">
+      <div class="card card-pad stack" style="gap:14px">
+        <h3>1 · Row Conservation & Collision Accounting (sample_qtn)</h3>
+        <p class="small muted">Simulate <code>clean_milk(df) -&gt; (clean_df, rejected_df)</code>. See how removing exact duplicates differs from rejecting conflicting record_id collisions.</p>
+        <div class="grid-2" style="gap:10px">
+          <label class="field"><span>Raw batch size</span><input type="number" id="ds7-raw" value="500"></label>
+          <label class="field"><span>Exact duplicate copies</span><input type="number" id="ds7-exact" value="14"></label>
+          <label class="field"><span>Colliding record_ids</span><input type="number" id="ds7-col" value="6"></label>
+          <label class="field"><span>Domain errors (litres/date)</span><input type="number" id="ds7-dom" value="24"></label>
+        </div>
+        <div class="stat-row" id="ds7-cons"></div>
+        <pre class="code"><span class="c"># Exact duplicates vs Collisions invariant</span>
+exact_dupes = df.duplicated(keep=<span class="s">'first'</span>)
+clean = df[~exact_dupes].copy()
+collisions = clean.duplicated(subset=[<span class="s">'record_id'</span>], keep=<span class="k">False</span>)
+<span class="k">assert</span> rows_in == <span class="k">len</span>(clean_df) + <span class="k">len</span>(rejected_df) + exact_removed</pre>
+      </div>
+      <div class="card card-pad stack" style="gap:14px">
+        <h3>2 · Rule Ordering: Tidying Before Validation</h3>
+        <p class="small muted">See why tidying centre names <b>before</b> running <code>rule_unknown_centre</code> saves valid farmer deliveries from being thrown into rejected.</p>
+        <div class="field"><div class="range-head"><span>Untidied whitespace rows (' mbarara ')</span><output id="ds7-wo">45</output></div><input type="range" id="ds7-w" min="0" max="100" step="5" value="45"></div>
+        <div class="stat-row" id="ds7-tidy"></div>
+        <div class="hint" id="ds7-msg"></div>
+      </div>
+    </div>`,
+    init(){
+      const upd = () => {
+        const raw = num("ds7-raw")||0, exact = num("ds7-exact")||0, colKeys = num("ds7-col")||0, dom = num("ds7-dom")||0;
+        const colRows = colKeys * 2;
+        const rejected = colRows + dom;
+        const clean = Math.max(0, raw - exact - rejected);
+        $("ds7-cons").innerHTML = [
+          ["Clean Deliveries", clean],
+          ["Rejected Rows", rejected],
+          ["Exact Removed", exact],
+          ["Row Conservation", (clean + rejected + exact === raw) ? "✓ Preserved (100%)" : "✗ Invariant Failed"]
+        ].map(([a,b])=>`<div class="stat"><div class="k">${a}</div><div class="v">${b}</div></div>`).join("");
+
+        const untidy = +$("ds7-w").value;
+        $("ds7-wo").textContent = untidy;
+        const wrongRejected = untidy + 9;
+        const correctRejected = 9;
+        $("ds7-tidy").innerHTML = [
+          ["Validate First", `${wrongRejected} rejected ✗`],
+          ["Tidy First", `${correctRejected} rejected ✓`],
+          ["Saved Deliveries", `+${untidy} valid rows`]
+        ].map(([a,b])=>`<div class="stat"><div class="k">${a}</div><div class="v">${b}</div></div>`).join("");
+        $("ds7-msg").textContent = `Running .str.strip().str.title() first rescues ${untidy} deliveries that only had casing/whitespace differences.`;
+      };
+      ["ds7-raw","ds7-exact","ds7-col","ds7-dom","ds7-w"].forEach(id=>$(id).oninput=upd);
+      upd();
+    }
+  },
+  /* Lab 8: Practical Test 02 (dsc3103_test_02): Milk Star Schema & Analytics */
+  {
+    title: "Milk Star Schema Warehouse & Two-Stage Analytics Simulator",
+    html: () => `
+    <div class="lab-grid">
+      <div class="card card-pad stack" style="gap:14px">
+        <h3>1 · Unknown Farmer Dimensional Mapping (dsc3103_test_02)</h3>
+        <p class="small muted">In the real test dataset, 6 unregistered farmers made 408 deliveries. Inspect how <code>COALESCE(f.farmer_key, 0)</code> preserves fact table row count and referential integrity.</p>
+        <div class="grid-2" style="gap:10px">
+          <label class="field"><span>Raw milk rows</span><input type="number" id="ds8-raw" value="20000" disabled></label>
+          <label class="field"><span>Registered farmers</span><input type="number" id="ds8-known" value="294" disabled></label>
+          <label class="field"><span>Total distinct farmers</span><input type="number" id="ds8-distinct" value="300" disabled></label>
+          <label class="field"><span>Unregistered deliveries</span><input type="number" id="ds8-unreg" value="408" disabled></label>
+        </div>
+        <div class="stat-row" id="ds8-star-stats"></div>
+        <pre class="code"><span class="c"># src/build_star.py</span>
+dim_farmer: farmer_key=0 -&gt; (-1, <span class="s">'Unknown'</span>, <span class="k">None</span>, <span class="k">None</span>)
+COALESCE(f.farmer_key, 0) <span class="k">AS</span> farmer_key  <span class="c"># 0 NULL keys, 20,000 rows retained</span></pre>
+      </div>
+      <div class="card card-pad stack" style="gap:14px">
+        <h3>2 · Two-Stage Capacity Overrun vs Row-by-Row Fallacy</h3>
+        <p class="small muted">Select a cooperative centre from the actual test to compare row-by-row filtering (fails: max single delivery is 46.8 L) against daily grouped aggregation.</p>
+        <div class="field">
+          <span>Choose Centre</span>
+          <select class="mini" id="ds8-sel" style="width:100%;padding:8px">
+            <option value="Kiruhura,950,41,1203.5">Kiruhura (Capacity: 950 L/day · Ground Truth: 41 days over)</option>
+            <option value="Masaka,750,36,997.0">Masaka (Capacity: 750 L/day · Ground Truth: 36 days over)</option>
+            <option value="Mbale,400,32,702.0">Mbale (Capacity: 400 L/day · Ground Truth: 32 days over)</option>
+            <option value="Gulu,300,28,471.8">Gulu (Capacity: 300 L/day · Ground Truth: 28 days over)</option>
+            <option value="Mbarara,750,23,989.6">Mbarara (Capacity: 750 L/day · Ground Truth: 23 days over)</option>
+          </select>
+        </div>
+        <div class="stat-row" id="ds8-cap-stats"></div>
+        <div class="hint" id="ds8-cap-msg"></div>
+      </div>
+    </div>`,
+    init(){
+      const upd = () => {
+        $("ds8-star-stats").innerHTML = [
+          ["fact_delivery Rows", "20,000"],
+          ["Unmatched Deliveries", "408 (farmer_key = 0)"],
+          ["FK Match Rate", "100.0% (0 NULLs)"],
+          ["Partition Pruning", "3,201 rows in Apr 2026"]
+        ].map(([a,b])=>`<div class="stat"><div class="k">${a}</div><div class="v">${b}</div></div>`).join("");
+
+        const [cName, cap, days, peak] = $("ds8-sel").value.split(",");
+        $("ds8-cap-stats").innerHTML = [
+          ["Naive Row Check", "0 days (delivery &lt; 47L) ✗"],
+          ["Two-Stage Grouping", `${days} days over capacity ✓`],
+          ["Peak Daily Volume", `${peak} L (${(peak - cap).toFixed(1)} L over)`]
+        ].map(([a,b])=>`<div class="stat"><div class="k">${a}</div><div class="v">${b}</div></div>`).join("");
+        $("ds8-cap-msg").textContent = `${cName} exceeded its ${cap} L daily capacity on ${days} of the 184 days. Aggregating by (centre_key, date_key) first is essential!`;
+      };
+      $("ds8-sel").onchange = upd;
       upd();
     }
   }

@@ -236,7 +236,7 @@ window.getDailySeededChallenge = function(courseId, labIndex, dateStr, salt = ""
         explain: `W(t) = ${maxTs} − ${L} = ${ans}s. Events with event_ts < ${ans}s are routed to late_events.jsonl.`
       };
     }
-    default: {
+    case 6: {
       const diskMs = pickInt(120, 250, 10), infMs = pickInt(4, 10, 2), reqs = pickInt(100, 400, 50);
       const savedSec = +(((reqs - 1) * diskMs) / 1000).toFixed(2);
       return {
@@ -246,6 +246,45 @@ window.getDailySeededChallenge = function(courseId, labIndex, dateStr, salt = ""
         tol: 0.05,
         hint: `Loading once saves (${reqs} − 1) × ${diskMs} ms of redundant disk reads.`,
         explain: `Per-request load = ${reqs}×(${diskMs}+${infMs}) = ${reqs*(diskMs+infMs)} ms. Startup load = ${diskMs} + ${reqs}×${infMs} = ${diskMs + reqs*infMs} ms. Saved = ${(reqs-1)*diskMs} ms = ${savedSec}s.`
+      };
+    }
+    case 7: {
+      const raw = pickInt(300, 800, 50), exact = pickInt(8, 20, 2), colKeys = pickInt(3, 10, 1), dom = pickInt(15, 35, 1);
+      const colRows = colKeys * 2;
+      const clean = raw - exact - colRows - dom;
+      return {
+        title: `Daily Challenge (${date}) · Milk Row Conservation (sample_qtn)`,
+        q: `A raw batch has <b>${raw} rows</b>. In <code>clean_milk()</code>, you drop <b>${exact} exact duplicates</b> (<code>keep='first'</code>), find <b>${colKeys} conflicting record_ids</b> (each with 2 rows = ${colRows} rows), and reject <b>${dom} domain errors</b>. How many rows remain in <code>clean_df</code>?`,
+        answer: clean,
+        tol: 0,
+        hint: `Compute ${raw} − ${exact} − ${colRows} − ${dom}.`,
+        explain: `Row conservation: ${raw} raw − ${exact} exact dupes − ${colRows} collision rows − ${dom} domain errors = ${clean} clean rows.`
+      };
+    }
+    case 8: {
+      const totalRaw = 20000;
+      const unregFarmers = [4, 5, 6, 7][pickInt(0, 3)];
+      const avgDeliveries = pickInt(60, 75, 1);
+      const unregDeliveries = unregFarmers * avgDeliveries;
+      const matched = totalRaw - unregDeliveries;
+      return {
+        title: `Daily Challenge (${date}) · Unregistered Farmer Mapping (dsc3103_test_02)`,
+        q: `Out of <b>${totalRaw.toLocaleString()} milk deliveries</b>, <b>${unregFarmers} farmers</b> are not registered in <code>farmers.csv</code>, averaging <b>${avgDeliveries} deliveries each</b> (${unregDeliveries} total). In <code>fact_delivery</code> with <code>COALESCE(f.farmer_key, 0)</code>, how many deliveries successfully link to a registered farmer (<code>farmer_key &gt; 0</code>)?`,
+        answer: matched,
+        tol: 0,
+        hint: `Subtract the ${unregDeliveries} unregistered deliveries from ${totalRaw.toLocaleString()}.`,
+        explain: `${totalRaw.toLocaleString()} total − ${unregDeliveries} unlinked = ${matched.toLocaleString()} deliveries linked to registered farmers. All ${unregDeliveries} unlinked rows map cleanly to farmer_key = 0 ('Unknown').`
+      };
+    }
+    default: {
+      const cap = [750, 950, 400, 300][pickInt(0, 3)], days = pickInt(15, 45, 1);
+      return {
+        title: `Daily Challenge (${date}) · Cooperative Capacity Monitor`,
+        q: `A milk cooperative cooling centre has a daily capacity of <b>${cap} L</b>. Over a 180-day season, daily volume exceeded capacity on <b>${days} days</b>. On how many days was the centre operating safely within or at its capacity?`,
+        answer: 180 - days,
+        tol: 0,
+        hint: `Subtract ${days} from 180.`,
+        explain: `180 − ${days} = ${180 - days} safe days.`
       };
     }
   }
