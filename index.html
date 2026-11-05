@@ -738,7 +738,9 @@ async function gradeAnswer({topic, question, answer, keywords, idealAnswer}){
   if (backendState !== "offline" && backendState !== "nokey"){
     try{
       const r = await api("/api/evaluate-oral", {
+        course_id: activeCourse.id,
         course: activeCourse.id,
+        course_name: activeCourse.title,
         topic,
         question,
         student_answer: answer,
@@ -1108,7 +1110,9 @@ function renderChallengeWidget(labIdx){
     if (backendState !== "offline" && backendState !== "nokey"){
       try{
         const r = await api("/api/daily-challenge", {
+          course_id: activeCourse.id,
           course: activeCourse.id,
+          course_name: activeCourse.title,
           topic: s.title,
           lab_title: L.title,
           date_seed: `${today}-${Math.floor(Math.random()*1000)}`
@@ -1207,7 +1211,14 @@ $("gen-btn").onclick = async () => {
   let q = null;
   if (backendState !== "offline" && backendState !== "nokey"){
     try{
-      const r = await api("/api/generate-question", {course: activeCourse.id, topic, difficulty:diff, avoid: examQs.map(x=>x.prompt)});
+      const r = await api("/api/generate-question", {
+        course_id: activeCourse.id,
+        course: activeCourse.id,
+        course_name: activeCourse.title,
+        topic,
+        difficulty: diff,
+        avoid: examQs.map(x=>x.prompt)
+      });
       if (r && r.question) q = {prompt:r.question, keywords:r.keywords||[], idealAnswer:r.model_answer||"", topic: topic.startsWith("Mixed") ? "Mixed" : topic, ai:true};
     }catch(e){ console.warn(e); }
   }
@@ -1281,7 +1292,14 @@ async function sendChat(text){
   let reply;
   try{
     if (backendState === "nokey") throw new Error("no key");
-    const r = await api("/api/chat", {course: activeCourse.id, topic: SYLLABUS[cur].title, user_message: text, history}, 90000);
+    const r = await api("/api/chat", {
+      course_id: activeCourse.id,
+      course: activeCourse.id,
+      course_name: activeCourse.title,
+      topic: SYLLABUS[cur].title,
+      user_message: text,
+      history
+    }, 90000);
     reply = r.reply || "(empty reply)"; if (backendState!=="online") setStatus("online");
   }catch(e){
     reply = `I can't reach the AI server right now (${String(e.message||"network error").slice(0,60)}…). Meanwhile, here's the core of **${SYLLABUS[cur].title}**:\n\n${SYLLABUS[cur].checkpoint.idealAnswer}\n\nTry again in a moment — free Render servers take up to a minute to wake.`;
