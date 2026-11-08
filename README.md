@@ -3,7 +3,10 @@
 Static frontend deployed on Cloudflare Pages supporting:
 - **Computer Vision & Deep Learning (`CSC3104`)** (`courses/cv.js`)
 - **Data Science: Systems & Technologies (`DSC3103`)** (`courses/ds.js`)
+- **AI Model Deployment & Scaling (`CSC3119`)** (`courses/ai.js`)
 - **Course Registry & Daily Seeded Challenge Engine** (`courses/registry.js`)
+
+Styled with a warm, editorial Preporium-inspired aesthetic (`preporium.com`) utilizing Space Grotesk, IBM Plex Sans, and IBM Plex Mono.
 
 ## Adding a New Course Unit
 1. Create `courses/<course_id>.js` exporting `window.COURSE_<ID>`.

@@ -7,7 +7,8 @@
    ===================================================================== */
 window.STUDY_COURSES = [
   window.COURSE_CV,
-  window.COURSE_DS
+  window.COURSE_DS,
+  window.COURSE_AI
 ].filter(Boolean);
 
 window.getCourseById = function(id) {
@@ -157,6 +158,144 @@ window.getDailySeededChallenge = function(courseId, labIndex, dateStr, salt = ""
           tol: 0.5,
           hint: `Multiply ${paramsM}M parameters by 2 bytes/parameter.`,
           explain: `${paramsM} × 2 = ${fp16Mb} MB.`
+        };
+      }
+    }
+  }
+
+  /* AI Model Deployment & Scaling (CSC3119) daily seeded generator */
+  if (courseId === "ai") {
+    switch (labIndex) {
+      case 0: {
+        const n = pickInt(2000, 6000, 500);
+        const p = pickInt(4, 8, 1);
+        const recallPct = pickInt(75, 92, 1);
+        const totalStroke = Math.round(n * (p / 100));
+        const caught = Math.round(totalStroke * (recallPct / 100));
+        const missedFN = totalStroke - caught;
+        return {
+          title: `Daily Challenge (${date}) · Clinical False Negative Triage Gate`,
+          q: `In a screening cohort of <b>${n.toLocaleString()} patients</b> with <b>${p}% stroke prevalence</b>, a model achieves <b>${recallPct}% recall</b>. Exactly how many stroke patients are missed as <b>False Negatives (FN)</b>?`,
+          answer: missedFN,
+          tol: 0,
+          hint: `Total stroke cases = ${n} × ${p}% = ${totalStroke}. Caught = ${totalStroke} × ${recallPct}%. Subtract caught from total.`,
+          explain: `Stroke cases = ${n} × ${p/100} = ${totalStroke}. Caught TP = round(${totalStroke} × ${recallPct/100}) = ${caught}. Missed FN = ${totalStroke} − ${caught} = ${missedFN} patients.`
+        };
+      }
+      case 1: {
+        const trees = pickInt(100, 400, 50);
+        const mbPerTree = +(pickInt(20, 60, 5) / 100).toFixed(2);
+        const uncompressed = +(trees * mbPerTree).toFixed(1);
+        const compRatio = [2, 3, 4][pickInt(0, 2)];
+        const compressed = +(uncompressed / compRatio).toFixed(2);
+        return {
+          title: `Daily Challenge (${date}) · Joblib Compression Savings`,
+          q: `An ensemble of <b>${trees} trees</b> averages <b>${mbPerTree} MB</b> of NumPy leaf arrays per tree (total <b>${uncompressed} MB</b>). Saved using <code>joblib.dump(compress=${compRatio})</code> with a <b>${compRatio}× compression ratio</b>, what is the final file size in <b>MB</b>? (2 decimals)`,
+          answer: compressed,
+          tol: 0.05,
+          hint: `Divide total size ${uncompressed} MB by compression ratio ${compRatio}.`,
+          explain: `${uncompressed} MB / ${compRatio} = ${compressed} MB.`
+        };
+      }
+      case 2: {
+        const qps = pickInt(40, 200, 20);
+        const latMs = pickInt(15, 60, 5);
+        const conc = +((qps * latMs) / 1000).toFixed(2);
+        return {
+          title: `Daily Challenge (${date}) · Little's Law API Concurrency`,
+          q: `A FastAPI model endpoint receives <b>${qps} requests/sec</b> (throughput λ) with an average response time of <b>${latMs} ms</b> (latency W). According to <b>Little's Law (L = λ × W)</b>, what is the average number of concurrent requests in flight? (2 decimals)`,
+          answer: conc,
+          tol: 0.05,
+          hint: `Convert latency to seconds (${latMs}/1000 = ${latMs/1000}s) and multiply by ${qps} req/s.`,
+          explain: `L = λ × W = ${qps} × (${latMs}/1000) = ${qps} × ${latMs/1000} = ${conc} concurrent requests.`
+        };
+      }
+      case 3: {
+        const onDemand = +(pickInt(18, 48, 2) / 10).toFixed(2); // e.g. $2.40/hr
+        const disc = [70, 75, 80][pickInt(0, 2)];
+        const hours = pickInt(12, 36, 4);
+        const spotRate = +(onDemand * (1 - disc / 100)).toFixed(3);
+        const total = +(spotRate * hours).toFixed(2);
+        return {
+          title: `Daily Challenge (${date}) · Cloud Spot Retraining Cost`,
+          q: `An On-Demand GPU instance costs <b>$${onDemand}/hour</b>. Running a retraining job on Spot instances with a <b>${disc}% discount</b> takes <b>${hours} hours</b>. What is the total cloud cost in <b>USD ($)</b>? (2 decimals)`,
+          answer: total,
+          tol: 0.1,
+          hint: `Spot rate = $${onDemand} × (1 − ${disc/100}) = $${spotRate}/hr. Multiply by ${hours} hours.`,
+          explain: `Hourly spot rate = $${onDemand} × ${(100-disc)/100} = $${spotRate}. Total for ${hours} hrs = ${hours} × $${spotRate} = $${total}.`
+        };
+      }
+      case 4: {
+        const unopt = pickInt(900, 1400, 50);
+        const slim = pickInt(130, 180, 10);
+        const pct = +(((unopt - slim) / unopt) * 100).toFixed(1);
+        return {
+          title: `Daily Challenge (${date}) · Multi-Stage Docker Shrinkage`,
+          q: `A single-stage Docker image retaining build tools is <b>${unopt} MB</b>. Switching to a multi-stage build on <code>python:3.11-slim</code> reduces image size to <b>${slim} MB</b>. By what <b>percentage (%)</b> was the image size reduced? (1 decimal)`,
+          answer: pct,
+          tol: 0.2,
+          hint: `Reduction % = ((${unopt} − ${slim}) / ${unopt}) × 100.`,
+          explain: `(${unopt} − ${slim}) / ${unopt} = ${unopt - slim} / ${unopt} = ${pct}%.`
+        };
+      }
+      case 5: {
+        const totalQps = pickInt(100, 300, 25);
+        const canaryPct = [5, 10, 15, 20][pickInt(0, 3)];
+        const durationSec = 600; // 10 minutes
+        const canaryQps = (totalQps * canaryPct) / 100;
+        const totalCanaryReqs = canaryQps * durationSec;
+        const errPct = +(pickInt(20, 60, 5) / 10).toFixed(1); // e.g. 3.5%
+        const errCount = Math.round(totalCanaryReqs * (errPct / 100));
+        return {
+          title: `Daily Challenge (${date}) · Canary Error Budget Breach`,
+          q: `A gateway routes <b>${canaryPct}%</b> of <b>${totalQps} total QPS</b> to a Canary model v2. Over a <b>10-minute window (600s)</b>, Canary experiences an error rate of <b>${errPct}%</b>. Exactly how many <b>HTTP 5xx error responses</b> did the Canary generate?`,
+          answer: errCount,
+          tol: 1,
+          hint: `Canary traffic = ${totalQps} × ${canaryPct}% = ${canaryQps} QPS. Total Canary reqs in 600s = ${totalCanaryReqs}. Multiply by ${errPct}%.`,
+          explain: `Canary QPS = ${canaryQps}. In 600s: ${canaryQps} × 600 = ${totalCanaryReqs} requests. Errors = ${totalCanaryReqs} × (${errPct}/100) = ${errCount} errors.`
+        };
+      }
+      case 6: {
+        const paramsM = pickInt(24, 96, 8);
+        const fp32Bytes = paramsM * 4;
+        const int8Bytes = paramsM * 1;
+        const savedMb = fp32Bytes - int8Bytes;
+        return {
+          title: `Daily Challenge (${date}) · INT8 Quantization DRAM Savings`,
+          q: `A neural network model has <b>${paramsM} million parameters</b> in FP32 (4 bytes/parameter = ${fp32Bytes} MB). After INT8 quantization (1 byte/parameter), how many <b>MB of RAM</b> are saved?`,
+          answer: savedMb,
+          tol: 0,
+          hint: `FP32 size = ${paramsM} × 4 = ${fp32Bytes} MB. INT8 size = ${paramsM} × 1 = ${int8Bytes} MB. Subtract.`,
+          explain: `${fp32Bytes} MB (FP32) − ${int8Bytes} MB (INT8) = ${savedMb} MB saved (exactly 75% reduction).`
+        };
+      }
+      case 7: {
+        const expected = 0.10;
+        const actual = +(pickInt(18, 30, 2) / 100).toFixed(2);
+        const diff = actual - expected;
+        const ratio = actual / expected;
+        const psiContribution = +(diff * Math.log(ratio)).toFixed(4);
+        return {
+          title: `Daily Challenge (${date}) · Population Stability Index (PSI) Bin`,
+          q: `In a patient age bin, baseline expected frequency is <b>E = ${expected.toFixed(2)}</b> (10%) and production actual frequency is <b>A = ${actual.toFixed(2)}</b> (${Math.round(actual*100)}%). What is this bin's contribution to the PSI (<code>(A − E) × ln(A / E)</code>)? (4 decimals)`,
+          answer: psiContribution,
+          tol: 0.001,
+          hint: `Compute (${actual} − ${expected}) × ln(${actual} / ${expected}). Note: ln is the natural logarithm.`,
+          explain: `(${actual} − ${expected}) × ln(${actual}/${expected}) = ${diff.toFixed(2)} × ln(${ratio.toFixed(2)}) = ${diff.toFixed(2)} × ${Math.log(ratio).toFixed(4)} = ${psiContribution}.`
+        };
+      }
+      default: {
+        const threshold1Recall = 0.65;
+        const threshold2Recall = 0.88;
+        const totalPositivePatients = pickInt(120, 280, 20);
+        const additionalCaught = Math.round(totalPositivePatients * (threshold2Recall - threshold1Recall));
+        return {
+          title: `Daily Challenge (${date}) · Clinical Threshold Recall Gain`,
+          q: `In an annual cohort containing <b>${totalPositivePatients} true stroke cases</b>, lowering the decision threshold from 0.50 to 0.22 increases clinical Recall from <b>65%</b> to <b>88%</b>. How many <b>additional stroke patients</b> receive life-saving preventative care?`,
+          answer: additionalCaught,
+          tol: 0,
+          hint: `Recall delta = 88% − 65% = 23%. Multiply ${totalPositivePatients} × 0.23.`,
+          explain: `Delta = 0.88 − 0.65 = 0.23. Additional patients = round(${totalPositivePatients} × 0.23) = ${additionalCaught} patients.`
         };
       }
     }
