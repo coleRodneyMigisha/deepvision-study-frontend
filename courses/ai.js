@@ -323,7 +323,7 @@ window.COURSE_AI = {
 
   examQuestions: [
     {
-      q: "Explain why data leakage occurs when standard scaling or imputation is applied to an entire dataset prior to splitting, and describe how an scikit-learn Pipeline prevents this in production.",
+      prompt: "Explain why data leakage occurs when standard scaling or imputation is applied to an entire dataset prior to splitting, and describe how an scikit-learn Pipeline prevents this in production.",
       topic: "Data Preparation & Pipeline Architecture",
       keywords: ["leakage", "split", "fit", "fit_transform", "train", "test", "pipeline", "statistics", "generalization"],
       modelAnswer: "Data leakage happens when information from outside the training partition leaks into the model. If you apply `StandardScaler().fit_transform(X)` before `train_test_split`, the mean and variance computed reflect the test set, creating overly optimistic validation metrics that degrade in production. An `sklearn.pipeline.Pipeline` wraps preprocessing and estimators together: calling `pipeline.fit(X_train, y_train)` computes scaling parameters solely from training data, and `pipeline.predict(X_test)` applies those stored parameters without learning anything new from incoming inference samples.",
@@ -395,75 +395,264 @@ window.COURSE_AI = {
   ],
 
   formulas: [
-    { title: "Little's Law (API Concurrency)", math: "L = λ × W", desc: "Concurrency L = arrival throughput λ (requests/sec) × average latency W (seconds)." },
-    { title: "INT8 Quantization Memory Savings", math: "Size_{INT8} = Size_{FP32} / 4 = 0.25 × Size_{FP32}", desc: "Reduces memory from 4 bytes (32-bit float) to 1 byte (8-bit integer) per parameter." },
-    { title: "Population Stability Index (PSI)", math: "PSI = \\sum_{i=1}^k (A_i - E_i) \\times \\ln\\left(\\frac{A_i}{E_i}\\right)", desc: "Quantifies distribution drift across k bins. PSI < 0.1 stable; PSI >= 0.25 severe drift." },
-    { title: "Clinical Recall (Sensitivity)", math: "Recall = \\frac{TP}{TP + FN}", desc: "Proportion of actual clinical stroke cases correctly flagged by the diagnostic model." },
-    { title: "Precision (Positive Predictive Value)", math: "Precision = \\frac{TP}{TP + FP}", desc: "Proportion of positive model alerts that correspond to true clinical stroke cases." },
-    { title: "F-Beta Score (Clinical Emphasis on Recall)", math: "F_\\beta = (1 + \\beta^2) \\frac{Precision \\times Recall}{(\\beta^2 \\times Precision) + Recall}", desc: "For clinical triage where recall is twice as important as precision, use F2 (β = 2)." },
-    { title: "Quantization Affine Mapping", math: "q = \\text{round}\\left(\\frac{r}{S}\\right) + Z", desc: "Maps continuous float r to integer q with scale factor S and zero-point offset Z." },
-    { title: "Tukey IQR Outlier Fences", math: "[Q_1 - 1.5 \\cdot IQR, \\; Q_3 + 1.5 \\cdot IQR]", desc: "Robust outlier gate where IQR = Q3 − Q1, protecting imputation from extreme errors." },
-    { title: "Error Budget Depletion Rate", math: "Burn Rate = \\frac{\\text{Observed Error Rate}}{\\text{Allowable Error Rate}}", desc: "If Burn Rate > 1, automated deployment gates immediately halt and initiate rollback." },
-    { title: "Spot Instance Cost Savings", math: "Savings \\% = \\left(1 - \\frac{\\text{Spot Price}}{\\text{On-Demand Price}}\\right) \\times 100", desc: "Typically delivers 70% to 90% savings for fault-tolerant and checkpointed jobs." },
-    { title: "SHAP Additive Efficiency Property", math: "f(x) = \\phi_0 + \\sum_{i=1}^M \\phi_i", desc: "Model prediction equals the base expected rate φ0 plus the sum of all feature attributions φi." },
-    { title: "Amdahl's Law for Inference Parallelism", math: "Speedup = \\frac{1}{(1 - p) + \\frac{p}{s}}", desc: "Max speedup where p is parallelizable fraction (matrix multiplication) and s is core count." },
-    { title: "Cross-Entropy Loss with Focal Weighting", math: "FL(p_t) = -\\alpha_t (1 - p_t)^\\gamma \\ln(p_t)", desc: "Focal loss dynamically scales down easy negative examples, focusing training on hard minority stroke cases." }
+    ["Little's Law (API Concurrency)", "L = λ × W  (concurrency = arrival rate × latency)"],
+    ["INT8 Quantization Memory", "Size(INT8) = Size(FP32) / 4 = 0.25 × Size(FP32)"],
+    ["Population Stability Index (PSI)", "PSI = Σ (A_i − E_i) × ln(A_i / E_i)"],
+    ["Clinical Recall (Sensitivity)", "Recall = TP / (TP + FN)  (proportion of strokes flagged)"],
+    ["Precision (Positive Predictive Value)", "Precision = TP / (TP + FP)  (proportion of alerts true)"],
+    ["F-Beta Score (Clinical Emphasis on Recall)", "F_β = (1 + β²) × (Precision × Recall) / ((β² × Precision) + Recall)"],
+    ["Quantization Affine Mapping", "q = round(r / S) + Z  (scale S, zero-point Z)"],
+    ["Tukey IQR Outlier Fences", "[Q1 − 1.5×IQR, Q3 + 1.5×IQR]  (IQR = Q3 − Q1)"],
+    ["Error Budget Depletion Rate", "Burn Rate = Observed Error Rate / Allowable Error Rate"],
+    ["Spot Instance Cost Savings", "Savings% = (1 − Spot Price / On-Demand Price) × 100"],
+    ["SHAP Additive Efficiency Property", "f(x) = φ_0 + Σ φ_i  (base risk + feature attributions)"],
+    ["Amdahl's Law for Inference Parallelism", "Speedup = 1 / ((1 − p) + p / s)"],
+    ["Cross-Entropy Loss with Focal Weighting", "FL(p_t) = −α_t (1 − p_t)^γ ln(p_t)"]
   ],
 
   labVariations: [
-    /* Lab 0: Clinical Feature Preparation & Imbalance */
+    /* Lab 0: Clinical Feature Preparation, Scaler Leakage & Imbalance */
     [
-      { name: "Hospital Cohort A (N=2,500, 5% Stroke)", params: { n: 2500, missBmi: 8, strokePrev: 5, split: 80, smote: false, leak: false } },
-      { name: "Severe Imbalance & Missing Data (N=5,000, 3% Stroke, 18% Miss)", params: { n: 5000, missBmi: 18, strokePrev: 3, split: 75, smote: true, leak: false } },
-      { name: "Data Leakage Scenario (Scaler fit on all)", params: { n: 3000, missBmi: 10, strokePrev: 6, split: 70, smote: true, leak: true } }
+      {
+        title: "Stroke Class Imbalance Minority Count",
+        q: "In a regional hospital dataset of <b>5,000 patients</b>, stroke prevalence is exactly <b>4.8%</b>. How many patients in this cohort have suffered a stroke (the positive minority class)?",
+        answer: 240,
+        tol: 0,
+        hint: "Multiply 5,000 by 0.048.",
+        explain: "5,000 × 0.048 = 240 stroke patients. The remaining 4,760 patients are stroke-free, demonstrating a 20:1 clinical class imbalance."
+      },
+      {
+        title: "Tukey IQR Upper Outlier Fence for BMI",
+        q: "In the stroke registry, patient BMI has <b>Q1 = 23.5</b> and <b>Q3 = 31.5</b>. Using Tukey's rule (<code>Q3 + 1.5 × IQR</code>), what is the upper outlier boundary cutoff?",
+        answer: 43.5,
+        tol: 0.1,
+        hint: "First calculate IQR = Q3 − Q1 = 31.5 − 23.5 = 8.0. Then add 1.5 × 8.0 to Q3.",
+        explain: "IQR = 31.5 − 23.5 = 8.0. Upper fence = 31.5 + 1.5 × 8.0 = 31.5 + 12.0 = 43.5. Any BMI value exceeding 43.5 is flagged for clinical review or robust winsorization."
+      },
+      {
+        title: "Train-Test Leakage Scaling Discrepancy",
+        q: "An incoming patient has average glucose level <b>220 mg/dL</b>. The training set has <b>μ = 105</b> and <b>σ = 30</b>. What is the correctly scaled z-score <code>(x − μ) / σ</code> using strictly training statistics? (2 decimals)",
+        answer: 3.83,
+        tol: 0.02,
+        hint: "Compute (220 − 105) / 30.",
+        explain: "z = (220 − 105) / 30 = 115 / 30 = 3.833... ≈ 3.83 standard deviations above the training baseline mean."
+      }
     ],
-    /* Lab 1: Serialization: Pickle vs Joblib */
+    /* Lab 1: Model Persistence, Serialization & Packaging */
     [
-      { name: "Random Forest (100 Trees, 25MB arrays)", params: { trees: 100, depth: 14, compLevel: 3, lib: "joblib" } },
-      { name: "Deep Gradient Boosted Ensemble (500 Trees, 110MB)", params: { trees: 500, depth: 18, compLevel: 6, lib: "joblib_lz4" } },
-      { name: "Naive Pickle Baseline (No mmap, no compression)", params: { trees: 150, depth: 16, compLevel: 0, lib: "pickle" } }
+      {
+        title: "NumPy Array Serialization: Pickle vs Joblib",
+        q: "A feature matrix of <b>1,000,000 float64 elements</b> occupies <b>8.0 MB</b> in raw pickle. Serialized with <code>joblib.dump(..., compress=3)</code>, it achieves a <b>62% size reduction</b>. What is the compressed file size in <b>MB</b>? (2 decimals)",
+        answer: 3.04,
+        tol: 0.05,
+        hint: "Multiply 8.0 MB by (1 − 0.62) = 0.38.",
+        explain: "Compressed size = 8.0 × (1 − 0.62) = 8.0 × 0.38 = 3.04 MB. Joblib's native compression significantly reduces storage and cloud deployment bundle sizes."
+      },
+      {
+        title: "Cold-Start Deserialization Latency Reduction",
+        q: "Deserializing an uncompressed pickle model takes <b>45.0 ms</b> on serverless cold starts. Switching to memory-mapped Joblib (<code>mmap_mode='r'</code>) cuts model load time to <b>1.5 ms</b>. How many <b>milliseconds</b> are saved per cold start?",
+        answer: 43.5,
+        tol: 0.1,
+        hint: "Subtract 1.5 ms from 45.0 ms.",
+        explain: "45.0 − 1.5 = 43.5 ms saved. Memory mapping avoids reading the entire weight matrix into Python heap memory at startup."
+      },
+      {
+        title: "Pipeline Preprocessor Feature Alignment",
+        q: "A production <code>ColumnTransformer</code> takes raw patient dictionaries, imputes 2 missing fields, one-hot encodes 3 categorical features (generating <b>8 binary columns</b>), and passes <b>3 numerical columns</b> unchanged. How many total columns enter the classifier?",
+        answer: 11,
+        tol: 0,
+        hint: "Add 8 encoded columns + 3 numerical columns.",
+        explain: "8 one-hot columns + 3 scaled numerical columns = 11 final feature columns fed into the estimator."
+      }
     ],
-    /* Lab 2: FastAPI Model Serving & Pydantic Validation */
+    /* Lab 2: FastAPI, Pydantic & Async Workers */
     [
-      { name: "Standard Hospital Triage Traffic (50 QPS, Clean)", params: { qps: 50, concurrency: 4, malformedPct: 2, networkMs: 15 } },
-      { name: "Peak Outpatient Rush (250 QPS, 12% Malformed Payloads)", params: { qps: 250, concurrency: 16, malformedPct: 12, networkMs: 25 } },
-      { name: "High-Latency Edge Uplink (80 QPS, 120ms Network)", params: { qps: 80, concurrency: 8, malformedPct: 5, networkMs: 120 } }
+      {
+        title: "Little's Law API Concurrency Capacity",
+        q: "A stroke screening endpoint handles an arrival rate <b>λ = 250 requests/sec</b> with average model inference latency <b>W = 40 ms (0.040s)</b>. According to Little's Law (<code>L = λ × W</code>), how many concurrent requests are in flight on the server?",
+        answer: 10,
+        tol: 0.1,
+        hint: "Multiply 250 req/s by 0.040s.",
+        explain: "L = 250 × 0.040 = 10 concurrent requests in flight. This dictates the minimum worker pool sizing needed to prevent request queuing."
+      },
+      {
+        title: "FastAPI Uvicorn Concurrency Sizing",
+        q: "A Uvicorn worker process handles up to <b>50 concurrent async requests</b>. To support a peak concurrent capacity of <b>200 active requests</b> without queuing, how many worker processes must be spawned via Gunicorn?",
+        answer: 4,
+        tol: 0,
+        hint: "Divide 200 by 50.",
+        explain: "200 / 50 = 4 workers. Typically, 2 to 4 workers per CPU core maximize asynchronous I/O throughput."
+      },
+      {
+        title: "Edge Pydantic Validation CPU Savings",
+        q: "Pydantic rejects an invalid payload (e.g., negative glucose) at the API boundary in <b>1.2 ms</b>. If unvalidated, passing the bad input into scikit-learn causes a crash after <b>18.5 ms</b> of pipeline execution. How many <b>ms</b> of CPU execution time are saved per bad request?",
+        answer: 17.3,
+        tol: 0.1,
+        hint: "Subtract 1.2 ms from 18.5 ms.",
+        explain: "18.5 − 1.2 = 17.3 ms saved per rejected request, shielding CPU inference workers from wasted compute."
+      }
     ],
-    /* Lab 3: Cloud Infrastructure & Spot Cost Sizing */
+    /* Lab 3: Docker Containerization */
     [
-      { name: "Local Kampala Hospital Edge Server (2 vCPU, 8GB RAM)", params: { vcpu: 2, gpu: "None", spot: false, volumeK: 20, region: "local" } },
-      { name: "Cloud CPU Autoscaling (Render / AWS af-south-1)", params: { vcpu: 8, gpu: "None", spot: true, volumeK: 150, region: "af_south" } },
-      { name: "Heavy GPU Cloud Pipeline (T4 GPU + Spot Savings)", params: { vcpu: 16, gpu: "Nvidia T4", spot: true, volumeK: 500, region: "eu_west" } }
+      {
+        title: "Multi-Stage Docker Image Footprint Reduction",
+        q: "A single-stage Docker image containing build tools, GCC, and pip cache measures <b>1,280 MB</b>. Rebuilding with multi-stage compilation and <code>python:3.11-slim</code> produces a production image of <b>190 MB</b>. How many <b>MB</b> are trimmed from the image?",
+        answer: 1090,
+        tol: 0,
+        hint: "Subtract 190 MB from 1,280 MB.",
+        explain: "1,280 − 190 = 1,090 MB saved (an 85% reduction), drastically lowering network transfer times and attack surface."
+      },
+      {
+        title: "Container Cold-Start Pull Duration",
+        q: "On a hospital edge gateway with a <b>100 Mbps (12.5 MB/s)</b> network link, pulling an unoptimized <b>1,250 MB</b> container image took 100 seconds. How many seconds does it take to pull the optimized <b>150 MB</b> multi-stage container?",
+        answer: 12,
+        tol: 0.5,
+        hint: "Divide 150 MB by 12.5 MB/s.",
+        explain: "150 / 12.5 = 12 seconds. In auto-scaling and failover scenarios, 12 seconds vs 100 seconds is the difference between seamless scaling and service degradation."
+      },
+      {
+        title: "Docker Container Memory Ceiling Headroom",
+        q: "A container is allocated <b>512 MB</b> memory. Base OS and Python runtime consume <b>116 MB</b>. If each concurrent batch inference thread uses <b>22 MB</b>, how many concurrent threads can run before risking an OOM (Out Of Memory) kill?",
+        answer: 18,
+        tol: 0,
+        hint: "Subtract 116 from 512, then take the integer floor of dividing by 22.",
+        explain: "Available memory = 512 − 116 = 396 MB. Threads = ⌊396 / 22⌋ = 18 concurrent requests."
+      }
     ],
-    /* Lab 4: Docker Multi-Stage Optimization */
+    /* Lab 4: Cloud Infrastructure & Cost Optimization */
     [
-      { name: "Optimized Multi-Stage (python:3.11-slim + Non-root)", params: { base: "slim", multistage: true, cachedDeps: true, nonRoot: true } },
-      { name: "Naive Single-Stage (ubuntu:22.04 + gcc retained)", params: { base: "ubuntu", multistage: false, cachedDeps: false, nonRoot: false } },
-      { name: "Alpine musl libc Build (Slow wheel compilation)", params: { base: "alpine", multistage: true, cachedDeps: true, nonRoot: true } }
+      {
+        title: "AWS EC2 On-Demand vs Spot Cost Delta",
+        q: "An <code>m5.xlarge</code> instance costs <b>$0.192 per hour</b> On-Demand. For fault-tolerant batch stroke retraining, AWS Spot instances offer a <b>72% discount</b>. What is the Spot price per hour in dollars? (3 decimals)",
+        answer: 0.054,
+        tol: 0.003,
+        hint: "Multiply $0.192 by (1 − 0.72) = 0.28.",
+        explain: "$0.192 × 0.28 = $0.05376 ≈ $0.054/hr. Over a 720-hour month, this saves ~$100 per instance."
+      },
+      {
+        title: "Auto-Scaling Target Group Sizing",
+        q: "Peak clinical triage volume reaches <b>1,800 requests/minute</b>. If one container replica reliably serves <b>150 requests/minute</b> at < 50ms latency, what is the minimum number of instances required in the Auto-Scaling Group?",
+        answer: 12,
+        tol: 0,
+        hint: "Divide 1,800 by 150.",
+        explain: "1,800 / 150 = 12 instances required to handle peak surge without request buffering or SLA breach."
+      },
+      {
+        title: "Monthly Serverless Cost vs Reserved VM",
+        q: "A small clinic makes <b>50,000 API calls/month</b>. AWS Lambda charges $0.20/1M calls + compute, totaling <b>$0.15/month</b>, while a reserved VM costs <b>$15.00/month</b>. How many <b>dollars</b> does the clinic save per month by adopting serverless?",
+        answer: 14.85,
+        tol: 0.1,
+        hint: "Subtract $0.15 from $15.00.",
+        explain: "$15.00 − $0.15 = $14.85 saved per month (a 99% cost reduction for intermittent rural clinic workloads)."
+      }
     ],
-    /* Lab 5: Canary Release & Traffic Splitting */
+    /* Lab 5: CI/CD & Deployment Strategies (Canary / Blue-Green) */
     [
-      { name: "Safe Canary Inception (5% Canary, v2 Healthy)", params: { canaryPct: 5, totalQps: 120, v2ErrorRate: 0.1, maxBudget: 1.5 } },
-      { name: "Canary Regression Detected (15% Canary, v2 Spiking 5xx)", params: { canaryPct: 15, totalQps: 180, v2ErrorRate: 6.2, maxBudget: 1.5 } },
-      { name: "Graduated Rollout Stage 3 (50% Split, Healthy)", params: { canaryPct: 50, totalQps: 220, v2ErrorRate: 0.2, maxBudget: 1.5 } }
+      {
+        title: "Canary Deployment Initial Traffic Allocation",
+        q: "A hospital network processes <b>8,000 diagnostic queries</b> per day. During the first phase of a canary release, <b>5%</b> of traffic is shifted to Model v2. Exactly how many patient requests are routed to the canary model on day one?",
+        answer: 400,
+        tol: 0,
+        hint: "Multiply 8,000 by 0.05.",
+        explain: "8,000 × 0.05 = 400 requests. This limited sample validates production metrics while bounding potential failure exposure to just 5% of users."
+      },
+      {
+        title: "Error Budget Depletion Rate Gate",
+        q: "During canary testing, <b>36 out of 20,000 requests</b> return HTTP 500 server errors. What is the observed error rate in <b>percent</b>?",
+        answer: 0.18,
+        tol: 0.01,
+        hint: "Compute (36 / 20,000) × 100%.",
+        explain: "(36 / 20,000) × 100% = 0.18%. If the SLA error budget is 0.10% (99.9% availability), this 0.18% burn triggers an automatic deployment abort."
+      },
+      {
+        title: "Blue-Green Instant DNS Rollback",
+        q: "When a canary fault is detected, a Blue-Green router flips 100% of traffic back to the healthy Blue environment in <b>0.45 seconds</b>. If a full redeployment would have taken <b>180 seconds</b>, how many seconds of critical patient service disruption are prevented?",
+        answer: 179.55,
+        tol: 0.5,
+        hint: "Subtract 0.45 from 180.",
+        explain: "180 − 0.45 = 179.55 seconds of downtime avoided by having an idle, pre-warmed Blue deployment standing by."
+      }
     ],
-    /* Lab 6: ONNX & INT8 Quantization Speedup */
+    /* Lab 6: Inference Optimization, Quantization & ONNX */
     [
-      { name: "Stroke Classifier (Dense MLP, 18M weights)", params: { weightsM: 18, mode: "int8", batch: 1, onnx: true } },
-      { name: "Deep Clinical Backbone (ResNet-50, 48M weights)", params: { weightsM: 48, mode: "int8", batch: 8, onnx: true } },
-      { name: "Unquantized FP32 Baseline (Standard PyTorch/Sklearn)", params: { weightsM: 25, mode: "fp32", batch: 1, onnx: false } }
+      {
+        title: "INT8 Model Weight Compression",
+        q: "An FP32 deep neural network contains <b>24 million parameters</b> (4 bytes each = 96 MB). Quantized to INT8 (1 byte per parameter), what is the new weight size in <b>MB</b>?",
+        answer: 24,
+        tol: 0,
+        hint: "Multiply 24 million parameters by 1 byte, or divide 96 MB by 4.",
+        explain: "96 MB / 4 = 24 MB. INT8 quantization cuts memory footprint by 75% with typically < 0.5% drop in F1 score."
+      },
+      {
+        title: "ONNX Runtime Graph Fusion Speedup Factor",
+        q: "Baseline PyTorch Python runtime executes patient inference in <b>28.5 ms</b>. Exporting to ONNX Runtime with operator fusion and ConstantFolding drops latency to <b>9.5 ms</b>. What is the speedup factor (<code>Latency_base / Latency_onnx</code>)?",
+        answer: 3,
+        tol: 0.1,
+        hint: "Divide 28.5 ms by 9.5 ms.",
+        explain: "28.5 / 9.5 = 3.0× speedup. Graph fusion combines BatchNorm and Conv layers into a single fused kernel, eliminating memory bandwidth hops."
+      },
+      {
+        title: "Quantized DRAM Bus Bandwidth Savings",
+        q: "At batch size 1, an FP32 model reads <b>80 MB</b> of weights from RAM per inference. Quantized to INT8, it reads only <b>20 MB</b>. Across a batch of <b>50 sequential inferences</b>, how many total <b>MB</b> are transferred across the memory bus for the INT8 model?",
+        answer: 1000,
+        tol: 0,
+        hint: "Multiply 20 MB by 50 requests.",
+        explain: "20 MB × 50 = 1,000 MB (1.0 GB) compared to 4,000 MB for FP32, reducing memory controller saturation by 3 GB."
+      }
     ],
-    /* Lab 7: Population Stability Index (PSI) Drift */
+    /* Lab 7: Observability, Covariate Drift & PSI */
     [
-      { name: "Stable In-Distribution Registry (PSI < 0.05)", params: { ageShift: 0, glucoseShift: 0, bmiShift: 0, sampleSize: 1000 } },
-      { name: "Moderate Demographic Aging Drift (PSI ~ 0.16)", params: { ageShift: 8, glucoseShift: 15, bmiShift: 2, sampleSize: 1200 } },
-      { name: "Severe Diabetic Outreach Shift (PSI >= 0.35, Retrain!)", params: { ageShift: 16, glucoseShift: 45, bmiShift: 6, sampleSize: 1500 } }
+      {
+        title: "Population Stability Index (PSI) Bin Contribution",
+        q: "In baseline training data, age bin [60–70] contained <b>20%</b> of patients (E = 0.20). In recent production traffic, this bin jumped to <b>32%</b> (A = 0.32). What is the PSI contribution of this single bin: <code>(A − E) × ln(A / E)</code>? (3 decimals)",
+        answer: 0.056,
+        tol: 0.004,
+        hint: "Calculate (0.32 − 0.20) × ln(0.32 / 0.20) = 0.12 × ln(1.6).",
+        explain: "Δ = 0.12. ln(1.6) = 0.47000. PSI_bin = 0.12 × 0.47000 = 0.0564 ≈ 0.056. Summing across all bins yields the total feature PSI."
+      },
+      {
+        title: "Critical Covariate Drift Feature Count",
+        q: "An MLOps drift monitor evaluates 8 clinical features. Their calculated PSI values are: <b>[0.04, 0.08, 0.28, 0.06, 0.12, 0.03, 0.26, 0.05]</b>. Using the standard threshold where <code>PSI ≥ 0.25</code> indicates critical drift requiring automated retraining, how many features are in critical drift?",
+        answer: 2,
+        tol: 0,
+        hint: "Count how many values in the list are greater than or equal to 0.25.",
+        explain: "Features with PSI = 0.28 and 0.26 exceed the 0.25 threshold (2 features). This automatically alerts on-call ML engineers."
+      },
+      {
+        title: "Concept Drift F1 Degradation Percentage",
+        q: "At deployment, the stroke triage model achieved an <b>F1 score of 0.80</b>. Due to seasonal disease distribution changes over 9 months without retraining, F1 dropped to <b>0.68</b>. What is the percentage decrease in F1 score? (1 decimal)",
+        answer: 15,
+        tol: 0.2,
+        hint: "Compute ((0.80 − 0.68) / 0.80) × 100%.",
+        explain: "(0.12 / 0.80) × 100% = 15.0% performance degradation, demonstrating why automated drift monitoring is essential."
+      }
     ],
-    /* Lab 8: Clinical Referral Hospital Capstone & SHAP */
+    /* Lab 8: Capstone: Hospital Stroke Risk Pipeline & Explainable AI (XAI) */
     [
-      { name: "Elderly Hypertensive Patient (High Risk Profile)", params: { age: 67, hypertension: 1, heartDisease: 1, glucose: 228, bmi: 36.6, threshold: 0.22 } },
-      { name: "Young Active Patient (Low Risk Profile)", params: { age: 28, hypertension: 0, heartDisease: 0, glucose: 88, bmi: 22.4, threshold: 0.22 } },
-      { name: "Borderline Case: Threshold Sensitivity (Mid Risk)", params: { age: 54, hypertension: 1, heartDisease: 0, glucose: 135, bmi: 28.5, threshold: 0.35 } }
+      {
+        title: "Decision Threshold Calibration for Clinical Recall",
+        q: "At the default 0.50 probability threshold, the classifier flags 30 out of 50 stroke cases (60% recall). Calibrating the decision threshold down to <b>0.22</b> enables the model to detect <b>46 out of 50 stroke cases</b>. What is the new clinical Recall in <b>percent</b>?",
+        answer: 92,
+        tol: 0.5,
+        hint: "Compute (46 / 50) × 100%.",
+        explain: "(46 / 50) × 100% = 92.0% Recall. Lowering the threshold prioritizes catching life-threatening stroke events at the expense of a minor increase in false alerts."
+      },
+      {
+        title: "SHAP Additive Log-Odds Attribution Sum",
+        q: "A stroke risk model has baseline log-odds <b>φ_0 = −2.80</b>. For an admitted patient, SHAP local attributions are: Age: <b>+0.95</b>, Glucose: <b>+0.65</b>, Hypertension: <b>+0.40</b>, BMI: <b>−0.20</b>. According to the SHAP efficiency property <code>f(x) = φ_0 + Σ φ_i</code>, what is the final model log-odds output?",
+        answer: -1,
+        tol: 0.05,
+        hint: "Add −2.80 + 0.95 + 0.65 + 0.40 − 0.20.",
+        explain: "−2.80 + (0.95 + 0.65 + 0.40 − 0.20) = −2.80 + 1.80 = −1.00. The doctor can clearly see how each biomarker pushed the risk score upward."
+      },
+      {
+        title: "Hospital Stroke Bed Triage Allocation",
+        q: "A regional hospital has <b>24 high-dependency beds</b>. An alert threshold is chosen so that <b>120 suspected stroke patients</b> are flagged each month with a <b>20% Positive Predictive Value (Precision)</b>. Exactly how many true stroke cases will be admitted?",
+        answer: 24,
+        tol: 0,
+        hint: "Multiply 120 by 0.20.",
+        explain: "120 × 0.20 = 24 confirmed stroke patients admitted, matching the hospital's high-dependency unit bed capacity."
+      }
     ]
   ],
 
@@ -1440,3 +1629,9 @@ pipeline = Pipeline([
   ]
 
 };
+
+window.COURSE_AI.syllabus.forEach((s, i) => {
+  s.id = i;
+  s.badge = `Module ${i + 1}`;
+  s.duration = s.captions[s.captions.length - 1].time + 22;
+});
