@@ -45,3 +45,32 @@ describe("offline grading", () => {
     assert.equal(full.source, "heuristic");
   });
 });
+
+import { graphWeeks, resolveRange } from "../src/lib/progress.ts";
+
+describe("streak graph range", () => {
+  const today = "2026-11-11";
+  it("defaults to presets ending today", () => {
+    assert.deepEqual(resolveRange({ preset: "3m" }, {}, today), { from: "2026-08-12", to: today });
+    assert.equal(resolveRange({ preset: "1y" }, {}, today).from, "2025-11-12");
+  });
+  it("'all' starts at the first study day, but shows at least a month", () => {
+    assert.equal(resolveRange({ preset: "all" }, { "2025-02-03": 2, "2026-01-01": 1 }, today).from, "2025-02-03");
+    assert.equal(resolveRange({ preset: "all" }, { "2026-11-10": 1 }, today).from, "2026-10-12");
+  });
+  it("custom ranges are ordered, clamped to today and capped at ~3 years", () => {
+    assert.deepEqual(resolveRange({ preset: "custom", from: "2026-10-01", to: "2026-09-01" }, {}, today), { from: "2026-09-01", to: "2026-10-01" });
+    assert.equal(resolveRange({ preset: "custom", from: "2026-10-01", to: "2027-01-01" }, {}, today).to, today);
+    assert.equal(resolveRange({ preset: "custom", from: "2010-01-01", to: today }, {}, today).from, "2023-11-09");
+  });
+  it("lays out whole Sunday-first weeks and only counts days inside the range", () => {
+    // 2026-11-04 is a Wednesday.
+    const { weeks, total } = graphWeeks({ "2026-11-01": 9, "2026-11-04": 2, "2026-11-11": 3, "2026-11-12": 5 }, "2026-11-04", today);
+    assert.equal(weeks[0][0].date, "2026-11-01");
+    assert.equal(weeks[0][0].outside, true);
+    assert.equal(weeks[0][3].date, "2026-11-04");
+    assert.equal(weeks.length, 2);
+    assert.equal(total, 5);
+    assert.ok(weeks.flat().every((c) => c.date.slice(0, 4) === "2026"));
+  });
+});

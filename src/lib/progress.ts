@@ -152,3 +152,58 @@ export function migrateLegacyProgress(course: { id: string; modules: { id: strin
     return { ...p, modules, migrated: true };
   });
 }
+
+// ---------------------------------------------------------------------------------------------
+// Contribution-graph ranges.
+
+export type GraphPreset = "1m" | "3m" | "6m" | "1y" | "all" | "custom";
+export interface GraphRange {
+  preset: GraphPreset;
+  from?: string; // custom only (YYYY-MM-DD)
+  to?: string;
+}
+export interface GraphCell {
+  date: string;
+  count: number;
+  outside: boolean; // before `from` or after `to` (padding to whole weeks)
+}
+
+const PRESET_DAYS: Record<"1m" | "3m" | "6m" | "1y", number> = { "1m": 30, "3m": 91, "6m": 182, "1y": 364 };
+const MAX_DAYS = 3 * 366;
+
+/** Resolve a range to concrete [from, to] dates, clamped to today and to at most ~3 years. */
+export function resolveRange(range: GraphRange, activity: Record<string, number>, today = todayISO()) {
+  let from: string;
+  let to = today;
+  if (range.preset === "custom") {
+    from = range.from || addDays(today, -PRESET_DAYS["3m"]);
+    to = range.to && range.to < today ? range.to : today;
+    if (from > to) [from, to] = [to, from];
+  } else if (range.preset === "all") {
+    const first = Object.keys(activity).filter((d) => activity[d] > 0).sort()[0];
+    from = first && first < addDays(today, -PRESET_DAYS["1m"]) ? first : addDays(today, -PRESET_DAYS["1m"]);
+  } else {
+    from = addDays(today, -PRESET_DAYS[range.preset]);
+  }
+  if (from < addDays(to, -MAX_DAYS)) from = addDays(to, -MAX_DAYS);
+  return { from, to };
+}
+
+/** Week columns (Sunday→Saturday, like GitHub) covering [from, to]. */
+export function graphWeeks(activity: Record<string, number>, from: string, to: string) {
+  const dow = new Date(`${from}T00:00:00Z`).getUTCDay();
+  const start = addDays(from, -dow);
+  const weeks: GraphCell[][] = [];
+  let total = 0;
+  for (let day = start; day <= to; ) {
+    const col: GraphCell[] = [];
+    for (let d = 0; d < 7; d++, day = addDays(day, 1)) {
+      const outside = day < from || day > to;
+      const count = outside ? 0 : (activity[day] ?? 0);
+      total += count;
+      col.push({ date: day, count, outside });
+    }
+    weeks.push(col);
+  }
+  return { weeks, total };
+}
