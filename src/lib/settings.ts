@@ -16,4 +16,11 @@ export const settingsStore = persistentStore<Settings>("studyroom:v3:settings", 
 });
 
 export const useSettings = () => useStore(settingsStore);
-export const apiBase = () => (settingsStore.get().apiUrl || DEFAULT_API_URL).replace(/\/+$/, "");
+
+/** Overriding the API URL is a local-dev convenience only. In production a stored override is
+ *  ignored, so nobody can talk a student into pointing the app (and their sign-in token) at
+ *  someone else's server. */
+export const API_URL_EDITABLE = process.env.NODE_ENV !== "production";
+
+export const apiBase = () =>
+  ((API_URL_EDITABLE && settingsStore.get().apiUrl) || DEFAULT_API_URL).replace(/\/+$/, "");

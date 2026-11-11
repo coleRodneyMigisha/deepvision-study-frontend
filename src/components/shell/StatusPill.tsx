@@ -3,7 +3,7 @@ import { X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui";
 import { ping, useApiStatus } from "@/lib/api";
-import { DEFAULT_API_URL, settingsStore, useSettings } from "@/lib/settings";
+import { API_URL_EDITABLE, DEFAULT_API_URL, settingsStore, useSettings } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 
 const LABEL = { checking: "Connecting", waking: "Waking AI", online: "AI on", nokey: "AI key missing", offline: "Offline" };
@@ -53,22 +53,32 @@ function SettingsDialog({ onClose }: { onClose: () => void }) {
           status: {status}
           {model ? ` · model: ${model}` : ""}
         </div>
-        <label className="mt-4 block text-sm font-medium">
-          API URL
-          <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="mt-1.5 w-full rounded-xl border border-line-2 bg-paper px-3 py-2 font-mono text-sm outline-none focus:border-accent"
-          />
-        </label>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <Button variant="primary" onClick={save}>
-            Save & test
-          </Button>
-          <Button variant="ghost" onClick={() => setUrl(DEFAULT_API_URL)}>
-            Use default
-          </Button>
-        </div>
+        {API_URL_EDITABLE ? (
+          <>
+            <label className="mt-4 block text-sm font-medium">
+              API URL
+              <input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="mt-1.5 w-full rounded-xl border border-line-2 bg-paper px-3 py-2 font-mono text-sm outline-none focus:border-accent"
+              />
+            </label>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button variant="primary" onClick={save}>
+                Save & test
+              </Button>
+              <Button variant="ghost" onClick={() => setUrl(DEFAULT_API_URL)}>
+                Use default
+              </Button>
+            </div>
+          </>
+        ) : (
+          <div className="mt-4">
+            <Button variant="primary" onClick={() => void ping()}>
+              Test connection
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );
