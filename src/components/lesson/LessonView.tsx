@@ -17,6 +17,7 @@ import { QuickCheck } from "./QuickCheck";
 import { ScenePlayer } from "./ScenePlayer";
 import { Videos } from "./Videos";
 import { WorkedExamples } from "./WorkedExamples";
+import { Rich } from "@/components/ui/Markdown";
 
 export function LessonView({ course, module: m, index }: { course: CourseOutline; module: Module; index: number }) {
   const progress = useCourseProgress(course.id);
@@ -68,11 +69,12 @@ export function LessonView({ course, module: m, index }: { course: CourseOutline
   const sections = useMemo(
     () =>
       [
-        ["lesson", "Lesson"],
         m.recap && ["recap", "In one minute"],
+        m.terms.length && ["terms", "Key terms"],
+        ["lesson", "Lesson"],
         m.notes.length && ["notes", "Notes"],
         m.examples.length && ["examples", "Worked examples"],
-        m.terms.length && ["terms", "Key terms"],
+        m.traps.length && ["mistakes", "Common mistakes"],
         m.quiz.length && ["quiz", "Quick check"],
         m.questions.length && ["practice", "Exam practice"],
         ["videos", "Videos"],
@@ -120,6 +122,34 @@ export function LessonView({ course, module: m, index }: { course: CourseOutline
           ))}
         </ul>
       </nav>
+
+      {m.recap && (
+        <section id="recap">
+          <Card className="bg-[color-mix(in_srgb,var(--hl)_22%,var(--card))] p-5 sm:p-6">
+            <div className="flex items-center gap-2 text-sm font-semibold">
+              <Sparkles className="size-4 text-accent" /> In one minute
+            </div>
+            <p className="mt-2 text-[15.5px] leading-relaxed">
+              <Rich html={m.recap.trim()} />
+            </p>
+          </Card>
+        </section>
+      )}
+
+      {m.terms.length > 0 && (
+        <Section id="terms" eyebrow="Vocabulary" title="Key terms">
+          <Flashcards terms={m.terms} />
+          {m.fact && (
+            <Card className="mt-4 flex gap-4 p-5">
+              <Lightbulb className="mt-0.5 size-5 shrink-0 text-accent" />
+              <div>
+                <p className="font-semibold">{m.fact.title}</p>
+                <p className="mt-1 text-sm text-ink-2">{m.fact.body}</p>
+              </div>
+            </Card>
+          )}
+        </Section>
+      )}
 
       <section id="lesson" className="space-y-4">
         <ScenePlayer
@@ -178,32 +208,6 @@ export function LessonView({ course, module: m, index }: { course: CourseOutline
         )}
       </section>
 
-      {m.recap && (
-        <section id="recap" className="grid gap-4 md:grid-cols-[1.4fr_1fr]">
-          <Card className="bg-[color-mix(in_srgb,var(--hl)_22%,var(--card))] p-5 sm:p-6">
-            <div className="flex items-center gap-2 text-sm font-semibold">
-              <Sparkles className="size-4 text-accent" /> In one minute
-            </div>
-            <p className="mt-2 text-[15.5px] leading-relaxed">{m.recap}</p>
-          </Card>
-          {m.traps.length > 0 && (
-            <Card className="p-5 sm:p-6">
-              <div className="flex items-center gap-2 text-sm font-semibold text-bad">
-                <AlertTriangle className="size-4" /> Traps examiners look for
-              </div>
-              <ul className="mt-2 space-y-2 text-[14.5px] text-ink-2">
-                {m.traps.map((t) => (
-                  <li key={t} className="flex gap-2">
-                    <span className="mt-2 size-1.5 shrink-0 rounded-full bg-bad" />
-                    {t}
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
-        </section>
-      )}
-
       {m.notes.length > 0 && (
         <Section id="notes" eyebrow="Read" title="Study notes">
           <Notes courseId={course.id} moduleId={m.id} notes={m.notes} />
@@ -216,19 +220,22 @@ export function LessonView({ course, module: m, index }: { course: CourseOutline
         </Section>
       )}
 
-      {m.terms.length > 0 && (
-        <Section id="terms" eyebrow="Vocabulary" title="Key terms">
-          <Flashcards terms={m.terms} />
-          {m.fact && (
-            <Card className="mt-4 flex gap-4 p-5">
-              <Lightbulb className="mt-0.5 size-5 shrink-0 text-accent" />
-              <div>
-                <p className="font-semibold">{m.fact.title}</p>
-                <p className="mt-1 text-sm text-ink-2">{m.fact.body}</p>
-              </div>
-            </Card>
-          )}
-        </Section>
+      {m.traps.length > 0 && (
+        <section id="mistakes">
+          <Card className="p-5 sm:p-6">
+            <div className="flex items-center gap-2 text-sm font-semibold text-bad">
+              <AlertTriangle className="size-4" /> Common mistakes to avoid
+            </div>
+            <ul className="mt-2 space-y-2 text-[14.5px] text-ink-2">
+              {m.traps.map((t) => (
+                <li key={t} className="flex gap-2">
+                  <span className="mt-2 size-1.5 shrink-0 rounded-full bg-bad" />
+                  <Rich html={t} />
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </section>
       )}
 
       {m.quiz.length > 0 && (
