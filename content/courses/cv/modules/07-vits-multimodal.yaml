@@ -2,13 +2,27 @@ id: vits-multimodal
 title: ViTs + Multimodal
 subtitle: Use image–text & transformer-based vision
 recap: A ViT cuts the image into patches (224/16 → 14×14 = 196 tokens), projects each into an embedding, adds
-  [CLS] and position embeddings, then uses self-attention so any patch can attend to any other. Weak inductive
-  bias means ViTs need lots of data. CLIP learns a shared image–text space with a contrastive loss, enabling
-  zero-shot classification by cosine similarity with text prompts.
+  [CLS] and position embeddings, then uses self-attention so any patch can attend to any other — queries ask,
+  keys answer, values carry what gets added. Weak inductive bias means ViTs need lots of data. CLIP trains an
+  image encoder and a text encoder so that matching image–caption pairs land on the same direction in a shared
+  space. Training fills an N×N cosine-similarity matrix per batch and uses a symmetric contrastive (InfoNCE)
+  loss with a learned temperature, so every other caption in the batch is a negative. Zero-shot classification
+  is just "which prompt, such as 'a photo of a {label}', is closest to this image?" — powerful, but CLIP is weak
+  at counting, spatial relations and text-in-image tricks, and it inherits web biases.
 traps:
   - Forgetting the +1 [CLS] token in the sequence length.
   - Saying ViTs are always better than CNNs — on small data CNN inductive bias usually wins.
   - Thinking CLIP zero-shot needs task-specific training — it only needs class prompts.
+  - Using raw dot products instead of cosine similarity — without L2 normalisation, long vectors win regardless of
+    direction.
+  - Saying CLIP's loss only pulls matching pairs together — the off-diagonal negatives being pushed apart are what
+    stop every embedding collapsing onto one point.
+  - Forgetting the loss is symmetric (image→text rows AND text→image columns), and that the temperature is learned,
+    not a hand-tuned constant.
+  - Claiming CLIP can generate captions or images — its encoders only go one way (input → embedding); generation
+    needs a separate decoder such as a diffusion model.
+  - Treating CLIP as a reliable counter or spatial reasoner — it often behaves like a bag of words ("a mug on a
+    laptop" vs "a laptop on a mug").
 lesson:
   checkpointStep: 3
   steps:
@@ -16,16 +30,25 @@ lesson:
       × 14 grid, so 196 patches — and treats each patch as a word.
     - Each patch is flattened and linearly projected into a token embedding. A learnable [CLS] token is added
       at the front, and position embeddings tell the model where each patch came from.
-    - "Self-attention lets every token look at every other token: attention = softmax(Q·Kᵀ / √d) · V. A patch
-      of a dog's ear can directly attend to the tail on the other side of the image."
+    - "Self-attention lets every token look at every other token. Each token's query is a question, every key is
+      a possible answer, and the value is what gets passed along: attention = softmax(Q·Kᵀ / √d) · V. A patch of a
+      dog's ear can directly attend to the tail on the other side of the image."
     - "Checkpoint: why do ViTs need much more training data than CNNs? And how does CLIP do zero-shot
       classification?"
     - CNNs build in locality and translation equivariance. ViTs have weak inductive bias — they must learn
       from data that nearby patches are related. With huge pretraining data, that flexibility wins.
-    - CLIP trains an image encoder and a text encoder together on 400 million image–caption pairs, with a
-      contrastive loss that pulls matching pairs together and pushes mismatches apart.
+    - A fixed classifier only knows its thousand classes, and captioning models don't scale either. CLIP instead
+      trains an image encoder and a text encoder together on 400 million image–caption pairs, so an image and its
+      caption get the same fingerprint in one shared embedding space.
+    - In each batch, CLIP builds an N by N table of cosine similarities between every image and every caption. The
+      true pairs sit on the diagonal. A contrastive loss with a learned temperature pushes the diagonal up and
+      everything else down, so every other caption in the batch acts as a free negative example.
     - For zero-shot classification, embed prompts like ‘a photo of a dog’ for each class, embed the image, and
-      pick the class with the highest cosine similarity — no task-specific training.
+      pick the class with the highest cosine similarity — no task-specific training. Averaging several prompt
+      templates per class makes it more accurate.
+    - CLIP powers image search, text-to-image generation and open-vocabulary detection, but it has blind spots. It
+      is poor at counting and spatial relations, can be fooled by a handwritten label stuck on an object, and
+      inherits the biases of web data.
 checkpoint:
   question: Why do Vision Transformers need significantly more training data than CNNs to reach peak
     performance? And how does CLIP perform zero-shot classification?
@@ -54,15 +77,65 @@ checkpoint:
     with the highest cosine similarity.
 terms:
   - term: Patch embedding
-    definition: Flatten a P×P×C patch and project it to a D-dim token.
+    definition: Flatten a P×P×C patch and project it to a D-dim token (equivalently, a P×P convolution with stride P).
   - term: "[CLS] token"
     definition: Extra learnable token whose final state is used for classification.
+  - term: Position embedding
+    definition: A learned vector added to each patch token so the model knows where the patch came from; attention
+      itself is order-blind.
   - term: Self-attention
     definition: Each token mixes information from all tokens, weighted by Q·K similarity.
+  - term: Query / Key / Value
+    definition: "Three learned projections of each token: the query is what it is looking for, the key is what it
+      offers, the value is what it passes on if attended to."
+  - term: Attention pattern
+    definition: The N×N grid of softmax-normalised query–key scores; each query's weights sum to 1.
+  - term: Multi-head attention
+    definition: Several attention heads in parallel, each with its own Q/K/V projections, so different heads can
+      learn different relationships; outputs are concatenated and projected back to D.
+  - term: Residual stream
+    definition: The running token vectors that every attention and MLP block adds its update to (x ← x + block(x)).
   - term: Inductive bias
     definition: Built-in assumptions (e.g. locality) that help learn from less data.
+  - term: Embedding space
+    definition: The high-dimensional space vectors live in; directions can carry meaning, and the angle between
+      vectors measures similarity.
+  - term: Cosine similarity
+    definition: cos θ = (a·b) / (‖a‖‖b‖), in [−1, 1]; equals the plain dot product once both vectors are
+      L2-normalised.
+  - term: L2 normalisation
+    definition: Divide a vector by its length so it lies on the unit sphere; only its direction remains.
+  - term: Dual encoder
+    definition: Two separate networks (image and text) that map into one shared embedding space; items are compared
+      by similarity, never fed through together.
   - term: Contrastive loss
     definition: Pull matching image–text pairs together, push others apart.
+  - term: InfoNCE
+    definition: The softmax cross-entropy form of contrastive loss — classify the true partner among the N
+      candidates in the batch. CLIP averages it over both directions.
+  - term: Temperature (τ)
+    definition: Divides the similarities before softmax; small τ (large logit scale 1/τ) sharpens the
+      distribution. CLIP learns it, starting at 0.07 and capping the scale at 100.
+  - term: In-batch negatives
+    definition: Every non-matching caption (or image) in the same batch serves as a negative, giving N² − N
+      negative pairs for free.
+  - term: Zero-shot classification
+    definition: Classifying into labels the model was never explicitly trained on, by comparing the image embedding
+      with text embeddings of class prompts.
+  - term: Prompt template
+    definition: A sentence wrapper such as "a photo of a {label}." that makes a class name look like the captions
+      CLIP was trained on.
+  - term: Prompt ensembling
+    definition: Average the normalised text embeddings of many templates per class (then renormalise) to get a more
+      robust class vector.
+  - term: Linear probe
+    definition: Freeze the encoder and train only a linear (logistic-regression) classifier on its embeddings.
+  - term: Typographic attack
+    definition: Fooling CLIP by putting text in the image (e.g. a paper label reading "iPod" on an apple), because it
+      learned to read.
+  - term: Open-vocabulary detection
+    definition: Detecting objects described by arbitrary text queries, by matching region embeddings to text
+      embeddings (e.g. OWL-ViT).
 quiz:
   - question: "ViT with 224×224 input and 16×16 patches: sequence length including [CLS]?"
     options:
@@ -121,14 +194,152 @@ quiz:
       - Bounding-box regression
     answer: 1
     explanation: It learns a shared image–text space.
-  - question: Attention cost grows with the number of tokens N as…
+  - question: In 3Blue1Brown's framing of attention, which vector plays the role of "the question a token is asking"?
     options:
-      - N
-      - N log N
-      - N²
-      - constant
+      - The key
+      - The value
+      - The query
+      - The position embedding
     answer: 2
-    explanation: Every token attends to every token.
+    explanation: The query asks (e.g. "is there an adjective in front of me?"), keys answer by aligning with it, and
+      values carry what gets added to the asking token.
+  - question: "Image embedding a = (3, 4), text embedding b = (4, 3). Their cosine similarity is…"
+    options:
+      - "24"
+      - "0.96"
+      - "0.75"
+      - "1.00"
+    answer: 1
+    explanation: $a \cdot b = 12 + 12 = 24$ and $\|a\| = \|b\| = 5$, so $\cos\theta = 24/25 = 0.96$. 24 is the raw dot
+      product, not the cosine.
+  - question: Why does CLIP L2-normalise both embeddings before comparing them?
+    options:
+      - To make training faster on GPUs
+      - So similarity depends only on direction (angle), not on vector length
+      - Because softmax needs positive inputs
+      - To reduce the embedding dimension
+    answer: 1
+    explanation: After normalisation the dot product is the cosine. Otherwise a long vector could score highly against
+      everything just by being long.
+  - question: A CLIP batch has N = 4 image–caption pairs. How many negative (non-matching) pairs are in the similarity
+      matrix?
+    options:
+      - "4"
+      - "8"
+      - "12"
+      - "16"
+    answer: 2
+    explanation: "$N^2 - N = 16 - 4 = 12$: everything off the diagonal."
+  - question: Where are the positive pairs in CLIP's N×N similarity matrix (rows = images, columns = captions, in batch
+      order)?
+    options:
+      - The first row
+      - The diagonal
+      - The last column
+      - Everywhere above the diagonal
+    answer: 1
+    explanation: Image $i$ was scraped with caption $i$, so entry $(i, i)$ is the true pair; the loss treats each row
+      (and column) as an N-way classification whose correct answer is the diagonal entry.
+  - question: CLIP's loss is described as symmetric. What does that mean?
+    options:
+      - The similarity matrix is always symmetric
+      - It averages an image→text cross-entropy over rows and a text→image cross-entropy over columns
+      - Positive and negative pairs get equal weight
+      - The image and text encoders share weights
+    answer: 1
+    explanation: Each image must pick out its caption among N captions, and each caption must pick out its image among
+      N images. The matrix itself is generally not symmetric.
+  - question: CLIP's logit scale (1/τ) is increased from 10 to 100. The softmax over classes becomes…
+    options:
+      - More uniform
+      - Sharper — more confident in the top class
+      - Unchanged, softmax is scale-invariant
+      - Negative
+    answer: 1
+    explanation: Multiplying logits by a bigger number stretches the gaps between them, so the largest dominates.
+      Softmax is shift-invariant, not scale-invariant.
+  - question: Why does CLIP use very large batches (32,768 pairs)?
+    options:
+      - Larger batches always generalise better for any loss
+      - Every other caption in the batch is a negative, so bigger batches give more and harder negatives
+      - To fit the 400M dataset into memory
+      - Because the text encoder needs at least 32k tokens
+    answer: 1
+    explanation: The batch is the source of negatives; with N = 32,768 each image is contrasted with 32,767 wrong
+      captions at every step.
+  - question: What is the main purpose of the template "a photo of a {label}." in CLIP zero-shot classification?
+    options:
+      - It reduces the number of classes
+      - It makes the text look like the captions CLIP was trained on, and disambiguates the label
+      - It is required by the tokenizer
+      - It turns CLIP into a captioning model
+    answer: 1
+    explanation: Web captions are sentences, not lone words; a template closes that distribution gap and hints at the
+      intended sense ("boxer" the dog vs the athlete). The CLIP paper reports gains from templates and from ensembling
+      many of them.
+  - question: How does prompt ensembling combine 80 templates per class?
+    options:
+      - Runs 80 separate classifiers and takes a majority vote at test time
+      - Averages the (normalised) text embeddings per class once, so inference costs the same as one prompt
+      - Concatenates all 80 prompts into one long sentence
+      - Picks the template with the highest training accuracy
+    answer: 1
+    explanation: The averaged, renormalised vector is a better "class direction"; it is computed once and cached.
+  - question: You have 2,000 labelled images per class for your task. Compared with CLIP zero-shot, a linear probe on
+      CLIP image embeddings will typically…
+    options:
+      - Be worse, because it ignores the text encoder
+      - Be better, because it fits the decision boundary to your actual data
+      - Be identical
+      - Not work, because CLIP embeddings are not linearly separable
+    answer: 1
+    explanation: Zero-shot uses text-derived class vectors (no labels needed); with plenty of labels, learning the
+      class directions from your own images usually wins.
+  - question: An apple with a paper label reading "iPod" is classified by CLIP as an iPod. This is…
+    options:
+      - Label noise
+      - A typographic attack
+      - Catastrophic forgetting
+      - Overfitting to ImageNet
+    answer: 1
+    explanation: CLIP learned to read text in images from web data, and the written word can outweigh the visual
+      evidence (reported by OpenAI's "Multimodal Neurons" work in 2021).
+  - question: Which task is CLIP zero-shot known to be weakest at?
+    options:
+      - Telling cats from dogs
+      - Counting the number of objects in an image
+      - Recognising common objects in photos
+      - Matching an image to a descriptive caption
+    answer: 1
+    explanation: The CLIP paper itself lists counting and other systematic tasks among its weaknesses; it also
+      struggles with spatial relations and fine-grained categories.
+  - question: "Can CLIP's text encoder turn the sentence 'a frog on stilts' back into an image?"
+    options:
+      - Yes, by running it in reverse
+      - No — the encoders only map inputs to embeddings; generation needs a separate model (e.g. diffusion) conditioned
+        on the embedding
+      - Yes, if the temperature is high
+      - Only for ImageNet classes
+    answer: 1
+    explanation: As Computerphile's CLIP video stresses, the encoders work in one direction only. Text-to-image systems
+      train a generator that is conditioned on CLIP-style text embeddings.
+  - question: A ViT-B uses D = 768 with 12 heads. What is the dimension of each head's queries and keys?
+    options:
+      - "768"
+      - "64"
+      - "12"
+      - "196"
+    answer: 1
+    explanation: $768 / 12 = 64$, so each head scales its scores by $1/\sqrt{64} = 1/8$.
+  - question: In a ViT-B/16 transformer block, which part holds roughly two-thirds of the parameters?
+    options:
+      - Multi-head attention
+      - The MLP (768 → 3072 → 768)
+      - LayerNorm
+      - Position embeddings
+    answer: 1
+    explanation: The MLP has about 4.72 M parameters and attention about 2.36 M per block — the same "MLPs hold most of
+      the weights" pattern 3Blue1Brown tallies for GPT-3.
 fact:
   title: Vision-language-action models
   body: "Google DeepMind's RT-2 (2023) treated robot actions as text tokens, so a vision-language model could
@@ -150,7 +361,7 @@ lab:
       answer: 576
       tolerance: 0
       hint: Grid width = 384 / 16 = 24. Total patches = 24².
-      explanation: (384 / 16)² = 24 × 24 = 576 tokens (nearly 3× more tokens and ~8.5× larger attention matrix than
+      explanation: (384 / 16)² = 24 × 24 = 576 tokens (nearly 3× more tokens and a ~8.6× larger attention matrix than
         224×224!).
     - title: Patch Linear Projection Weights
       question: For RGB images (<b>C = 3</b>), patch size <b>P = 16</b>, and embedding dimension <b>D = 768</b>, how
@@ -159,6 +370,27 @@ lab:
       tolerance: 0
       hint: Flattened patch dimension = P × P × C.
       explanation: 16 × 16 × 3 = 768 numbers per patch.
+    - title: Cosine Similarity by Hand
+      question: An image embedding is <b>(3, 4)</b> and a caption embedding is <b>(4, 3)</b>. What is their
+        <b>cosine similarity</b>? (2 dp)
+      answer: 0.96
+      tolerance: 0.005
+      hint: cos = (a·b) / (‖a‖ ‖b‖). Both vectors have length 5.
+      explanation: a·b = 3·4 + 4·3 = 24; ‖a‖‖b‖ = 5 × 5 = 25; 24 / 25 = 0.96.
+    - title: Negatives in a CLIP Batch
+      question: CLIP trains with a batch of <b>N = 256</b> image–caption pairs. How many <b>off-diagonal (negative)</b>
+        entries does the similarity matrix contain?
+      answer: 65280
+      tolerance: 0
+      hint: The matrix is N × N and the N diagonal entries are the positives.
+      explanation: 256² − 256 = 65,536 − 256 = 65,280 negative pairs.
+    - title: Loss of a Clueless Model
+      question: At initialisation CLIP's similarities are all roughly equal. With a batch of <b>N = 1024</b>, what is
+        the expected image→text cross-entropy loss (natural log, 2 dp)?
+      answer: 6.93
+      tolerance: 0.01
+      hint: Uniform softmax over N candidates gives probability 1/N to the right caption.
+      explanation: −ln(1/1024) = ln 1024 ≈ 6.93. A useful sanity check on a training curve.
 notes:
   - heading: An image as a sentence of patches
     body: |
@@ -170,7 +402,35 @@ notes:
       4. Add **position embeddings** so the model knows where each patch came from (otherwise the order of patches would be meaningless to it).
 
       The sequence then passes through standard transformer blocks: multi-head self-attention, an MLP, layer norm and residual connections.
-  - heading: Self-attention
+
+      **The general formula.** For an $H \times W$ image and patch size $P$:
+
+      $$N = \frac{H}{P}\cdot\frac{W}{P}, \qquad L = N + 1 \text{ (with [CLS])}$$
+
+      The patch embedding is a matrix $E \in \mathbb{R}^{(P^2 C) \times D}$ plus a bias. Applying the same matrix to every non-overlapping patch is exactly a **convolution with kernel size $P$ and stride $P$** — which is how most code implements it (`nn.Conv2d(3, 768, kernel_size=16, stride=16)`). This is the one place a ViT does something convolution-like.
+
+      **Position embeddings in practice.** The original ViT ("An Image is Worth 16x16 Words", Dosovitskiy et al., 2021) learns one 1-D position vector per slot (197 × 768 numbers for ViT-B/16). Nothing tells it the slots form a 2-D grid, yet after training, the embeddings of nearby patches end up similar and rows and columns become visible: the model *learns* the geometry. To fine-tune at a higher resolution (more patches), the learned position grid is **2-D interpolated** to the new size.
+
+      | Model | Layers | D | MLP size | Heads | Params |
+      |---|---|---|---|---|---|
+      | ViT-B/16 | 12 | 768 | 3072 | 12 | ≈ 86 M |
+      | ViT-L/16 | 24 | 1024 | 4096 | 16 | ≈ 307 M |
+      | ViT-H/14 | 32 | 1280 | 5120 | 16 | ≈ 632 M |
+
+      The "/16" is the patch size: ViT-B/32 uses 32 × 32 patches (49 + 1 tokens at 224 px) and is about 4× cheaper in attention than B/16.
+  - heading: Embeddings as directions (the geometric picture)
+    body: |
+      Before attention makes sense, you need one picture in your head, and 3Blue1Brown's transformer chapter is built around it: **a token is a vector, a vector is a point (or an arrow) in a high-dimensional space, and directions in that space can carry meaning.**
+
+      - In word-embedding models, the arrow from *man* to *woman* is roughly the same as the arrow from *king* to *queen* (and from *uncle* to *aunt*). So one direction behaves like "gender". 3Blue1Brown also points out that the classic king/queen example is only approximately true in real models — a useful reminder that these are learned tendencies, not laws.
+      - The **dot product** measures alignment: positive when two vectors point the same way, zero when perpendicular, negative when opposite. That is why nearly every operation in a transformer — and CLIP's whole similarity score — is built from dot products.
+
+      **Carry this over to images.** A ViT patch token after the patch embedding encodes only "what these 256 pixels look like" — a brown furry texture, say — with no context. 3Blue1Brown makes the same point for words with *mole* (the animal, the chemistry unit, the skin blemish): the first embedding is identical in all three sentences, and only later layers can push it towards the right meaning. In a ViT, a furry patch next to an eye and a wet nose should drift towards a "dog's head" direction, while the same texture on a sofa should drift towards "cushion". Attention is the mechanism that does this drifting.
+
+      **Why so many dimensions?** 3Blue1Brown's "How might LLMs store facts" chapter adds a striking fact: in high dimensions you can fit *far* more nearly-perpendicular directions (say 89°–91° apart) than there are dimensions — the number grows exponentially (a consequence of the Johnson–Lindenstrauss lemma). So a 768-d ViT token or a 512-d CLIP embedding can represent many thousands of loosely independent features ("furry", "outdoors", "red", "text present"…) at once, as long as each feature is a direction that barely interferes with the others. Interpretability researchers call this **superposition**.
+
+      **Exam angle:** if asked "what does an embedding represent?", say: a point in a learned space where *geometry encodes meaning* — similar things are close (small angle), and consistent attributes correspond to consistent directions.
+  - heading: "Self-attention: queries ask, keys answer, values deliver"
     body: |
       Each token produces a **query** (what am I looking for?), a **key** (what do I contain?) and a **value** (what do I pass on?) by linear projections.
 
@@ -181,6 +441,41 @@ notes:
       - Each token's output is a weighted mix of all values.
 
       So a patch of a dog's ear can attend directly to the tail on the other side of the image in **one layer** — a CNN needs many layers for its receptive field to grow that large. The cost: the attention matrix is N × N, so compute and memory grow **quadratically** with the number of tokens. Halving the patch size gives 4× the tokens and ~16× the attention cost.
+
+      **The intuition (3Blue1Brown's framing).** In "Attention in transformers, step-by-step", Grant Sanderson imagines a noun like *creature* asking, in his words, "hey, are there any adjectives sitting in front of me?" — that question is its **query** $q_i = W_Q x_i$. Words like *fluffy* and *blue* produce **keys** $k_j = W_K x_j$ that *align* with that query, i.e. have a large dot product with it. Their **values** $v_j = W_V x_j$ say "if I'm relevant to you, here is what to add to your embedding" — roughly, a fluffiness direction. He is careful to say this adjective–noun head is an *imagined* example to make the matrices concrete; real heads learn whatever helps.
+
+      A vision version of the same story: a patch showing part of an ear asks "is there an eye or a snout nearby?"; patches containing eyes answer with aligned keys; their values push the ear token towards "part of a dog's face".
+
+      **The mechanism, step by step**, for $N$ tokens stacked as rows of $X \in \mathbb{R}^{N\times D}$:
+
+      1. $Q = XW_Q,\; K = XW_K,\; V = XW_V$ (each $N \times d_k$).
+      2. Scores $S = QK^\top / \sqrt{d_k}$ — an $N \times N$ grid; $S_{ij}$ says how much token $i$'s question is answered by token $j$.
+      3. Attention pattern $A = \text{softmax}(S)$ applied **per query** (each row sums to 1).
+      4. Output $AV$: row $i$ is a weighted average of all the values, weighted by how well each key answered query $i$.
+      5. **Residual update:** the result is projected and *added* to the token, $x_i \leftarrow x_i + \Delta x_i$. Attention doesn't replace a token; it nudges it in embedding space, which is exactly the "drifting towards the right meaning" picture.
+
+      **Why $\sqrt{d_k}$?** If the components of $q$ and $k$ are roughly independent with mean 0 and variance 1, then $q\cdot k = \sum_{m=1}^{d_k} q_m k_m$ has variance $d_k$. With $d_k = 64$, raw scores would have a standard deviation of 8, pushing softmax into a near one-hot regime where gradients vanish. Dividing by $\sqrt{d_k} = 8$ brings the spread back to about 1.
+
+      **Rows or columns?** 3Blue1Brown draws keys down the side and queries along the top, so his softmax runs *down each column*. Papers (and the formula above) put queries in rows, so softmax runs *along each row*. Same operation, transposed picture — don't let it confuse you in an exam.
+
+      **No mask in a ViT.** GPT-style models set "future" scores to $-\infty$ before softmax so later tokens can't leak the next-word answer (3Blue1Brown explains this masking in detail). A ViT encoder is **bidirectional**: every patch may look at every other patch, so there is no causal mask. (CLIP's *text* encoder, by contrast, does use masked self-attention.)
+  - heading: Multi-head attention and the full transformer block
+    body: |
+      One attention head learns one kind of "who should update whom" relationship. A block runs **$h$ heads in parallel**, each with its own $W_Q, W_K, W_V$, so different heads can specialise — in a ViT, some heads attend locally (like a small receptive field), some attend to the same object across the image, some to the background. 3Blue1Brown's way to say it: each head *proposes* a change to every token's embedding, and the proposals are added together.
+
+      **Shapes for ViT-B:** $D = 768$, $h = 12$ heads, so each head works in $d_k = 768/12 = 64$ dimensions. The 12 head outputs (each $N \times 64$) are concatenated back to $N \times 768$ and multiplied by an **output matrix** $W_O$ ($768 \times 768$). 3Blue1Brown describes the same thing as a low-rank "value-down" then "value-up" map per head, and notes that in papers the value-up halves are stapled together into $W_O$ — useful if you read his video and then a paper and the bookkeeping looks different.
+
+      **A ViT block (pre-norm, as in the ViT paper):**
+
+      $$x \leftarrow x + \text{MSA}(\text{LN}(x)), \qquad x \leftarrow x + \text{MLP}(\text{LN}(x))$$
+
+      - **MSA** lets tokens talk to each other.
+      - The **MLP** (768 → 3072 → 768 with a GELU) acts on each token *separately*, in parallel. In "How might LLMs store facts", 3Blue1Brown reads its first matrix row-by-row as a list of questions asked of each vector (each row is a direction; the dot product checks alignment), the nonlinearity as a gate that switches a "neuron" on or off, and the second matrix column-by-column as directions to add when a neuron fires. Language models seem to store much of their factual knowledge there; in a ViT, the MLP is where a token's features get recombined into richer ones.
+      - **LayerNorm** keeps activations well-scaled, and the **residual connections** mean every block only adds a correction to a shared running vector (the *residual stream*), which is what lets 12–32 blocks train stably.
+
+      **Where the parameters are** (see the worked example): in ViT-B/16 each block has ≈ 2.36 M attention parameters and ≈ 4.72 M MLP parameters, so the MLPs hold about two-thirds of the weights — the same pattern 3Blue1Brown finds when he tallies GPT-3's 175 B parameters.
+
+      **Exam angle:** attention mixes information *across* tokens; the MLP transforms each token *individually*. Being able to say that one sentence clearly earns marks.
   - heading: Inductive bias and data hunger
     body: |
       CNNs have strong built-in assumptions — locality and translation equivariance — so they learn efficiently from modest data. ViTs have **weak inductive bias**: nothing tells them that neighbouring patches are related; they must learn it from data (position embeddings start random).
@@ -192,7 +487,85 @@ notes:
       - In practice you almost always **fine-tune a pretrained ViT** rather than train one; with little data and no pretraining, a CNN is the safer choice.
 
       Hybrid designs (convolutional stems, Swin Transformer's local windows) put some locality back to get the best of both.
-  - heading: CLIP and zero-shot classification
+
+      **What a ViT learns instead.** The ViT paper measured each head's average *attention distance* (how far, in pixels, a head typically looks) — the transformer analogue of a receptive field. Even in the first layer, some heads look across the whole image while others stay local; as depth increases, almost all heads become global. So a well-trained ViT rediscovers locality where it helps, but isn't forced into it.
+
+      **Closing the data gap.** DeiT (Touvron et al., 2021) showed a ViT *can* be trained on ImageNet-1k alone with heavy augmentation, regularisation and distillation from a CNN teacher. Self-supervised pretraining (DINO, MAE — module 4) and language supervision (CLIP, below) are the other routes to giving a ViT enough signal.
+
+      **Exam angle:** "inductive bias is a prior; data can replace a prior, but only if you have a lot of it." Then give the evidence: worse than ResNets on ImageNet-1k from scratch, better after JFT-300M pretraining.
+  - heading: "CLIP: why learn from captions?"
+    body: |
+      **The problem.** We want a model that can connect images to *language* — to say what is in a picture, search photos by a sentence, or tell an image generator what to draw.
+
+      Computerphile's CLIP video (Dr Mike Pound) builds up to CLIP by ruling out the obvious approaches, and it's a good way to structure an exam answer:
+
+      1. **Train a classifier.** Works for 1,000 ImageNet classes, but the world has more than 1,000 things. Every new concept means collecting new labelled data and retraining. It doesn't scale.
+      2. **Train a captioning model** that writes a sentence for each image. Richer output, but it has the same scaling problem: it only describes well the kinds of scenes it was trained on — and predicting the *exact* words of a caption is a very hard target.
+      3. **Learn a shared space instead.** Pound's image: "imagine some high dimensional numerical space where everything has a fingerprint", where an image and the text describing it get the *same* fingerprint. You no longer predict words or classes; you only ask "do this image and this text belong together?"
+
+      **The data.** CLIP (Radford et al., 2021, "Learning Transferable Visual Models From Natural Language Supervision") was trained on **400 million image–text pairs** collected from the internet — images with alt-text or nearby captions, gathered by searching for 500,000 query terms. Nobody labelled anything by hand: the caption *is* the supervision. As the video points out, at that scale you also can't hand-check the data, so some of it is noisy, unhelpful or problematic. Later open datasets went larger still (LAION-5B, about 5.85 billion pairs).
+
+      **Why contrastive beats captioning — the evidence.** The CLIP paper reports that, for the same compute, predicting a bag of caption words was about 3× more efficient (in zero-shot ImageNet accuracy) than predicting the exact caption with a transformer, and switching to the contrastive "which caption goes with which image?" objective gave a further ~4× gain. Matching is a much easier, better-conditioned task than generating.
+
+      The name says it all: **CLIP = Contrastive Language–Image Pre-training.**
+  - heading: "CLIP's architecture: two encoders, one space"
+    body: |
+      CLIP is a **dual encoder**:
+
+      - **Image encoder** $f$: a ViT (e.g. ViT-B/32, ViT-L/14) or a modified ResNet. For a ViT, the final [CLS] state is used.
+      - **Text encoder** $g$: a 12-layer transformer (about 63 M parameters) over byte-pair-encoded text, max 76 tokens; the final state at the end-of-text token is used.
+      - Each output goes through a **linear projection** into a shared $d$-dimensional space ($d = 512$ for ViT-B models, 768 for ViT-L/14).
+      - Both embeddings are **L2-normalised**: $\hat u = u/\|u\|$, $\hat t = t/\|t\|$.
+
+      **Cosine similarity is the score.** After normalisation,
+
+      $$\text{sim}(\text{image}, \text{text}) = \hat u \cdot \hat t = \cos\theta \in [-1, 1]$$
+
+      Mike Pound's suggestion is to think of it as just the **angle between two vectors** — the same idea used when a phone compares your face embedding with the stored one to unlock. A small angle means "same thing".
+
+      **Why normalise?** With raw dot products, $u \cdot t = \|u\|\|t\|\cos\theta$: a text embedding that happened to be very long would score highly against *every* image. Normalising puts every embedding on the unit sphere so only **direction** — the meaning, in the 3Blue1Brown picture — matters. (See the worked example where a vector at a worse angle wins on raw dot product simply by being 8× longer.)
+
+      **Important properties of a dual encoder:**
+
+      - The two towers never see each other's input; they only meet at the similarity. So you can **pre-compute and index** millions of image embeddings once, then search them with any new text in milliseconds.
+      - Both maps go **one way only**: input → embedding. As the Computerphile video emphasises, you cannot run the text encoder backwards to "un-embed" a sentence into an image. Generation needs a separate model.
+      - Neither encoder is "the classifier". Classification, retrieval and so on are all *downstream* uses of the shared space.
+  - heading: "The contrastive objective: the N × N similarity matrix"
+    body: |
+      **Intuition first.** Take a batch of $N$ pairs. Embed all $N$ images and all $N$ captions, and lay out every image–caption similarity in an $N \times N$ grid. Because image $i$ came with caption $i$, the correct pairings sit on the **diagonal**. Training says: *make the diagonal big and everything else small.* Computerphile draws exactly this grid with a batch of five images and five captions, and makes a subtle point: the matrix itself has no weights — it is *used* to train the two encoders.
+
+      **Mechanism.** Let $\hat u_i$ and $\hat t_j$ be the normalised embeddings and $\tau$ the temperature:
+
+      $$\ell_{ij} = \frac{\hat u_i \cdot \hat t_j}{\tau} \qquad (\text{an } N\times N \text{ matrix of logits})$$
+
+      Each **row** $i$ is an $N$-way classification problem — "which of these $N$ captions is mine?" — with the correct answer $i$:
+
+      $$\mathcal{L}_{\text{img}\to\text{txt}} = -\frac{1}{N}\sum_{i=1}^{N} \log \frac{\exp(\ell_{ii})}{\sum_{j=1}^{N}\exp(\ell_{ij})}$$
+
+      Each **column** $j$ asks the reverse question, "which of these $N$ images is mine?":
+
+      $$\mathcal{L}_{\text{txt}\to\text{img}} = -\frac{1}{N}\sum_{j=1}^{N} \log \frac{\exp(\ell_{jj})}{\sum_{i=1}^{N}\exp(\ell_{ij})}$$
+
+      $$\mathcal{L}_{\text{CLIP}} = \tfrac12\left(\mathcal{L}_{\text{img}\to\text{txt}} + \mathcal{L}_{\text{txt}\to\text{img}}\right)$$
+
+      This softmax-over-candidates form is called **InfoNCE**; CLIP's version is **symmetric** because it averages both directions. In code it is just cross-entropy with targets `arange(N)`, applied once to the logits matrix and once to its transpose:
+
+      ```python
+      u = F.normalize(image_encoder(images) @ W_img, dim=-1)   # N × d
+      t = F.normalize(text_encoder(texts) @ W_txt, dim=-1)     # N × d
+      logits = (u @ t.T) * logit_scale.exp()                    # N × N, scale = 1/τ
+      labels = torch.arange(N)
+      loss = (F.cross_entropy(logits, labels) + F.cross_entropy(logits.T, labels)) / 2
+      ```
+
+      **Why the batch provides the negatives.** There are no "negative labels" in the dataset — only matching pairs. The negatives come for free: in a batch of $N$, every image has $N-1$ wrong captions, giving $N^2 - N$ negative pairs. CLIP used $N = 32{,}768$, so each image is contrasted with 32,767 captions per step. More negatives means more chances to meet a *hard* negative (a dog photo vs a caption about a puppy), which forces finer distinctions. Without negatives, the trivial solution "map everything to the same point" would give perfect similarity on the diagonal — the off-diagonal push is what prevents this collapse.
+
+      **The learned temperature.** $\tau$ controls how peaky the softmax is. CLIP *learns* it (as a log-parameterised scale $1/\tau$), initialised at $\tau = 0.07$ (scale ≈ 14.3) and clipped so the scale never exceeds 100. Cosines live in $[-1, 1]$, so without a large scale even a perfect model could not produce confident probabilities: with scale 1, the best possible row has logits $1$ vs $-1$. Early in training a softer distribution keeps gradients flowing to many negatives; later the model sharpens.
+
+      **A sanity number.** At initialisation all similarities are about equal, so each row's softmax is about uniform and the loss is about $\ln N$ — for $N = 32{,}768$ that is $\ln 32768 \approx 10.4$. A training curve that starts near $\ln N$ is behaving.
+
+      **Follow-up to know about:** SigLIP (2023) replaces the row/column softmax with an independent sigmoid ("is this pair a match, yes/no?") for every cell, which removes the need to normalise over the whole batch and scales more easily.
+  - heading: "Zero-shot classification, prompt templates and ensembling"
     body: |
       **CLIP** trains two encoders together — an image encoder (ViT or ResNet) and a text encoder — on ~**400 million image–caption pairs** from the web. The **contrastive loss**: in a batch of N pairs, maximise cosine similarity for the N matching pairs and minimise it for the N² − N mismatched ones. The result is a **shared embedding space** for images and text.
 
@@ -203,6 +576,61 @@ notes:
       3. Compute cosine similarities, multiply by a learned scale (≈100) and apply softmax → class probabilities.
 
       Prompt wording matters ("a satellite photo of farmland"), and CLIP inherits biases and blind spots from web data — always evaluate on your own domain before relying on it.
+
+      **What's really happening.** Zero-shot classification reuses the *training* setup with the batch replaced by your label set. The $K$ class prompts become $K$ "captions", the image is one row of the similarity matrix, and the softmax picks the best-matching caption. In effect, **the text encoder writes the weights of a linear classifier**: the normalised prompt embeddings $\hat t_1, \dots, \hat t_K$ are the rows of the weight matrix, and the logits are $\hat t_k \cdot \hat u / \tau$. Computerphile's description is nicely blunt: you have to literally write the sentences out, embed them, and then look for the one closest to the image. The model has never been told "this is a cat"; it only finds that the picture and the phrase *a photo of a cat* land close together.
+
+      **Why templates help.** CLIP saw sentences, not lone words, during training. "dog" alone is out of distribution; "a photo of a dog." looks like a caption. Templates also **disambiguate**: the CLIP paper notes that *boxer* (a dog breed in a pets dataset) and *crane* (a bird or a machine) are ambiguous as bare words. Adding context — "a photo of a boxer, a type of pet." — tells the text encoder which meaning to use. The paper reports that the single template "A photo of a {label}." improved ImageNet accuracy by about 1.3 points over the bare label.
+
+      **Prompt ensembling.** Use many templates per class ("a photo of a {}.", "a blurry photo of a {}.", "a drawing of a {}.", "a close-up photo of a {}." …), embed each, **average the normalised embeddings, then renormalise**. The mean direction is a more robust "class vector" than any single phrasing, and because it is computed once per class and cached, inference costs the same as one prompt. CLIP used 80 templates for ImageNet; the paper reports prompt engineering plus ensembling improving zero-shot accuracy by almost 5 points on average across datasets.
+
+      **Headline result.** CLIP's best model reached **76.2% zero-shot top-1 on ImageNet**, matching the original supervised ResNet-50 without using any of ImageNet's 1.28 M training labels, and it was far more robust than ImageNet-trained models on shifted versions such as sketches and renditions.
+  - heading: "Zero-shot vs linear probe vs fine-tuning"
+    body: |
+      Three ways to use CLIP for your own classification task, in order of how much labelled data they need:
+
+      | Approach | Labels needed | What is trained | When it wins |
+      |---|---|---|---|
+      | **Zero-shot** | none | nothing — class vectors come from text prompts | no labels, open label sets, quick baselines |
+      | **Linear probe** | a few to thousands per class | a logistic-regression layer on frozen image embeddings | you have labels; your classes are "visual" rather than easy to name |
+      | **Fine-tuning** | thousands+ | some or all encoder weights (gently — module 4) | large labelled data or a big domain shift |
+
+      **A counter-intuitive result.** The CLIP paper found zero-shot CLIP roughly matched a **4-shot** linear probe on the same features (averaged over many datasets), and that 1- or 2-shot probes could be *worse* than zero-shot. Why? With one example per class, the probe can't tell which features of that one photo matter; the text prompt states the concept directly. With more labels, the probe wins because it fits the decision boundary to *your* data distribution.
+
+      **Practical recipe.** Start with zero-shot (with prompt ensembling) as a baseline → if you have labels, train a linear probe (cheap, few parameters: for 512-d embeddings and 40 classes, $512 \times 40 + 40 = 20{,}520$) → fine-tune only if the probe plateaus. You can also initialise the probe's weights from the zero-shot text embeddings, so the few-label regime starts from "knows the concept" instead of from scratch.
+
+      **Exam angle:** "zero-shot" means no task-specific *training examples*, not "no assumptions": you still choose the label names and prompt wording, and that choice changes accuracy.
+  - heading: "What CLIP enables"
+    body: |
+      Once images and text share one space, many "downstream tasks" (Computerphile's term) become a similarity lookup:
+
+      - **Text → image retrieval and image search.** Embed a whole photo library once; for any query sentence, embed it and return the nearest images by cosine. Image → image search (find visually similar photos) works the same way.
+      - **Guiding text-to-image generation.** A diffusion model is trained to denoise images *given* a text embedding as extra input, so it learns to tie words to pictures. Mike Pound's point in the video is that the text conditioning must be present during the generator's training, otherwise nothing ties the two concepts together. Stable Diffusion v1 conditions on the frozen CLIP ViT-L/14 text encoder through cross-attention; DALL·E 2 ("unCLIP") generates images from CLIP image embeddings; earlier "CLIP-guided" methods simply nudged an image to increase its CLIP similarity with a prompt.
+      - **Open-vocabulary detection and segmentation.** Replace a detector's fixed class head with "dot product between each region's embedding and text embeddings of whatever you ask for" — e.g. OWL-ViT, ViLD, GLIP; CLIPSeg does the same per pixel. You can then detect "a red fire hydrant" without ever training on that class.
+      - **Vision-language models.** Assistants that answer questions about images (LLaVA and similar) often use a CLIP-style ViT as their eyes, projecting its patch tokens into a language model's embedding space.
+      - **Data curation and evaluation.** Web datasets such as LAION were filtered by keeping only pairs whose CLIP similarity was high enough; CLIPScore rates how well a caption matches an image.
+  - heading: "Failure modes and limits"
+    body: |
+      CLIP's knowledge is only as good as web captions, and its objective only rewards "does this caption roughly go with this picture?". That explains most of its weaknesses:
+
+      - **Counting.** Captions rarely state exact counts, so "three dogs" vs "four dogs" is poorly separated. The CLIP paper lists counting among the systematic tasks where it is weak.
+      - **Spatial relations and composition.** CLIP often behaves like a **bag of words**: "a mug on a laptop" and "a laptop on a mug" get similar scores because the same objects are present. Benchmarks such as Winoground and ARO were built to expose this. (The contrastive objective can usually be satisfied without parsing word order, because two captions in a random batch rarely differ *only* in word order.)
+      - **Typographic attacks.** CLIP learned to read. OpenAI's "Multimodal Neurons" study (2021) showed that sticking a paper label reading "iPod" on an apple makes CLIP call it an iPod: the written word overrides the visual evidence.
+      - **Fine-grained and specialised domains.** Car models, aircraft variants, flower species, satellite imagery, medical scans and even MNIST digits (the paper reports only about 88% zero-shot) are weak spots: they are under-represented or described vaguely in web captions.
+      - **Polysemy and prompt sensitivity.** Ambiguous class names (crane, boxer) and small wording changes shift accuracy.
+      - **Dataset bias and harms.** Uncurated web data carries social stereotypes. The CLIP paper's own probes found that adding categories like "criminal" or non-human labels led to images of people being misclassified into them at rates that varied by race and age group, and that results depend strongly on which classes the user chooses. Zero-shot makes it *easy* to define harmful classes — a reason to audit before deploying (module 9).
+      - **One-way, no generation.** CLIP scores; it doesn't caption or draw.
+
+      **Exam angle:** for any proposed CLIP application, name the failure mode most likely to bite (e.g. counting for inventory, typographic attacks for content moderation, domain shift for X-rays) and how you would test for it on held-out, task-specific data.
+  - heading: Watch next
+    body: |
+      The explanations and analogies credited in this module come from these videos. Watching them alongside the notes is the fastest way to make the geometry stick.
+
+      - [How AI 'Understands' Images (CLIP) — Computerphile, with Dr Mike Pound](https://www.youtube.com/watch?v=KcSXcpluDe4): why classifiers and captioners don't scale, the five-by-five similarity grid, cosine as an angle, zero-shot by writing out sentences, and how CLIP text embeddings guide diffusion.
+      - [Transformers, the tech behind LLMs — 3Blue1Brown, Deep Learning Chapter 5](https://www.youtube.com/watch?v=wjZofJX0v4M): embeddings as directions, dot products as alignment, softmax and temperature.
+      - [Attention in transformers, step-by-step — 3Blue1Brown, Chapter 6](https://www.youtube.com/watch?v=eMlx5fFNoYc): queries, keys and values as questions and answers; the attention pattern; masking; multiple heads. (Written version: [3blue1brown.com/lessons/attention](https://www.3blue1brown.com/lessons/attention).)
+      - [How might LLMs store facts — 3Blue1Brown, Chapter 7](https://www.youtube.com/watch?v=9-Jl0dxWQs8): the MLP block read row-by-row and column-by-column, and superposition in high dimensions.
+
+      While watching, translate every word example into an image one: tokens become patches, "adjectives updating nouns" becomes "context patches updating an object patch", and the language model's next-word head becomes the [CLS] classifier, or CLIP's projection into the shared space.
 examples:
   - title: Counting tokens and attention cost
     problem: A ViT uses 384 × 384 images with 16 × 16 patches and a [CLS] token. How many tokens, and how many
@@ -219,9 +647,87 @@ examples:
       - "Logits = 30, 25, 10. Subtract the max: 0, −5, −20."
       - "exp: 1, 0.00674, 2.06×10⁻⁹. Sum ≈ 1.00674."
       - P(dog) ≈ **99.3%**, P(cat) ≈ **0.67%**, P(car) ≈ 0.
-      - "With scale 10 instead: logits 3, 2.5, 1 → P(dog) ≈ 55%, P(cat) ≈ 33%, P(car) ≈ 12%."
-    answer: About 99.3% dog at scale 100.
+      - "With scale 10 instead: logits 3, 2.5, 1 → subtract the max: 0, −0.5, −2 → exp 1, 0.607, 0.135 (sum 1.742) →
+        P(dog) ≈ **57%**, P(cat) ≈ **35%**, P(car) ≈ **8%**."
+    answer: About 99.3% dog at scale 100 (about 57% at scale 10).
     takeaway: The temperature (logit scale) controls how confident the probabilities are.
+  - title: Cosine similarity and why CLIP normalises
+    problem: |
+      An image embedding is $u = (3, 4)$. Four candidate text embeddings are $t_1 = (4, 3)$, $t_2 = (0, 5)$, $t_3 = (-4, 3)$ and $t_4 = (40, 0)$. Rank them by **raw dot product** and by **cosine similarity**. Which ranking should CLIP use?
+    steps:
+      - "Raw dot products: $u\\cdot t_1 = 12 + 12 = 24$, $u\\cdot t_2 = 0 + 20 = 20$, $u\\cdot t_3 = -12 + 12 = 0$, $u\\cdot t_4 = 120 + 0 = 120$. Ranking: $t_4 > t_1 > t_2 > t_3$."
+      - "Lengths: $\\|u\\| = 5$, $\\|t_1\\| = \\|t_2\\| = \\|t_3\\| = 5$, $\\|t_4\\| = 40$."
+      - "Normalise: $\\hat u = (0.6, 0.8)$, $\\hat t_1 = (0.8, 0.6)$, $\\hat t_2 = (0, 1)$, $\\hat t_3 = (-0.8, 0.6)$, $\\hat t_4 = (1, 0)$."
+      - "Cosines: $\\hat u \\cdot \\hat t_1 = 0.48 + 0.48 = 0.96$; $\\hat u \\cdot \\hat t_2 = 0.8$; $\\hat u \\cdot \\hat t_3 = -0.48 + 0.48 = 0$ (perpendicular, unrelated); $\\hat u \\cdot \\hat t_4 = 0.6$. Ranking: $t_1 > t_2 > t_4 > t_3$."
+      - "$t_4$ topped the raw ranking only because it is 8× longer; its *direction* is worse than $t_1$ or $t_2$. CLIP L2-normalises both embeddings so the score is purely the angle."
+    answer: Cosine ranking t₁ (0.96) > t₂ (0.80) > t₄ (0.60) > t₃ (0.00); the raw dot product wrongly puts t₄ first.
+    takeaway: Normalise first, then dot — that is cosine similarity, and it measures direction (meaning), not magnitude.
+  - title: A 3 × 3 CLIP batch and its symmetric loss
+    problem: |
+      A batch has three pairs: image 1 = dog on a beach, image 2 = cat on a sofa, image 3 = puppy on grass, each with its own caption. After L2 normalisation the cosine similarities (rows = images, columns = captions) are
+
+      $$S = \begin{pmatrix} 0.8 & 0.2 & 0.1 \\ 0.3 & 0.7 & 0.2 \\ 0.1 & 0.4 & 0.6 \end{pmatrix}$$
+
+      With temperature $\tau = 0.1$ (logit scale 10), compute the image→text loss, the text→image loss and the symmetric CLIP loss. Then repeat with $\tau = 1$.
+    steps:
+      - "Logits $= S/\\tau = 10S$: rows $(8, 2, 1)$, $(3, 7, 2)$, $(1, 4, 6)$. The positives are on the diagonal: 8, 7, 6."
+      - "**Row 1** (image 1 picks a caption): subtract the max → $(0, -6, -7)$ → $e^{\\cdot} = 1, 0.00248, 0.00091$, sum $1.00339$ → $p_{11} = 0.9966$, loss $-\\ln 0.9966 = 0.0034$."
+      - "**Row 2:** $(3, 7, 2) \\to (-4, 0, -5)$ → $0.0183, 1, 0.0067$, sum $1.0251$ → $p_{22} = 0.9756$, loss $0.0247$."
+      - "**Row 3:** $(1, 4, 6) \\to (-5, -2, 0)$ → $0.0067, 0.1353, 1$, sum $1.1421$ → $p_{33} = 0.8756$, loss $0.1328$. Image 3 (a puppy) is fairly similar to caption 2, which costs it."
+      - "Image→text loss = mean of rows = $(0.0034 + 0.0247 + 0.1328)/3 = 0.0537$."
+      - "**Columns** (each caption picks an image). Column 1: $(8, 3, 1)$ → loss $0.0076$. Column 2: $(2, 7, 4) \\to (-5, 0, -3)$ → $0.0067, 1, 0.0498$, sum $1.0565$ → $p = 0.9465$, loss $0.0550$. Column 3: $(1, 2, 6)$ → loss $0.0247$. Text→image loss $= 0.0291$."
+      - "Symmetric loss $= (0.0537 + 0.0291)/2 \\approx 0.041$. The two directions differ because the matrix isn't symmetric."
+      - "**With $\\tau = 1$** the logits are just $S$, e.g. row 1 $(0.8, 0.2, 0.1)$ → $p_{11} = 0.489$ — the model barely prefers the right caption even though the cosines are identical. The symmetric loss rises to about **0.81**."
+    answer: Image→text ≈ 0.054, text→image ≈ 0.029, symmetric CLIP loss ≈ 0.041 at τ = 0.1 (≈ 0.81 at τ = 1).
+    takeaway: Each row and each column is an N-way softmax classification whose answer is the diagonal. The temperature
+      turns small cosine gaps into confident probabilities, which is why CLIP learns it.
+  - title: Where the negatives come from
+    problem: CLIP trains with batches of N = 32,768 pairs. (a) How many entries does the similarity matrix have, and
+      how many are negatives? (b) How many negatives does each image see per step? (c) What should the loss be at
+      initialisation, when all similarities are roughly equal?
+    steps:
+      - "(a) $N^2 = 32{,}768^2 = 1{,}073{,}741{,}824$ entries — over a billion. Positives: $N = 32{,}768$. Negatives: $N^2 - N = 1{,}073{,}709{,}056$."
+      - "(b) Each image is compared with $N - 1 = 32{,}767$ wrong captions (and each caption with 32,767 wrong images)."
+      - "(c) Equal logits → uniform softmax → $p_{ii} = 1/N$ → loss $= -\\ln(1/N) = \\ln 32{,}768 \\approx 10.40$ for each direction, so the symmetric loss is also ≈ 10.40."
+      - None of these negatives were labelled by anyone — they are simply "the other pairs in the batch".
+    answer: ≈1.07 billion entries with 1,073,709,056 negatives; 32,767 negatives per image; initial loss ≈ ln N ≈ 10.4.
+    takeaway: The batch is the negative set. Bigger batches give more (and harder) negatives, and ln N is the loss of a
+      model that knows nothing.
+  - title: Attention by hand for one query
+    problem: |
+      A head has $d_k = 2$. One patch's query is $q = (1, 0)$. The three tokens it can attend to have keys $k_1 = (2, 0)$, $k_2 = (0, 2)$, $k_3 = (1, 1)$ and values $v_1 = (1, 0)$, $v_2 = (0, 1)$, $v_3 = (1, 1)$. Compute the attention weights and the output.
+    steps:
+      - "Dot products (how well each key answers the question): $q\\cdot k_1 = 2$, $q\\cdot k_2 = 0$, $q\\cdot k_3 = 1$."
+      - "Scale by $1/\\sqrt{d_k} = 1/\\sqrt2$: scores $1.414, 0, 0.707$."
+      - "Softmax: $e^{1.414} = 4.113$, $e^{0} = 1$, $e^{0.707} = 2.028$; sum $7.141$ → weights $0.576, 0.140, 0.284$ (they sum to 1)."
+      - "Output $= 0.576\\,v_1 + 0.140\\,v_2 + 0.284\\,v_3 = (0.576 + 0.284,\\; 0.140 + 0.284) = (0.860, 0.424)$."
+      - "Interpretation: $k_1$ points the same way as the query, so token 1's value dominates; $k_2$ is perpendicular (dot product 0) and gets the least weight — but not zero, because softmax is soft."
+    answer: Weights ≈ (0.576, 0.140, 0.284); output ≈ (0.860, 0.424).
+    takeaway: "Attention = alignment (dot product) → scale → softmax → weighted average of values. The output is then
+      added to the token through the residual connection."
+  - title: Where ViT-B/16's 86 million parameters live
+    problem: |
+      In the spirit of 3Blue1Brown's GPT-3 parameter tally, count the parameters of ViT-B/16 (224 px input, $D = 768$, 12 blocks, MLP size 3072, 12 heads). Ignore the classification head.
+    steps:
+      - "**Patch embedding:** $16 \\cdot 16 \\cdot 3 \\cdot 768 + 768 = 589{,}824 + 768 = 590{,}592$."
+      - "**[CLS] token:** 768. **Position embeddings:** $197 \\times 768 = 151{,}296$."
+      - "**Attention per block:** $W_Q, W_K, W_V, W_O$ are each $768 \\times 768$ plus a bias: $4(768^2 + 768) = 4 \\times 590{,}592 = 2{,}362{,}368$. (Splitting into 12 heads of 64 dims doesn't change the count.)"
+      - "**MLP per block:** $768 \\cdot 3072 + 3072 + 3072 \\cdot 768 + 768 = 4{,}718{,}592 + 3{,}840 = 4{,}722{,}432$."
+      - "**LayerNorms per block:** 2 × (768 scale + 768 shift) = 3,072. Block total $= 7{,}087{,}872$; the MLP's share is $4{,}722{,}432 / 7{,}087{,}872 \\approx 67\\%$."
+      - "**12 blocks:** $12 \\times 7{,}087{,}872 = 85{,}054{,}464$. Add the embeddings and the final LayerNorm (1,536): total ≈ **85.8 M**, the quoted ≈ 86 M."
+    answer: ≈ 85.8 M parameters; about two-thirds of every block is the MLP.
+    takeaway: Parameter counts don't depend on the number of tokens (shared weights), but compute does. The MLPs, not
+      attention, hold most of the weights.
+  - title: Prompt ensembling as averaging directions
+    problem: |
+      For the class *dog*, two templates give normalised text embeddings $a = (0.96, 0.28)$ ("a photo of a dog.") and $b = (0.6, 0.8)$ ("a drawing of a dog."). Build the ensembled class vector.
+    steps:
+      - "Average: $(a + b)/2 = (0.78, 0.54)$."
+      - "The average is shorter than 1: $\\sqrt{0.78^2 + 0.54^2} = \\sqrt{0.9} \\approx 0.949$, so renormalise: $(0.78, 0.54)/0.949 \\approx (0.822, 0.569)$."
+      - "This unit vector points between the two phrasings: a single *dog direction* that no longer depends on whether the image is a photo or a drawing."
+      - Compute it once per class, store it, and zero-shot inference costs exactly the same as with one prompt.
+    answer: Ensembled class vector ≈ (0.822, 0.569).
+    takeaway: Ensembling averages away the quirks of individual phrasings; always renormalise after averaging.
 questions:
   - question: Explain how a ViT turns an image into tokens, including the [CLS] token and position embeddings.
     kind: short
@@ -262,6 +768,122 @@ questions:
       CLIP trains image and text encoders contrastively on 400 M image–caption pairs. For zero-shot
       classification, embed a text prompt per class ('a photo of a dog'), embed the image, compute cosine
       similarities, scale and softmax them, and pick the highest — no task-specific training.
+  - question: Explain the roles of queries, keys and values in self-attention, and why the scores are divided by
+      √d_k. Use an image example.
+    kind: short
+    marks: 6
+    keywords:
+      - query
+      - key
+      - value
+      - linear projection
+      - dot product
+      - alignment
+      - softmax
+      - weighted sum
+      - residual
+      - variance
+      - saturate
+      - gradients
+    idealAnswer: >-
+      Each token is projected three ways. Its query $q = W_Q x$ encodes what it is looking for, each token's key
+      $k = W_K x$ encodes what it offers, and the dot product $q \cdot k$ measures how well a key answers the query
+      (alignment). The scores are scaled, softmaxed per query into weights that sum to 1, and used to average the
+      values $v = W_V x$, which encode what each token passes on. The result is added to the token through the
+      residual connection. Example: an ear patch's query looks for facial parts, eye and snout patches have aligned
+      keys, and their values move the ear token towards 'dog face'. If components have unit variance, $q \cdot k$
+      has variance $d_k$, so large $d_k$ gives huge scores that saturate softmax into a near one-hot distribution
+      with vanishing gradients. Dividing by $\sqrt{d_k}$ restores unit variance.
+  - question: Describe CLIP's training objective in detail. Your answer should cover the dual encoders, L2
+      normalisation and cosine similarity, the N×N similarity matrix, the symmetric contrastive loss, the learned
+      temperature, and why large batches matter.
+    kind: long
+    marks: 12
+    keywords:
+      - image encoder
+      - text encoder
+      - projection
+      - shared embedding space
+      - l2 normalise
+      - cosine similarity
+      - n×n matrix
+      - diagonal
+      - positive pairs
+      - negatives
+      - cross-entropy
+      - symmetric
+      - infonce
+      - temperature
+      - logit scale
+      - batch size
+      - collapse
+    idealAnswer: >-
+      CLIP trains an image encoder (ViT or ResNet) and a text encoder (transformer) from scratch on 400 M web
+      image–caption pairs. Each output is linearly projected into a shared space and L2-normalised, so the dot
+      product of an image and a text embedding is their cosine similarity, which depends only on direction. For a
+      batch of N pairs it computes the N×N matrix of similarities divided by a temperature $\tau$, i.e.
+      $\ell_{ij} = \hat u_i \cdot \hat t_j / \tau$. Because image i came with caption i, the positives lie on the
+      diagonal and the $N^2 - N$ off-diagonal entries are negatives. The loss treats each row as an N-way
+      classification (which caption is mine?) and each column as the reverse (which image is mine?), applying
+      cross-entropy with target i and averaging the two directions: a symmetric InfoNCE loss. The temperature is a
+      learned parameter (initialised at 0.07, logit scale capped at 100) that turns cosine gaps in [−1, 1] into
+      sharp probabilities. Negatives come for free from the other pairs in the batch, so CLIP used huge batches
+      (32,768): more and harder negatives give a better-shaped space, and the push-apart term prevents the trivial
+      collapse where everything maps to one point. A random model's loss is about ln N.
+  - question: Compare CLIP zero-shot classification with a linear probe on CLIP embeddings. When would you use each,
+      and why can a 1-shot linear probe do worse than zero-shot?
+    kind: short
+    marks: 6
+    keywords:
+      - prompt
+      - text embeddings
+      - no labels
+      - class vectors
+      - logistic regression
+      - frozen
+      - labels
+      - decision boundary
+      - few-shot
+      - concept
+      - distribution
+    idealAnswer: Zero-shot embeds a prompt per class ('a photo of a {label}', ideally ensembled over templates) and
+      uses those text embeddings as the classifier weights, so no labelled images are needed and the label set can
+      change freely. A linear probe freezes the image encoder and trains a logistic-regression layer on its
+      embeddings using labelled examples, fitting the decision boundary to your actual data, so it wins once you have
+      a reasonable number of labels or classes that are hard to name. With one or two examples the probe can't tell
+      which features of those photos define the class and overfits incidental details, whereas the prompt states the
+      concept directly. The CLIP paper found zero-shot roughly matches a 4-shot probe. Start zero-shot, move to a
+      probe when labels exist, and fine-tune only if that plateaus.
+  - question: A retailer proposes using CLIP zero-shot to (a) count items on supermarket shelves and (b) flag
+      unsafe products from photos uploaded by sellers. Identify the CLIP failure modes most relevant to each
+      proposal, and explain how you would test for them before deployment.
+    kind: long
+    marks: 10
+    keywords:
+      - counting
+      - spatial
+      - bag of words
+      - typographic attack
+      - text in image
+      - adversarial
+      - domain shift
+      - fine-grained
+      - bias
+      - prompt sensitivity
+      - held-out
+      - per-class
+      - detector
+      - evaluation
+    idealAnswer: "(a) Counting is a documented weakness: web captions rarely state exact numbers and CLIP behaves
+      like a bag of words, so 'five cans' and 'six cans' get similar scores. Shelf photos are also a domain shift
+      (dense, repetitive, fine-grained packaging). Test on a labelled set of shelf images with known counts and report
+      error by count. A better design is an object detector (possibly open-vocabulary, like OWL-ViT) followed by
+      counting the boxes. (b) Sellers are adversarial, and typographic attacks mean that text printed on a label or
+      overlaid on the photo ('safe', 'organic') can override visual evidence. Prompt sensitivity, rare product types
+      and dataset bias also matter. Test with red-team images containing misleading text, measure precision and
+      recall per category on held-out real uploads, compare prompt variants and ensembles, and keep a human in the
+      loop for flagged and borderline cases. In both cases, never trust zero-shot accuracy from benchmarks; evaluate
+      on task-specific data."
   - question: A conservation group wants to identify 40 animal species from camera-trap photos but has only 30
       labelled images per species. Compare (a) a CNN trained from scratch, (b) fine-tuning a pretrained ViT,
       and (c) CLIP zero-shot or linear probing, and recommend an approach with an evaluation plan.
@@ -397,3 +1019,92 @@ coding:
           _, hi = zero_shot(image_emb, text_emb, LABELS, 100)
           _, lo = zero_shot(image_emb, text_emb, LABELS, 5)
           assert hi.max() > lo.max()
+  - id: clip-loss
+    title: CLIP's symmetric contrastive loss
+    language: python
+    level: exam
+    setup: |
+      import numpy as np
+      S_EXAMPLE = np.array([[0.8, 0.2, 0.1], [0.3, 0.7, 0.2], [0.1, 0.4, 0.6]])
+      rng = np.random.default_rng(7)
+      IMG = rng.normal(size=(6, 32))
+      TXT = IMG + rng.normal(size=(6, 32)) * 0.3      # caption i is a noisy copy of image i
+    prompt: |
+      Implement CLIP's training loss for one batch.
+
+      1. `normalize(x)` → each row of `x` divided by its L2 norm.
+      2. `clip_loss(img, txt, tau=0.07)` → `(loss, logits)` where `img` and `txt` are `N × d` raw embeddings
+         (row *i* of each is a matching pair). Normalise both, build the `N × N` logits
+         $\ell_{ij} = \hat u_i \cdot \hat t_j / \tau$, then return the **symmetric** cross-entropy: the mean of the
+         image→text loss (softmax over each **row**, target = diagonal) and the text→image loss (softmax over each
+         **column**, target = diagonal). Use natural logs and a numerically stable log-softmax.
+
+      Check yourself against the worked example: with cosine matrix `S_EXAMPLE` and τ = 0.1 the symmetric loss is
+      ≈ 0.0414.
+    starter: |
+      import numpy as np
+
+      def normalize(x):
+          ...
+
+      def clip_loss(img, txt, tau=0.07):
+          logits = img @ txt.T / tau              # ✗ not normalised, and only one direction
+          p = np.exp(logits) / np.exp(logits).sum(1, keepdims=True)
+          return -np.log(np.diag(p)).mean(), logits
+    solution: |
+      import numpy as np
+
+      def normalize(x):
+          return x / np.linalg.norm(x, axis=1, keepdims=True)
+
+      def _log_softmax(z, axis):
+          z = z - z.max(axis=axis, keepdims=True)
+          return z - np.log(np.exp(z).sum(axis=axis, keepdims=True))
+
+      def clip_loss(img, txt, tau=0.07):
+          logits = normalize(img) @ normalize(txt).T / tau
+          i2t = -np.diag(_log_softmax(logits, axis=1)).mean()
+          t2i = -np.diag(_log_softmax(logits, axis=0)).mean()
+          return (i2t + t2i) / 2, logits
+    tests:
+      - name: Matches the worked 3 × 3 example
+        code: |
+          # Build unit vectors whose cosine matrix is S_EXAMPLE: txt = identity, img rows = S rows, made unit-length
+          # is not possible exactly, so test the loss head directly through logits with pre-normalised inputs.
+          import numpy as np
+          d = 3
+          L = S_EXAMPLE / 0.1
+          def ls(z, a):
+              z = z - z.max(axis=a, keepdims=True); return z - np.log(np.exp(z).sum(axis=a, keepdims=True))
+          ref = (-np.diag(ls(L, 1)).mean() - np.diag(ls(L, 0)).mean()) / 2
+          assert abs(ref - 0.041388) < 1e-4
+          loss, logits = clip_loss(IMG, TXT, 0.1)
+          u = IMG / np.linalg.norm(IMG, axis=1, keepdims=True); t = TXT / np.linalg.norm(TXT, axis=1, keepdims=True)
+          assert np.allclose(logits, u @ t.T / 0.1), "logits must be cosine similarities divided by tau"
+      - name: Embedding length doesn't matter
+        code: |
+          a, _ = clip_loss(IMG, TXT)
+          b, _ = clip_loss(IMG * 7.0, TXT * np.arange(1, 7)[:, None])
+          assert abs(a - b) < 1e-9, "L2-normalise both sets of embeddings"
+      - name: Loss is symmetric (both directions count)
+        code: |
+          a, _ = clip_loss(IMG, TXT)
+          b, _ = clip_loss(TXT, IMG)
+          assert abs(a - b) < 1e-9, "average the row-wise and column-wise cross-entropies"
+          L = normalize(IMG) @ normalize(TXT).T / 0.07
+          z = L - L.max(1, keepdims=True); row_only = -np.diag(z - np.log(np.exp(z).sum(1, keepdims=True))).mean()
+          z = L - L.max(0, keepdims=True); col_only = -np.diag(z - np.log(np.exp(z).sum(0, keepdims=True))).mean()
+          assert abs(a - (row_only + col_only) / 2) < 1e-9
+      - name: A clueless model scores ln N
+        code: |
+          same = np.ones((6, 32))
+          loss, _ = clip_loss(same, same)
+          assert abs(loss - np.log(6)) < 1e-9, "equal similarities should give loss ln N"
+      - name: Numerically stable at tiny temperatures
+        code: |
+          loss, _ = clip_loss(IMG, TXT, tau=1e-4)
+          assert np.isfinite(loss)
+    hints:
+      - "`np.linalg.norm(x, axis=1, keepdims=True)` gives one length per row."
+      - "Row-wise softmax: target is the diagonal. Column-wise: apply the same to `logits.T`, or use `axis=0`."
+      - "Stable log-softmax: subtract the max, then `z - log(sum(exp(z)))`."
