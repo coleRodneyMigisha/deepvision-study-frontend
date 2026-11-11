@@ -94,9 +94,7 @@ quiz:
   - question: What happens if you forget model.eval() before testing a network with BatchNorm and Dropout?
     options:
       - Nothing
-      - Batch statistics and dropout are used
-      - giving noisy
-      - wrong outputs
+      - "Batch statistics and dropout are used, giving noisy, wrong outputs"
       - It runs faster
       - It trains on the test set
     answer: 1

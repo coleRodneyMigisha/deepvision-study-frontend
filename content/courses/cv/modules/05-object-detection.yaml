@@ -104,8 +104,7 @@ quiz:
   - question: Lowering the NMS IoU threshold from 0.7 to 0.3 tends to…
     options:
       - Keep more duplicate boxes
-      - Suppress more boxes
-      - including nearby distinct objects
+      - "Suppress more boxes, including nearby distinct objects"
       - Change confidence scores
       - Have no effect
     answer: 1
@@ -113,8 +112,7 @@ quiz:
   - question: mAP@[.5:.95] differs from mAP@0.5 by…
     options:
       - Using more classes
-      - Averaging over stricter IoU thresholds
-      - rewarding precise boxes
+      - "Averaging over stricter IoU thresholds, rewarding precise boxes"
       - Ignoring confidence
       - Counting only large objects
     answer: 1

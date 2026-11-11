@@ -122,10 +122,7 @@ quiz:
   - question: Why can DuckDB beat Spark on 10,000 rows?
     options:
       - DuckDB is distributed
-      - Spark's fixed overheads (JVM
-      - planning
-      - scheduling
-      - shuffles) dominate small jobs
+      - "Spark's fixed overheads (JVM, planning, scheduling, shuffles) dominate small jobs"
       - Spark can't read Parquet
       - DuckDB caches everything
     answer: 1

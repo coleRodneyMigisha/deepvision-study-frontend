@@ -118,8 +118,7 @@ quiz:
   - question: Why check seen_ids before the watermark?
     options:
       - It's faster
-      - Duplicates must never be counted
-      - whether late or not
+      - "Duplicates must never be counted, whether late or not"
       - The watermark needs ids
       - It doesn't matter
     answer: 1

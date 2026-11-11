@@ -115,9 +115,7 @@ quiz:
   - question: What does a model card document?
     options:
       - Only the architecture
-      - Intended use
-      - data
-      - per-group performance and limitations
+      - "Intended use, data, per-group performance and limitations"
       - The training code
       - The API key
     answer: 1

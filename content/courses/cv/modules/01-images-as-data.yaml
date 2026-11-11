@@ -96,8 +96,7 @@ quiz:
   - question: Why convert to HSV for colour thresholding?
     options:
       - It's smaller
-      - Hue separates colour from brightness
-      - making it robust to lighting
+      - "Hue separates colour from brightness, making it robust to lighting"
       - It's what CNNs require
       - It removes noise
     answer: 1

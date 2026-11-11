@@ -79,8 +79,7 @@ quiz:
   - question: Which layers of a pretrained CNN transfer best to new tasks?
     options:
       - The final classification layer
-      - Early layers (edges
-      - textures)
+      - "Early layers (edges, textures)"
       - Only BatchNorm layers
       - None
     answer: 1

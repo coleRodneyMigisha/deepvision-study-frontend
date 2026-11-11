@@ -84,8 +84,7 @@ quiz:
   - question: Why is joblib preferred over pickle for scikit-learn models?
     options:
       - It's more secure
-      - It handles large NumPy arrays efficiently (compression
-      - memory-mapping)
+      - "It handles large NumPy arrays efficiently (compression, memory-mapping)"
       - It works with Java
       - It doesn't need Python
     answer: 1
@@ -109,8 +108,7 @@ quiz:
   - question: A model saved with scikit-learn 1.3 is loaded in 1.5. What can happen?
     options:
       - Nothing
-      - Warnings
-      - errors or changed behaviour
+      - "Warnings, errors or changed behaviour"
       - It automatically upgrades
       - It becomes faster
     answer: 1
@@ -118,11 +116,7 @@ quiz:
   - question: What belongs in model metadata?
     options:
       - Patient names
-      - Version
-      - training date
-      - library versions
-      - feature names
-      - metrics
+      - "Version, training date, library versions, feature names, metrics"
       - The API key
       - Nothing
     answer: 1

@@ -101,8 +101,7 @@ quiz:
   - question: Why can python:3.11-alpine make ML image builds slower?
     options:
       - It's bigger
-      - It uses musl
-      - so many scientific wheels compile from source
+      - "It uses musl, so many scientific wheels compile from source"
       - It has no pip
       - It can't run Python 3.11
     answer: 1
@@ -118,8 +117,7 @@ quiz:
   - question: What belongs in .dockerignore?
     options:
       - requirements.txt
-      - .git
-      - .env and local datasets
+      - ".git, .env and local datasets"
       - The Dockerfile
       - The app code
     answer: 1

@@ -92,8 +92,7 @@ quiz:
   - question: Why is the 0.5 threshold a poor default for the stroke model?
     options:
       - It's too strict on false positives
-      - With ~5% prevalence most stroke patients score below 0.5
-      - so recall is low
+      - "With ~5% prevalence most stroke patients score below 0.5, so recall is low"
       - Sklearn doesn't allow it
       - It's too slow
     answer: 1

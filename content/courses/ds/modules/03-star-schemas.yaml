@@ -100,9 +100,7 @@ quiz:
   - question: Why use a surrogate integer key instead of the market name?
     options:
       - Names are illegal in SQL
-      - Faster joins
-      - stable when names change
-      - and allows an Unknown member
+      - "Faster joins, stable when names change, and allows an Unknown member"
       - DuckDB requires it
       - It compresses the CSV
     answer: 1

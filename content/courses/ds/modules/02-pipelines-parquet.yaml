@@ -103,8 +103,7 @@ quiz:
   - question: Why is os.replace(tmp, target) used when writing output files?
     options:
       - It compresses the file
-      - It is an atomic rename
-      - so readers never see a half-written file
+      - "It is an atomic rename, so readers never see a half-written file"
       - It validates the schema
       - It deletes the raw file
     answer: 1
@@ -128,8 +127,7 @@ quiz:
   - question: What's the main benefit of splitting a pipeline into stages?
     options:
       - Fewer files
-      - Each stage can be tested
-      - rerun and retried on its own
+      - "Each stage can be tested, rerun and retried on its own"
       - It removes the need for logging
       - It makes Python faster
     answer: 1
