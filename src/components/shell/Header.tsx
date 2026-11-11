@@ -9,6 +9,8 @@ import type { CourseSummary } from "@/lib/content/schema";
 import { streaks, useActivity } from "@/lib/progress";
 import { persistentStore, useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { useBuddyName } from "@/lib/session";
+import { AccountMenu } from "./AccountMenu";
 import { StatusPill } from "./StatusPill";
 
 const themeStore = persistentStore<"light" | "dark" | null>("studyroom:v3:theme", null);
@@ -27,6 +29,7 @@ export function Header({ courses }: { courses: CourseSummary[] }) {
   const course = courses.find((c) => c.id === segments[0]);
   const sub = segments.slice(1).join("/");
   const buddy = useBuddyUi();
+  const buddyName = useBuddyName();
 
   return (
     <header className="no-print sticky top-0 z-30 border-b border-line bg-paper/85 backdrop-blur-md">
@@ -64,8 +67,9 @@ export function Header({ courses }: { courses: CourseSummary[] }) {
             )}
           >
             <span className="grid size-6 place-items-center rounded-full bg-[#FFD84D] text-[13px]">✦</span>
-            <span className="hidden sm:inline">Buddy</span>
+            <span className="hidden max-w-28 truncate sm:inline">{buddyName}</span>
           </button>
+          <AccountMenu />
         </div>
       </div>
       {course && (

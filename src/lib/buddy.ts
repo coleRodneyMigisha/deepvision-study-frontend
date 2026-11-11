@@ -5,7 +5,7 @@
  */
 import { useEffect } from "react";
 import type { Mood } from "@/components/buddy/BuddyAvatar";
-import { ApiError, ping, statusStore, streamChat } from "./api";
+import { ApiError, del, get, ping, statusStore, streamChat } from "./api";
 import { logActivity } from "./progress";
 import { memoryStore, persistentStore, useStore } from "./store";
 
@@ -78,7 +78,25 @@ export const toggleBuddy = () => uiStore.set((s) => ({ ...s, open: !s.open }));
 export function clearChat() {
   const key = chatKey(pageStore.get());
   chatStore.set((all) => ({ ...all, [key]: [] }));
+  if (key !== "general") void del(`/api/v1/me/chats/${encodeURIComponent(key)}`).catch(() => {});
 }
+
+/** Conversations live on the account; fetch each course's thread once per visit. */
+const loadedThreads = new Set<string>();
+export async function loadThread(key: string) {
+  if (key === "general" || loadedThreads.has(key)) return;
+  loadedThreads.add(key);
+  try {
+    const rows = await get<{ role: "user" | "model"; text: string; mode: string | null }[]>(
+      `/api/v1/me/chats/${encodeURIComponent(key)}?limit=60`,
+    );
+    if (uiStore.get().busy) return; // don't clobber a reply that's streaming in
+    chatStore.set((all) => ({ ...all, [key]: rows.map((r) => ({ role: r.role, text: r.text, mode: (r.mode ?? undefined) as BuddyMode | undefined })) }));
+  } catch {
+    loadedThreads.delete(key); // keep the local copy; try again next time
+  }
+}
+export const forgetLoadedThreads = () => loadedThreads.clear();
 
 let controller: AbortController | null = null;
 

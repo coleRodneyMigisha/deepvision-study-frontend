@@ -1,6 +1,7 @@
 "use client";
 /** Browser client for the FastAPI backend (Render). */
 import { memoryStore, useStore } from "./store";
+import { authToken, sessionHooks } from "./session";
 import { apiBase } from "./settings";
 
 export type ApiStatus = "checking" | "waking" | "online" | "nokey" | "offline";
@@ -8,9 +9,23 @@ export const statusStore = memoryStore<{ status: ApiStatus; model?: string | nul
 export const useApiStatus = () => useStore(statusStore);
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status = 0) {
+  constructor(
+    message: string,
+    readonly status = 0,
+    readonly body: unknown = null,
+  ) {
     super(message);
   }
+}
+
+export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const token = authToken();
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : extra;
+}
+
+/** A 401 from anything except the sign-in endpoints means the session is gone. */
+function checkExpired(path: string, status: number) {
+  if (status === 401 && authToken() && !path.startsWith("/api/v1/auth/")) sessionHooks.onExpired();
 }
 
 async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 70_000): Promise<T> {
@@ -18,18 +33,26 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 70_0
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
   init.signal?.addEventListener("abort", () => ctl.abort());
   try {
-    const res = await fetch(apiBase() + path, { ...init, signal: ctl.signal });
+    const res = await fetch(apiBase() + path, {
+      ...init,
+      headers: authHeaders((init.headers as Record<string, string>) ?? {}),
+      signal: ctl.signal,
+    });
     if (!res.ok) {
       let detail = res.statusText;
+      let body: unknown = null;
       try {
-        const body = await res.json();
-        detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+        body = await res.json();
+        const d = (body as { detail?: unknown }).detail;
+        detail = typeof d === "string" ? d : typeof (d as { message?: unknown })?.message === "string" ? (d as { message: string }).message : JSON.stringify(d);
       } catch {
         /* not JSON */
       }
-      throw new ApiError(detail || `HTTP ${res.status}`, res.status);
+      checkExpired(path, res.status);
+      throw new ApiError(detail || `HTTP ${res.status}`, res.status, body);
     }
     markOnline();
+    if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
   } catch (err) {
     if (err instanceof ApiError) throw err;
@@ -47,8 +70,18 @@ function markOnline() {
   }
 }
 
-export const post = <T,>(path: string, body: unknown, timeoutMs?: number) =>
-  request<T>(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, timeoutMs);
+const send =
+  (method: string) =>
+  <T,>(path: string, body?: unknown, timeoutMs?: number) =>
+    request<T>(
+      path,
+      body === undefined ? { method } : { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+      timeoutMs,
+    );
+export const post = send("POST");
+export const put = send("PUT");
+export const patch = send("PATCH");
+export const del = send("DELETE");
 export const get = <T,>(path: string, timeoutMs?: number) => request<T>(path, {}, timeoutMs);
 
 /** Wake the (possibly sleeping) Render server and learn whether AI is configured. */
@@ -81,7 +114,7 @@ export async function streamChat(
 ): Promise<{ text: string; source: string }> {
   const res = await fetch(apiBase() + "/api/v1/chat", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
     signal,
   }).catch(() => {
@@ -94,6 +127,7 @@ export async function streamChat(
     } catch {
       /* ignore */
     }
+    checkExpired("/api/v1/chat", res.status);
     throw new ApiError(String(detail), res.status);
   }
   markOnline();

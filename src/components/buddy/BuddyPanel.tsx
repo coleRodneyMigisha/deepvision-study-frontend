@@ -2,6 +2,7 @@
 import { ArrowUp, Eraser, Lightbulb, ListChecks, MessageCircleQuestion, Route, Sparkles, Square, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef } from "react";
+import { useBuddyName } from "@/lib/session";
 import { Markdown } from "@/components/ui/Markdown";
 import { useApiStatus } from "@/lib/api";
 import {
@@ -10,6 +11,7 @@ import {
   chatKey,
   clearChat,
   closeBuddy,
+  loadThread,
   stopBuddy,
   uiStore,
   useBuddyPageState,
@@ -32,12 +34,17 @@ const VIEW_LABEL = { home: "Home", course: "Course map", lesson: "Lesson", lab: 
 export function BuddyPanel() {
   const ui = useBuddyUi();
   const page = useBuddyPageState();
-  const messages = useChat(chatKey(page));
+  const thread = chatKey(page);
+  const messages = useChat(thread);
+  const name = useBuddyName();
   const status = useApiStatus();
   const scroller = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
   const topic = page.moduleTitle ?? page.courseLabel ?? "this course";
 
+  useEffect(() => {
+    void loadThread(thread);
+  }, [thread]);
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
   }, [messages, ui.open]);
@@ -66,7 +73,7 @@ export function BuddyPanel() {
             onClick={closeBuddy}
           />
           <motion.aside
-            aria-label="Study buddy"
+            aria-label={`${name}, your study buddy`}
             className="no-print fixed inset-y-0 right-0 z-50 flex w-full max-w-[420px] flex-col border-l border-line bg-card shadow-lift xl:top-[64px] xl:shadow-none"
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
@@ -76,7 +83,7 @@ export function BuddyPanel() {
             <header className="flex items-center gap-3 border-b border-line px-4 py-3">
               <BuddyAvatar mood={ui.mood} size={40} />
               <div className="min-w-0 flex-1">
-                <div className="font-display text-lg leading-tight font-semibold">Study buddy</div>
+                <div className="truncate font-display text-lg leading-tight font-semibold">{name}</div>
                 <div className="truncate text-xs text-muted">
                   {VIEW_LABEL[page.context.view]}
                   {page.moduleTitle ? ` · ${page.moduleTitle}` : page.courseLabel ? ` · ${page.courseLabel}` : ""}
@@ -91,7 +98,7 @@ export function BuddyPanel() {
             </header>
 
             <div ref={scroller} className="flex-1 space-y-4 overflow-y-auto bg-paper px-4 py-5">
-              {!messages.length && <Welcome topic={topic} hasCourse={!!page.courseId} />}
+              {!messages.length && <Welcome name={name} topic={topic} hasCourse={!!page.courseId} />}
               {messages.map((m, i) =>
                 m.role === "user" ? (
                   <div key={i} className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-ink px-4 py-2.5 text-[14.5px] whitespace-pre-wrap text-paper">
@@ -138,7 +145,7 @@ export function BuddyPanel() {
                       send();
                     }
                   }}
-                  placeholder={page.courseId ? "Ask anything about this…" : "Open a course to chat"}
+                  placeholder={page.courseId ? `Ask ${name} anything about this…` : "Open a course to chat"}
                   className="max-h-40 min-h-10 flex-1 resize-none bg-transparent px-2.5 py-2 text-[14.5px] outline-none placeholder:text-muted"
                 />
                 {ui.busy ? (
@@ -167,10 +174,10 @@ export function BuddyPanel() {
   );
 }
 
-function Welcome({ topic, hasCourse }: { topic: string; hasCourse: boolean }) {
+function Welcome({ name, topic, hasCourse }: { name: string; topic: string; hasCourse: boolean }) {
   return (
     <div className="rounded-2xl border border-dashed border-line-2 bg-card p-4 text-[14.5px] text-ink-2">
-      <p className="font-semibold text-ink">Hey! I&apos;m your study buddy 👋</p>
+      <p className="font-semibold text-ink">Hey! It&apos;s me, {name} 👋</p>
       <p className="mt-1.5">
         {hasCourse
           ? `I can see what you're working on in ${topic}. Ask me anything, or pick a mode below — I'll nudge before I tell, so you actually learn it.`
