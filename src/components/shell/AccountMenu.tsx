@@ -1,5 +1,5 @@
 "use client";
-import { Check, CloudOff, LogOut, MailWarning, Pencil, RefreshCw } from "lucide-react";
+import { Check, CloudOff, LogOut, MailWarning, Pencil, RefreshCw, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Spinner } from "@/components/auth/bits";
 import { BuddyAvatar } from "@/components/buddy/BuddyAvatar";
@@ -59,8 +59,22 @@ export function AccountMenu() {
               <S.icon className={cn("size-3.5", sync === "syncing" && "animate-spin")} /> {S.text}
             </div>
           </div>
-          {!user.email_verified && <VerifyNotice email={user.email} />}
-          <RenameBuddy current={user.buddy_name ?? "Buddy"} />
+          {!user.email_verified && <VerifyNotice email={user.email} hasPassword={user.has_password} />}
+          <NameRow
+            label="Your name"
+            current={user.display_name ?? ""}
+            placeholder="Add your name"
+            maxLength={60}
+            icon={<span className="grid size-[30px] place-items-center rounded-full bg-card text-muted"><UserRound className="size-4" /></span>}
+            onSave={(name) => updateProfile({ display_name: name })}
+          />
+          <NameRow
+            label="Your buddy"
+            current={user.buddy_name ?? "Buddy"}
+            maxLength={24}
+            icon={(editing) => <BuddyAvatar size={30} mood={editing ? "wave" : "idle"} />}
+            onSave={(name) => updateProfile({ buddy_name: name })}
+          />
           <button
             onClick={() => void signOut()}
             className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-2 hover:bg-sunk hover:text-ink"
@@ -73,7 +87,22 @@ export function AccountMenu() {
   );
 }
 
-function RenameBuddy({ current }: { current: string }) {
+/** One editable name in the menu: the student's own name or their buddy's. */
+function NameRow({
+  label,
+  current,
+  placeholder,
+  maxLength,
+  icon,
+  onSave,
+}: {
+  label: string;
+  current: string;
+  placeholder?: string;
+  maxLength: number;
+  icon: React.ReactNode | ((editing: boolean) => React.ReactNode);
+  onSave: (name: string) => Promise<unknown>;
+}) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(current);
   const [busy, setBusy] = useState(false);
@@ -83,10 +112,10 @@ function RenameBuddy({ current }: { current: string }) {
     setBusy(true);
     setError(null);
     try {
-      await updateProfile({ buddy_name: name });
+      await onSave(name.trim());
       setEditing(false);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Couldn't rename.");
+      setError(err instanceof ApiError ? err.message : "Couldn't save that name.");
     } finally {
       setBusy(false);
     }
@@ -94,16 +123,17 @@ function RenameBuddy({ current }: { current: string }) {
   return (
     <div className="mb-1 rounded-xl bg-sunk p-3">
       <div className="flex items-center gap-2.5">
-        <BuddyAvatar size={30} mood={editing ? "wave" : "idle"} />
+        {typeof icon === "function" ? icon(editing) : icon}
         {editing ? (
           <form onSubmit={save} className="flex flex-1 gap-1.5">
             <input
               autoFocus
               value={name}
-              maxLength={24}
+              maxLength={maxLength}
+              placeholder={placeholder}
               onChange={(e) => setName(e.target.value)}
               className="h-8 min-w-0 flex-1 rounded-lg border border-line-2 bg-card px-2 text-sm font-semibold outline-none focus:border-accent"
-              aria-label="Buddy name"
+              aria-label={label}
             />
             <button disabled={busy || !name.trim()} className="rounded-lg bg-ink px-2.5 text-xs font-semibold text-paper disabled:opacity-50">
               {busy ? <Spinner className="size-3" /> : "Save"}
@@ -112,8 +142,8 @@ function RenameBuddy({ current }: { current: string }) {
         ) : (
           <>
             <div className="min-w-0 flex-1">
-              <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">Your buddy</div>
-              <div className="truncate font-display font-semibold">{current}</div>
+              <div className="text-[11px] font-semibold tracking-wide text-muted uppercase">{label}</div>
+              <div className={cn("truncate font-display font-semibold", !current && "text-muted")}>{current || placeholder}</div>
             </div>
             <button
               onClick={() => {
@@ -121,7 +151,7 @@ function RenameBuddy({ current }: { current: string }) {
                 setEditing(true);
               }}
               className="rounded-full p-1.5 text-muted hover:bg-card hover:text-ink"
-              aria-label="Rename your buddy"
+              aria-label={`Change ${label.toLowerCase()}`}
             >
               <Pencil className="size-3.5" />
             </button>
@@ -133,12 +163,13 @@ function RenameBuddy({ current }: { current: string }) {
   );
 }
 
-function VerifyNotice({ email }: { email: string }) {
+function VerifyNotice({ email, hasPassword }: { email: string; hasPassword: boolean }) {
+  const [message, setMessage] = useState("");
   const [state, setState] = useState<"idle" | "busy" | "sent" | "error">("idle");
   const send = async () => {
     setState("busy");
     try {
-      await auth.magicLink(email);
+      setMessage((await auth.resendVerification()).message);
       setState("sent");
     } catch {
       setState("error");
@@ -151,7 +182,7 @@ function VerifyNotice({ email }: { email: string }) {
       </div>
       <p className="mt-1 leading-relaxed">
         {state === "sent"
-          ? "Link sent — open it on any device to confirm."
+          ? `${message || `Link sent to ${email}.`}${hasPassword ? " Open it in this browser so your password keeps working." : ""}`
           : "So you can always get back in. Open the link we email you."}
       </p>
       {state !== "sent" && (
