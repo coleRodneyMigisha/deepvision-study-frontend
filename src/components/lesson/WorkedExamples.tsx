@@ -2,7 +2,7 @@
 import { Eye } from "lucide-react";
 import { useState } from "react";
 import { Button, Card } from "@/components/ui";
-import { Markdown } from "@/components/ui/Markdown";
+import { Markdown, MathText } from "@/components/ui/Markdown";
 import { askBuddy } from "@/lib/buddy";
 import type { Example } from "@/lib/content/schema";
 import { logActivity, updateModule, useCourseProgress } from "@/lib/progress";
@@ -59,7 +59,7 @@ function ExampleCard({ ex, index, courseId, moduleId }: { ex: Example; index: nu
         </div>
       ) : (
         <div className="mt-4 rounded-xl border border-good/25 bg-good-bg p-4 text-sm">
-          <b>Answer:</b> {ex.answer}
+          <b>Answer:</b> <MathText>{ex.answer}</MathText>
           {ex.takeaway && <p className="mt-1 text-ink-2"><b>Takeaway:</b> {ex.takeaway}</p>}
         </div>
       )}

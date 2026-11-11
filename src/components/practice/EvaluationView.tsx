@@ -3,6 +3,7 @@ import { MessageCircle } from "lucide-react";
 import { Badge } from "@/components/ui";
 import type { Evaluation } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { MathText } from "@/components/ui/Markdown";
 
 export function EvaluationView({ result, onDiscuss }: { result: Evaluation; onDiscuss?: () => void }) {
   const tone = result.score >= 75 ? "text-good" : result.score >= 50 ? "text-warn" : "text-bad";
@@ -32,7 +33,7 @@ export function EvaluationView({ result, onDiscuss }: { result: Evaluation; onDi
           ).map(([k, v]) => (
             <div key={k} className="rounded-xl border border-line p-3 text-sm">
               <div className="mb-1 text-[11px] font-semibold tracking-wider text-accent uppercase">{k}</div>
-              {v}
+              <MathText>{v}</MathText>
             </div>
           ))}
         </div>
@@ -48,18 +49,18 @@ export function EvaluationView({ result, onDiscuss }: { result: Evaluation; onDi
         )}
         <div>
           <div className="mb-1.5 text-[11px] font-semibold tracking-wider text-muted uppercase">Model answer</div>
-          <div className="rounded-r-xl border-l-4 border-accent bg-sunk px-4 py-3 text-[14.5px] leading-relaxed">{result.model_answer}</div>
+          <div className="rounded-r-xl border-l-4 border-accent bg-sunk px-4 py-3 text-[14.5px] leading-relaxed"><MathText>{result.model_answer}</MathText></div>
         </div>
         {(result.examiner_tip || result.next_step) && (
           <div className="grid gap-2 text-sm sm:grid-cols-2">
             {result.examiner_tip && (
               <p>
-                <b>Examiner tip:</b> {result.examiner_tip}
+                <b>Examiner tip:</b> <MathText>{result.examiner_tip}</MathText>
               </p>
             )}
             {result.next_step && (
               <p>
-                <b>Next step:</b> {result.next_step}
+                <b>Next step:</b> <MathText>{result.next_step}</MathText>
               </p>
             )}
           </div>

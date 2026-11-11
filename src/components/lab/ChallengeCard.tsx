@@ -2,7 +2,7 @@
 import { CalendarDays, CheckCircle2, Lightbulb, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button, Card, Spinner } from "@/components/ui";
-import { Rich } from "@/components/ui/Markdown";
+import { MathText, Rich } from "@/components/ui/Markdown";
 import { api, ApiError } from "@/lib/api";
 import { askBuddy, setMood } from "@/lib/buddy";
 import type { Variation } from "@/lib/content/schema";
@@ -141,7 +141,7 @@ function Attempt({ item, solved, courseId, moduleId }: { item: Item; solved: boo
         {verdict !== null && <span className={cn("text-sm font-semibold", verdict ? "text-good" : "text-bad")}>{verdict ? "✓ Correct!" : "✗ Not quite — check the hint."}</span>}
         {solved && verdict === null && <span className="text-sm font-semibold text-good">Solved before ✓</span>}
       </div>
-      {hint && item.hint && <div className="mt-3 rounded-xl border border-warn/25 bg-warn-bg px-4 py-2.5 text-sm">{item.hint}</div>}
+      {hint && item.hint && <div className="mt-3 rounded-xl border border-warn/25 bg-warn-bg px-4 py-2.5 text-sm"><MathText>{item.hint}</MathText></div>}
       {verdict !== null && item.explanation && (
         <div className="mt-3 rounded-r-xl border-l-4 border-accent bg-sunk px-4 py-3 text-sm leading-relaxed">
           <b>Worked solution: </b>

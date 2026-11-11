@@ -2,6 +2,7 @@
 import { MessageCircle, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { Card } from "@/components/ui";
+import { MathText } from "@/components/ui/Markdown";
 import { askBuddy, setMood } from "@/lib/buddy";
 import type { QuizItem } from "@/lib/content/schema";
 import { logActivity, updateModule, useCourseProgress } from "@/lib/progress";
@@ -61,7 +62,7 @@ function Mcq({ q, index, courseId, moduleId }: { q: QuizItem; index: number; cou
       {picked !== null && (
         <div className="mt-3 space-y-2 text-sm">
           <p>
-            <b className={correct ? "text-good" : "text-bad"}>{correct ? "Correct." : "Not quite."}</b> {q.explanation}
+            <b className={correct ? "text-good" : "text-bad"}>{correct ? "Correct." : "Not quite."}</b> <MathText>{q.explanation}</MathText>
           </p>
           <div className="flex gap-3">
             <button onClick={() => setPicked(null)} className="inline-flex items-center gap-1 font-semibold text-ink-2 hover:text-ink">

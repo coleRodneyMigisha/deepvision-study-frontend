@@ -3,7 +3,7 @@ import { Clock, GraduationCap, Mic, ScrollText, Sparkles, Volume2 } from "lucide
 import { useEffect, useMemo, useState } from "react";
 import { EvaluationView } from "@/components/practice/EvaluationView";
 import { Badge, Bar, Button, ButtonLink, Card, Eyebrow, Spinner } from "@/components/ui";
-import { Rich } from "@/components/ui/Markdown";
+import { MathText, Rich } from "@/components/ui/Markdown";
 import { api, type Evaluation } from "@/lib/api";
 import { askBuddy, useBuddyPage } from "@/lib/buddy";
 import type { ExamBank } from "@/lib/content/server";
@@ -452,7 +452,7 @@ function Report({ bank, questions, attempts, onAgain, moduleTitle }: { bank: Exa
             </div>
             {q.kind === "mcq" && (
               <p className="mt-2 text-sm text-ink-2">
-                Your answer: <b>{attempts[i].response === "" ? "—" : q.options[Number(attempts[i].response)]}</b> · Correct: <b>{q.options[q.answer]}</b>. {q.explanation}
+                Your answer: <b>{attempts[i].response === "" ? "—" : q.options[Number(attempts[i].response)]}</b> · Correct: <b>{q.options[q.answer]}</b>. <MathText>{q.explanation}</MathText>
               </p>
             )}
             {q.kind === "numeric" && (
@@ -461,7 +461,7 @@ function Report({ bank, questions, attempts, onAgain, moduleTitle }: { bank: Exa
               </p>
             )}
             {q.kind === "written" && attempts[i].evaluation && <div className="mt-3"><EvaluationView result={attempts[i].evaluation!} /></div>}
-            {q.kind === "written" && !attempts[i].evaluation && <p className="mt-2 text-sm text-muted">Not answered. Model answer: {q.idealAnswer}</p>}
+            {q.kind === "written" && !attempts[i].evaluation && <p className="mt-2 text-sm text-muted">Not answered. Model answer: <MathText>{q.idealAnswer}</MathText></p>}
           </Card>
         ))}
       </section>

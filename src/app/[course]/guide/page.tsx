@@ -2,6 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import { GuideActions } from "@/components/guide/GuideActions";
 import { Card, Eyebrow } from "@/components/ui";
 import { getCourse } from "@/lib/content/server";
+import { MathText } from "@/components/ui/Markdown";
 
 export const metadata = { title: "Revision guide" };
 
@@ -79,7 +80,7 @@ export default async function GuidePage({ params }: { params: Promise<{ course: 
             {m.checkpoint && (
               <div className="rounded-xl bg-sunk p-4 text-[13.5px]">
                 <p className="font-semibold">Likely question: {m.checkpoint.question}</p>
-                <p className="mt-1.5 leading-relaxed text-ink-2">{m.checkpoint.idealAnswer}</p>
+                <p className="mt-1.5 leading-relaxed text-ink-2"><MathText>{m.checkpoint.idealAnswer}</MathText></p>
               </div>
             )}
           </Card>
