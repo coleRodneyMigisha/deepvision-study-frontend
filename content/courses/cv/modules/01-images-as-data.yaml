@@ -1,0 +1,374 @@
+id: images-as-data
+title: Images as Data
+subtitle: Represent, inspect & transform image inputs
+recap: An image is a tensor of numbers (H × W × C, values 0–255). Before training we scale to 0–1 and
+  normalise per channel with the mean/std the backbone was trained on, so inputs live where the pretrained
+  weights expect them. Kernels like Sobel are tiny weight grids that respond to intensity change, and
+  augmentation creates new views of the same image so the model learns invariances instead of memorising.
+traps:
+  - Normalising with your own dataset's statistics when using a pretrained ImageNet backbone — use the
+    backbone's mean/std.
+  - "Forgetting the ToTensor() step: Normalize expects 0–1 floats, not 0–255 integers."
+  - Augmenting the validation/test set — augmentation is for training only.
+lesson:
+  checkpointStep: 3
+  steps:
+    - To a computer, an image is not a picture — it is a grid of numbers. A colour image is a 3D tensor of
+      shape height × width × channels, and each value is usually an integer from 0 (dark) to 255 (bright).
+    - "RGB channels are strongly correlated: a shadow lowers red, green and blue together. Converting to HSV
+      separates colour (hue, saturation) from brightness (value), which helps when lighting changes."
+    - "Before training we normalise: scale pixels to 0–1, then subtract a mean and divide by a standard
+      deviation per channel. Centred, similarly-scaled inputs make gradient descent far more stable."
+    - "Checkpoint: why do we normalise with the ImageNet mean and standard deviation when using a pretrained
+      network?"
+    - Classic filters are just small grids of weights. A 3×3 Sobel kernel subtracts left pixels from right
+      pixels, so it lights up wherever intensity changes sharply — an edge.
+    - Data augmentation — random crops, flips, colour jitter — creates new training views of the same image.
+      It acts as a regulariser and teaches invariance to things that shouldn't change the label.
+    - Not every camera makes frames. Event cameras fire per-pixel events whenever brightness changes, with
+      microsecond timing — no motion blur and huge dynamic range.
+checkpoint:
+  question: Why do we normalise image pixels using the ImageNet mean and standard deviation before feeding them
+    into a pretrained CNN?
+  hint: "Think: what distribution did the pretrained weights see? What happens to activations and gradients if
+    the input scale is different?"
+  keywords:
+    - distribution
+    - imagenet
+    - mean
+    - standard deviation
+    - pretrained
+    - scale
+    - gradient
+    - weights
+    - match
+    - centre
+    - center
+  idealAnswer: A pretrained network's weights were tuned on inputs normalised with ImageNet's per-channel mean
+    and std. Normalising our images the same way puts them in the distribution the network expects, so
+    early-layer activations sit in the range the filters were trained for. Mechanically, centring and scaling
+    makes features comparable in magnitude, which keeps gradients well-behaved. If you skip it, the input
+    distribution shifts and accuracy drops, or fine-tuning becomes unstable.
+terms:
+  - term: Tensor (H, W, C)
+    definition: A multi-dimensional array. PyTorch uses (C, H, W); NumPy/OpenCV use (H, W, C) — and OpenCV loads as BGR!
+  - term: Channel
+    definition: One 2D slice of the image, e.g. the red values. Grayscale has 1, RGB has 3.
+  - term: Normalisation
+    definition: x′ = (x/255 − μ)/σ per channel. ImageNet μ ≈ (0.485, 0.456, 0.406), σ ≈ (0.229, 0.224, 0.225).
+  - term: Kernel / filter
+    definition: A small weight grid slid across the image; Sobel finds edges, Gaussian blurs.
+  - term: Augmentation
+    definition: Random label-preserving transforms applied only at training time.
+quiz:
+  - question: A 224×224 RGB image is stored as uint8. How many numbers is that?
+    options:
+      - 50,176
+      - 150,528
+      - "224"
+      - "672"
+    answer: 1
+    explanation: 224 × 224 × 3 = 150,528 values, each 0–255.
+  - question: Which augmentation is a BAD idea for digit recognition (MNIST)?
+    options:
+      - Small rotations
+      - Random crops
+      - Vertical flips
+      - Brightness jitter
+    answer: 2
+    explanation: Flipping turns a 6 into a 9-like shape — it changes the label. Augmentations must preserve the label.
+  - question: What shape does a batch of RGB images have in PyTorch?
+    options:
+      - N × H × W × C
+      - N × C × H × W
+      - H × W × C
+      - C × N × H × W
+    answer: 1
+    explanation: PyTorch uses NCHW.
+  - question: OpenCV's cv2.imread returns channels in which order?
+    options:
+      - RGB
+      - BGR
+      - HSV
+      - Grayscale
+    answer: 1
+    explanation: Forgetting to convert BGR→RGB is a classic bug.
+  - question: Why convert to HSV for colour thresholding?
+    options:
+      - It's smaller
+      - Hue separates colour from brightness
+      - making it robust to lighting
+      - It's what CNNs require
+      - It removes noise
+    answer: 1
+    explanation: Lighting mostly changes V, not H.
+  - question: A Sobel-x kernel responds most strongly to…
+    options:
+      - Flat regions
+      - Vertical edges (horizontal intensity change)
+      - Colour
+      - Noise only
+    answer: 1
+    explanation: It differences left and right neighbours.
+  - question: Which augmentation could change a label?
+    options:
+      - Small brightness jitter
+      - Horizontal flip of a 'left turn' sign
+      - Random crop of a cat
+      - Slight blur
+    answer: 1
+    explanation: Augment only with label-preserving transforms.
+  - question: What does ToTensor() do to a uint8 image?
+    options:
+      - Normalises with ImageNet stats
+      - Converts HWC [0,255] to CHW float [0,1]
+      - Converts to grayscale
+      - Flips it
+    answer: 1
+    explanation: Normalize is a separate step.
+fact:
+  title: Event cameras see in microseconds
+  body: Neuromorphic sensors (e.g. Prophesee, Sony IMX636) have no frame rate. Each pixel independently reports
+    brightness changes with microsecond latency and >120 dB dynamic range — useful for drones, robotics and
+    high-speed inspection where normal cameras blur.
+lab:
+  title: Pixels & normalisation
+  variations:
+    - title: Red Channel Max Normalisation
+      question: A <b>red</b>-channel pixel has raw value <b>255</b> (μ = 0.485, σ = 0.229). What is it after
+        <code>ToTensor()</code> + ImageNet <code>Normalize()</code>? (2 decimals)
+      answer: 2.25
+      tolerance: 0.015
+      hint: First divide 255 by 255 to get 1.0, then subtract 0.485 and divide by 0.229.
+      explanation: 255/255 = 1.0 → (1.0 − 0.485) / 0.229 = 0.515 / 0.229 = 2.2489 ≈ 2.25.
+    - title: Green Channel Mid-Tone Normalisation
+      question: A <b>green</b>-channel pixel has raw value <b>102</b> (μ = 0.456, σ = 0.224). What is its normalised
+        value after <code>ToTensor()</code> + ImageNet <code>Normalize()</code>? (2 decimals)
+      answer: -0.25
+      tolerance: 0.015
+      hint: Compute x = 102 / 255 = 0.40, then (0.40 − 0.456) / 0.224.
+      explanation: 102 / 255 = 0.40 → (0.40 − 0.456) / 0.224 = −0.056 / 0.224 = −0.25.
+    - title: Luminance Grayscale Conversion
+      question: An RGB pixel has values <b>(R=200, G=100, B=50)</b>. Using the ITU-R BT.601 luminance formula
+        <code>Y = 0.299R + 0.587G + 0.114B</code>, what is its grayscale intensity <b>Y</b>? (2 decimals)
+      answer: 124.2
+      tolerance: 0.05
+      hint: Multiply each channel by its perceptual weight and sum them.
+      explanation: Y = 0.299(200) + 0.587(100) + 0.114(50) = 59.8 + 58.7 + 5.7 = 124.20.
+notes:
+  - heading: An image is a tensor
+    body: |
+      To a computer an image is a grid of numbers. A colour image of height H and width W has three **channels** (red, green, blue), so it's a 3-D array of shape **H × W × 3**, usually with 8-bit integers from 0 (dark) to 255 (bright). A 224 × 224 RGB image holds 224 × 224 × 3 = **150,528** numbers.
+
+      Conventions matter in code:
+
+      - NumPy, OpenCV and PIL use **HWC** (height, width, channels). PyTorch uses **CHW**, and a batch is **NCHW**.
+      - OpenCV loads images as **BGR**, not RGB — a classic source of "the model works in training but not on camera images".
+      - `transforms.ToTensor()` converts HWC uint8 [0, 255] into CHW float [0, 1].
+  - heading: Colour spaces
+    body: |
+      RGB channels are strongly **correlated**: a shadow lowers all three together, so "brightness" is smeared across every channel. Other colour spaces separate it out:
+
+      - **HSV** — Hue (which colour), Saturation (how vivid), Value (how bright). Thresholding on hue finds "red objects" regardless of lighting far better than RGB thresholds.
+      - **Grayscale** — Y = 0.299R + 0.587G + 0.114B. The weights follow human sensitivity (we're most sensitive to green). One channel instead of three: less compute, but colour information is gone.
+      - **LAB** — perceptually uniform; distances roughly match how different colours *look*.
+
+      Deep networks usually take RGB and learn whatever colour features they need, but colour spaces still matter for classical pipelines and augmentation.
+  - heading: Normalisation
+    body: |
+      Networks train best when inputs are centred near zero with similar scales. The standard recipe:
+
+      1. Scale to [0, 1]: x = pixel / 255.
+      2. Standardise per channel: x̂ = (x − μ_c) / σ_c.
+
+      When fine-tuning an ImageNet-pretrained model, use **ImageNet's statistics**: μ = (0.485, 0.456, 0.406), σ = (0.229, 0.224, 0.225). The pretrained filters and BatchNorm layers were tuned to inputs distributed that way; feeding differently scaled data shifts every activation and wastes the pretraining.
+
+      ```python
+      tf = transforms.Compose([transforms.ToTensor(),
+                               transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+      ```
+
+      Normalised values are z-scores: a pure white red channel becomes (1 − 0.485)/0.229 ≈ 2.25, and black becomes about −2.12.
+  - heading: Filters, augmentation and event cameras
+    body: |
+      A classic **filter** is a small grid of weights slid over the image (convolution). The **Sobel-x** kernel `[[-1,0,1],[-2,0,2],[-1,0,1]]` subtracts left neighbours from right ones, so it responds strongly where intensity changes horizontally — vertical edges. A box blur averages; a sharpen kernel boosts the centre against its neighbours. CNNs *learn* kernels like these.
+
+      **Data augmentation** creates new training views of each image: random crops and flips, small rotations, colour jitter, blur. It acts as a regulariser and teaches invariances — a flipped cat is still a cat. Augment only the **training** set, and only with transforms that keep the label true (flipping a "left turn" road sign changes its meaning!).
+
+      Not all vision sensors produce frames: **event cameras** report per-pixel brightness changes asynchronously with microsecond timing — no motion blur and enormous dynamic range, useful for fast robotics.
+examples:
+  - title: Normalise a green pixel
+    problem: A green-channel value is 200. Compute the value after ToTensor() and ImageNet Normalize (μ = 0.456, σ
+      = 0.224).
+    steps:
+      - "Scale: 200 / 255 = **0.7843**."
+      - "Standardise: (0.7843 − 0.456) / 0.224 = 0.3283 / 0.224 = **1.466**."
+    answer: About 1.47.
+    takeaway: After normalisation, values are z-scores relative to ImageNet, not intensities.
+  - title: Memory for a batch
+    problem: A batch of 32 RGB images at 224 × 224 is stored as float32. How many MB is the input tensor?
+    steps:
+      - Elements = 32 × 3 × 224 × 224 = **4,816,896**.
+      - Bytes = 4,816,896 × 4 = 19,267,584 ≈ **19.3 MB**.
+      - As uint8 it would be 4.8 MB — float32 is 4× larger.
+    answer: About 19.3 MB.
+    takeaway: Input tensors are small next to activations, but they show how quickly sizes multiply.
+questions:
+  - question: Describe how an RGB image is represented as a tensor and two common format pitfalls.
+    kind: short
+    marks: 5
+    keywords:
+      - tensor
+      - height
+      - width
+      - channels
+      - 0-255
+      - uint8
+      - hwc
+      - chw
+      - nchw
+      - bgr
+      - opencv
+    idealAnswer: "An RGB image is a 3-D array of H × W × 3 values, typically 8-bit integers 0–255 per channel.
+      Pitfalls: libraries disagree on layout — NumPy/OpenCV use HWC while PyTorch expects CHW (NCHW for
+      batches) — and OpenCV loads images in BGR order, so they must be converted to RGB before a model trained
+      on RGB."
+  - question: Why do we normalise images with the ImageNet mean and standard deviation when fine-tuning a
+      pretrained model?
+    kind: short
+    marks: 5
+    keywords:
+      - pretrained
+      - distribution
+      - imagenet
+      - mean
+      - std
+      - per channel
+      - filters
+      - batchnorm
+      - activations
+      - stable
+      - gradients
+    idealAnswer: The pretrained weights and BatchNorm statistics were learned on inputs normalised per channel
+      with ImageNet's mean and std. Using the same normalisation keeps inputs in the distribution the filters
+      expect, so activations behave as in pretraining; it also centres and scales inputs, which keeps
+      gradients well-conditioned and training stable.
+  - question: You are building a classifier for photos of cassava leaves taken on farmers' phones under very
+      different lighting. Design the input pipeline — loading, colour handling, resizing, normalisation and
+      augmentation — and justify each choice.
+    kind: long
+    marks: 10
+    keywords:
+      - load
+      - rgb
+      - bgr
+      - resize
+      - crop
+      - 224
+      - totensor
+      - normalize
+      - imagenet
+      - augmentation
+      - random crop
+      - flip
+      - colour jitter
+      - brightness
+      - train only
+      - validation
+      - label-preserving
+    idealAnswer: "Load images and convert to RGB (OpenCV gives BGR). Resize and centre/random-crop to the
+      backbone's input size (e.g. 224 × 224). Convert with ToTensor (CHW, [0,1]) and Normalize with ImageNet
+      mean/std because we'll fine-tune a pretrained backbone. Augment the training set only:
+      RandomResizedCrop, horizontal/vertical flips (leaf orientation doesn't change the disease), small
+      rotations, and colour jitter on brightness/contrast/saturation to simulate different lighting and phone
+      cameras — all label-preserving. Validation and test use only resize/crop and normalisation, so
+      evaluation reflects real images."
+coding:
+  - id: to-tensor-normalize
+    title: ToTensor + Normalize in NumPy
+    language: python
+    level: core
+    setup: |
+      import numpy as np
+      rng = np.random.default_rng(0)
+      img = rng.integers(0, 256, size=(4, 6, 3), dtype=np.uint8)   # H × W × C, like PIL/OpenCV
+      MEAN = np.array([0.485, 0.456, 0.406])
+      STD = np.array([0.229, 0.224, 0.225])
+    prompt: |
+      Re-implement what `transforms.ToTensor()` + `transforms.Normalize(MEAN, STD)` do:
+
+      `preprocess(img)` takes an `H × W × 3` `uint8` array and returns a `3 × H × W` `float32` array:
+      scale to [0, 1], move channels first (CHW), then normalise each channel with `MEAN`/`STD`.
+      Also write `bgr_to_rgb(img)` — OpenCV loads images in BGR order.
+    starter: |
+      import numpy as np
+
+      def preprocess(img):
+          ...
+
+      def bgr_to_rgb(img):
+          ...
+    solution: |
+      import numpy as np
+
+      def preprocess(img):
+          x = img.astype(np.float32) / 255.0          # [0, 255] → [0, 1]
+          x = np.transpose(x, (2, 0, 1))              # HWC → CHW
+          return ((x - MEAN[:, None, None]) / STD[:, None, None]).astype(np.float32)
+
+      def bgr_to_rgb(img):
+          return img[..., ::-1]
+    tests:
+      - name: Shape is CHW and dtype float32
+        code: |
+          out = preprocess(img)
+          assert out.shape == (3, 4, 6), f"expected (3, 4, 6), got {out.shape}"
+          assert out.dtype == np.float32
+      - name: Values match the formula per channel
+        code: |
+          out = preprocess(img)
+          r, c, ch = 2, 3, 1
+          exp = (img[r, c, ch] / 255 - MEAN[ch]) / STD[ch]
+          assert abs(out[ch, r, c] - exp) < 1e-5, f"channel {ch} at ({r},{c}) should be {exp:.4f}"
+      - name: A white red pixel becomes ≈ 2.25
+        code: |
+          w = np.full((1, 1, 3), 255, dtype=np.uint8)
+          assert abs(preprocess(w)[0, 0, 0] - 2.2489) < 1e-3
+      - name: bgr_to_rgb reverses the channel order
+        code: |
+          px = np.array([[[10, 20, 30]]], dtype=np.uint8)
+          assert bgr_to_rgb(px).tolist() == [[[30, 20, 10]]]
+    hints:
+      - "`np.transpose(x, (2, 0, 1))` moves the last axis first."
+      - Reshape MEAN to (3, 1, 1) — `MEAN[:, None, None]` — so it broadcasts over H and W.
+  - id: grayscale
+    title: Luminance grayscale
+    language: python
+    level: warm-up
+    setup: |
+      import numpy as np
+      img = np.array([[[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 255]]], dtype=np.uint8)
+    prompt: |
+      Write `to_gray(img)` converting an `H × W × 3` RGB `uint8` image to `H × W` `uint8` using
+      **Y = 0.299 R + 0.587 G + 0.114 B**, rounded to the nearest integer. Why is green weighted most?
+      Answer in a comment.
+    starter: |
+      import numpy as np
+
+      def to_gray(img):
+          return img.mean(axis=2).astype(np.uint8)   # ✗ equal weights
+    solution: |
+      import numpy as np
+
+      # Human vision is most sensitive to green, so green contributes most to perceived brightness.
+      def to_gray(img):
+          y = img.astype(np.float64) @ np.array([0.299, 0.587, 0.114])
+          return np.clip(np.round(y), 0, 255).astype(np.uint8)
+    tests:
+      - name: Uses the luminance weights
+        code: |
+          assert to_gray(img).tolist() == [[76, 150, 29, 255]], f"got {to_gray(img).tolist()}"
+      - name: Output is H × W uint8
+        code: |
+          g = to_gray(img)
+          assert g.shape == (1, 4) and g.dtype == np.uint8

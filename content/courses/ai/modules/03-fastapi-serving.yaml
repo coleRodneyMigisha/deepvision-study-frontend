@@ -1,0 +1,414 @@
+id: fastapi-serving
+title: API Engineering with FastAPI, Pydantic & Async Workers
+subtitle: Build ultra-low latency, strongly typed prediction endpoints with input contracts
+recap: Wrap the model in a FastAPI service so other systems can call it over HTTP. Pydantic validates every
+  field at the boundary (age 0–120, positive glucose, enum categories) and returns HTTP 422 instead of
+  crashing the model. Use async for I/O-bound work and multiple Uvicorn workers or threadpools for CPU-bound
+  inference; Little's Law L = λ·W links throughput, latency and concurrency.
+traps:
+  - Doing CPU-heavy inference directly in an async handler and blocking the event loop.
+  - Validating inputs inside model code instead of at the API boundary.
+  - Forgetting to convert milliseconds to seconds in Little's Law.
+lesson:
+  checkpointStep: 3
+  steps:
+    - A serialized model sitting on disk cannot diagnose patients. We wrap it in a REST API so web clients,
+      hospital electronic health record (EHR) systems, and mobile apps can request predictions over HTTP.
+    - FastAPI is the industry standard for Python ML serving. Built on Starlette and Pydantic, it provides
+      asynchronous request handling, automatic JSON serialization, and OpenAPI documentation.
+    - "With Pydantic schemas, every incoming patient attribute is strictly validated at the API perimeter: age
+      must be between 0 and 120, avg_glucose_level must be positive, and categorical fields must match enum
+      choices."
+    - "Checkpoint: why should ML inference endpoints run under asynchronous web frameworks, and how does
+      Pydantic protect downstream model code from crashing?"
+    - Pydantic catches type errors, missing attributes, and domain boundary violations before your model code
+      is touched, returning a clean HTTP 422 Unprocessable Entity error instead of a server crash.
+    - To maximize throughput, distinguish between I/O-bound tasks (database logging, async audit trails) and
+      CPU-bound tensor inference, using multi-worker Uvicorn processes or threadpools.
+checkpoint:
+  question: How does Pydantic schema validation enforce data contracts at the API boundary, and why is this
+    critical for maintaining 99.9% uptime in production healthcare ML?
+  hint: Consider what happens when a client sends a string instead of a float for BMI, or a negative glucose
+    level. How does early boundary validation prevent 500 Internal Server Errors?
+  keywords:
+    - pydantic
+    - schema
+    - validation
+    - data contract
+    - type enforcement
+    - "422"
+    - boundary
+    - uptime
+    - crash
+    - sanitization
+  idealAnswer: Pydantic enforces strict data contracts at the network boundary before payloads ever reach model
+    logic. It verifies data types (converting string numbers to floats where valid), rejects malformed keys,
+    and validates domain rules (e.g. `Field(..., ge=0, le=125)` for age, or allowed smoking enums). If invalid
+    data arrives, FastAPI instantly returns a structured HTTP 422 response with exact field-level error
+    messages. In production healthcare ML, this prevents unhandled Python exceptions (like ValueError in
+    scikit-learn), avoids silent NaN corruption, shields backend logs from crashing, and guarantees 99.9%
+    service reliability.
+terms:
+  - term: FastAPI
+    definition: High-performance, modern Python web framework for building APIs with Starlette and Pydantic.
+  - term: Pydantic BaseModel
+    definition: Data validation and settings management class using Python type annotations to validate payloads.
+  - term: HTTP 422
+    definition: "Unprocessable Entity: client status code indicating the request body was well-formed JSON but
+      failed semantic schema validation."
+  - term: Uvicorn
+    definition: Lightning-fast ASGI web server implementation for Python, running asynchronous event loops via uvloop.
+  - term: Throughput (QPS)
+    definition: "Queries Per Second: the volume of inference requests successfully completed by the server per
+      unit of time."
+quiz:
+  - question: "A hospital client sends {'age': -5, 'bmi': 'obese'} to a FastAPI endpoint requiring float bmi and
+      age > 0. What happens?"
+    options:
+      - The server crashes with 500 Internal Server Error
+      - FastAPI automatically catches validation errors and returns 422 Unprocessable Entity
+      - The model converts -5 to 0 and predicts anyway
+      - The request hangs indefinitely
+    answer: 1
+    explanation: Pydantic validates input schemas immediately upon receipt, blocking invalid fields and returning
+      a descriptive 422 response without invoking model code.
+  - question: What is Little's Law relating Concurrency (L), Throughput (λ), and Latency (W)?
+    options:
+      - L = λ × W
+      - L = λ / W
+      - L = λ + W
+      - W = L × λ²
+    answer: 0
+    explanation: "Little's Law states that the average number of concurrent requests in a stable system equals the
+      arrival throughput multiplied by the average request latency: L = λ × W."
+  - question: An invalid field in a FastAPI request body returns…
+    options:
+      - 200
+      - 400
+      - 422
+      - 500
+    answer: 2
+    explanation: Pydantic validation errors give 422 Unprocessable Entity.
+  - question: Why can a CPU-heavy predict() inside async def hurt throughput?
+    options:
+      - It is not allowed
+      - It blocks the event loop so other requests wait
+      - It uses more memory
+      - It disables validation
+    answer: 1
+    explanation: Use def (threadpool) or more workers for CPU-bound work.
+  - question: λ = 200 req/s, W = 15 ms. L = ?
+    options:
+      - "3"
+      - "13.3"
+      - "30"
+      - "0.075"
+    answer: 0
+    explanation: 200 × 0.015 = 3.
+  - question: What does Literal['never','formerly','smokes'] enforce?
+    options:
+      - A string of any value
+      - Only those exact category values
+      - A number
+      - Nothing at runtime
+    answer: 1
+    explanation: Anything else is rejected with 422.
+  - question: Utilisation rises from 50% to 90%. Roughly what happens to queueing latency?
+    options:
+      - Stays the same
+      - Doubles
+      - About 5× higher
+      - Halves
+    answer: 2
+    explanation: S/(1−ρ) goes from 2S to 10S — 5× higher.
+  - question: Where should the model be loaded in a multi-worker deployment?
+    options:
+      - Per request
+      - Once per worker at startup
+      - Once per day by cron
+      - In the client
+    answer: 1
+    explanation: Each worker process needs its own copy, loaded once.
+fact:
+  title: FastAPI + Pydantic v2 Performance
+  body: Pydantic v2 was completely rewritten in Rust, delivering 5× to 50× faster JSON parsing and validation.
+    This allows a single FastAPI worker to validate thousands of patient payloads per second with
+    sub-millisecond CPU overhead.
+lab:
+  title: FastAPI Model Serving, Pydantic Schema Validation & Latency Simulator
+  variations:
+    - title: Little's Law API Concurrency Capacity
+      question: A stroke screening endpoint handles an arrival rate <b>λ = 250 requests/sec</b> with average model
+        inference latency <b>W = 40 ms (0.040s)</b>. According to Little's Law (<code>L = λ × W</code>), how
+        many concurrent requests are in flight on the server?
+      answer: 10
+      tolerance: 0.1
+      hint: Multiply 250 req/s by 0.040s.
+      explanation: L = 250 × 0.040 = 10 concurrent requests in flight. This dictates the minimum worker pool sizing
+        needed to prevent request queuing.
+    - title: FastAPI Uvicorn Concurrency Sizing
+      question: A Uvicorn worker process handles up to <b>50 concurrent async requests</b>. To support a peak
+        concurrent capacity of <b>200 active requests</b> without queuing, how many worker processes must be
+        spawned via Gunicorn?
+      answer: 4
+      tolerance: 0
+      hint: Divide 200 by 50.
+      explanation: 200 / 50 = 4 workers. Typically, 2 to 4 workers per CPU core maximize asynchronous I/O throughput.
+    - title: Edge Pydantic Validation CPU Savings
+      question: Pydantic rejects an invalid payload (e.g., negative glucose) at the API boundary in <b>1.2 ms</b>.
+        If unvalidated, passing the bad input into scikit-learn causes a crash after <b>18.5 ms</b> of
+        pipeline execution. How many <b>ms</b> of CPU execution time are saved per bad request?
+      answer: 17.3
+      tolerance: 0.1
+      hint: Subtract 1.2 ms from 18.5 ms.
+      explanation: 18.5 − 1.2 = 17.3 ms saved per rejected request, shielding CPU inference workers from wasted compute.
+notes:
+  - heading: Why an API
+    body: |
+      A model file on disk can't help a nurse at triage. Wrapping it in a **REST API** lets any system — the hospital's electronic health record, a mobile app, a dashboard — send patient data over HTTP and get a prediction back as JSON.
+
+      **FastAPI** is the de-facto choice for Python ML serving: it's built on Starlette (async web) and **Pydantic** (validation), generates interactive OpenAPI docs at `/docs` automatically, and is fast enough that the model, not the framework, is the bottleneck.
+  - heading: Pydantic contracts and HTTP 422
+    body: |
+      ```python
+      class Patient(BaseModel):
+          age: float = Field(ge=0, le=120)
+          avg_glucose_level: float = Field(gt=0, le=400)
+          bmi: float | None = Field(default=None, ge=10, le=80)
+          hypertension: bool
+          smoking_status: Literal["never", "formerly", "smokes", "unknown"]
+
+      @app.post("/predict")
+      def predict(p: Patient) -> Prediction: ...
+      ```
+
+      Every request is checked **at the boundary**: wrong types, missing required fields, out-of-range values and unknown categories are rejected with **HTTP 422 Unprocessable Entity** and a JSON body naming the exact field and problem. Your model code never sees invalid input, so it can't crash or — worse — return a prediction for an impossible patient.
+
+      Validation is also documentation: the same schema appears in `/docs` for the integrators.
+  - heading: Async, workers and CPU-bound inference
+    body: |
+      `async def` endpoints let one process handle many requests that are **waiting** — on a database, a log write, another HTTP call. But model inference is **CPU-bound**: while XGBoost computes, the event loop is blocked and nothing else is served.
+
+      Options:
+
+      - Declare the endpoint with plain `def`: FastAPI runs it in a **threadpool**.
+      - Run several **Uvicorn workers** (processes): `uvicorn app.main:app --workers 4` or Gunicorn with Uvicorn workers. Each worker loads its own model copy.
+      - Offload heavy jobs to a queue (Celery/RQ) and return a job id.
+
+      Load the model **once per worker at startup**, never per request.
+  - heading: Little's Law and latency under load
+    body: |
+      **Little's Law**: L = λ × W — average requests in the system = arrival rate × average time each spends. At 120 req/s and 25 ms latency, 3 requests are in flight on average.
+
+      Capacity: with c workers and service time S per request, the service can complete c / S requests per second (4 workers × 1000/20 ms = 200 req/s). Utilisation ρ = λ / capacity.
+
+      Latency doesn't grow linearly with load. A simple queueing approximation is **W ≈ S / (1 − ρ)**: at ρ = 50% latency doubles; at 90% it's 10×; at ρ ≥ 1 the queue grows without bound. That's why services are sized to run at roughly 60–70% utilisation, and why p99 latency (the slowest 1%) is monitored, not just the mean.
+examples:
+  - title: Little's Law
+    problem: The stroke API handles 80 requests/s with an average latency of 45 ms. How many requests are in
+      flight, on average?
+    steps:
+      - "Convert to seconds: W = 0.045 s."
+      - L = λW = 80 × 0.045 = **3.6** requests.
+    answer: 3.6 concurrent requests.
+    takeaway: Concurrency, throughput and latency are tied together — fix two and you know the third.
+  - title: How many workers?
+    problem: Inference takes 20 ms. Peak traffic is 300 req/s and you want utilisation ≤ 70%. How many workers do
+      you need?
+    steps:
+      - One worker serves 1000 / 20 = 50 req/s.
+      - Needed capacity = 300 / 0.7 ≈ 429 req/s.
+      - Workers = 429 / 50 ≈ 8.6 → **9 workers**.
+      - "Check: 9 × 50 = 450 req/s, ρ = 300/450 = 67%; latency ≈ 20 / 0.33 ≈ 60 ms."
+    answer: 9 workers.
+    takeaway: Size for a target utilisation, not for 100% — queues explode near capacity.
+questions:
+  - question: How does Pydantic protect the model code in a FastAPI service? Give two concrete validation rules
+      for the stroke API.
+    kind: short
+    marks: 5
+    keywords:
+      - pydantic
+      - schema
+      - boundary
+      - type
+      - range
+      - Field
+      - ge
+      - le
+      - Literal
+      - "422"
+      - before model
+    idealAnswer: "Pydantic validates every request against a schema before the endpoint runs; invalid input is
+      rejected with HTTP 422 and a message naming the field, so model code never sees bad data. Examples: age:
+      float = Field(ge=0, le=120); smoking_status: Literal['never', 'formerly', 'smokes', 'unknown'];
+      avg_glucose_level: float = Field(gt=0)."
+  - question: State Little's Law and use it to explain why latency rises sharply as a service approaches capacity.
+    kind: short
+    marks: 5
+    keywords:
+      - L = λW
+      - concurrency
+      - arrival rate
+      - latency
+      - utilisation
+      - capacity
+      - queue
+      - 1 - ρ
+      - nonlinear
+    idealAnswer: "Little's Law: L = λW — average requests in the system equals arrival rate times average time in
+      the system. As arrival rate approaches capacity (utilisation ρ → 1), requests queue; queueing models
+      give W ≈ S/(1 − ρ), so latency grows nonlinearly — doubling at 50% and 10× at 90% — and requests in
+      flight grow with it. Services are therefore sized for ~60–70% utilisation."
+  - question: Design the /predict service for the stroke model so it is correct, fast and safe under hospital
+      load. Cover the schema, model loading, concurrency model, error handling, capacity planning for 250
+      req/s at 20 ms inference, and what you would monitor.
+    kind: long
+    marks: 12
+    keywords:
+      - pydantic
+      - Field
+      - Literal
+      - "422"
+      - lifespan
+      - load once
+      - pipeline
+      - def
+      - threadpool
+      - uvicorn workers
+      - capacity
+      - utilisation
+      - 70%
+      - workers
+      - p99
+      - latency
+      - error rate
+      - model version
+      - logging
+    idealAnswer: "Schema: a Pydantic Patient model with typed, bounded fields (age 0–120, glucose > 0, optional
+      BMI range, Literal categories) returning a Prediction model (probability, risk tier, model_version);
+      invalid payloads get 422. Load the full joblib pipeline once per worker in the lifespan handler.
+      Inference is CPU-bound, so use a def endpoint (threadpool) and scale with multiple Uvicorn workers.
+      Capacity: one worker = 50 req/s; at 70% target utilisation 250 req/s needs 250/0.7/50 ≈ 7.1 → 8 workers
+      (or replicas behind a load balancer). Errors: return clear 4xx for client issues, catch model errors as
+      500 with a request id, never leak stack traces. Monitor request rate, p50/p99 latency, error rates,
+      utilisation, input distributions (for drift) and model version, with structured logs per request."
+coding:
+  - id: patient-schema
+    title: The Patient request schema
+    language: python
+    level: core
+    prompt: |
+      Define Pydantic models for the stroke API:
+
+      - `Patient`: `age` float 0–120; `avg_glucose_level` float > 0; `bmi` optional float between 10 and 80
+        (default `None`); `hypertension` and `heart_disease` bools; `smoking_status` one of
+        `"never"`, `"formerly"`, `"smokes"`, `"unknown"`.
+      - `Prediction`: `stroke_probability` float 0–1, `risk_tier` one of `"LOW"`, `"HIGH"`, `model_version` str.
+    starter: |
+      from typing import Literal
+      from pydantic import BaseModel, Field
+
+      class Patient(BaseModel):
+          age: float
+          avg_glucose_level: float
+          bmi: float
+          hypertension: bool
+          heart_disease: bool
+          smoking_status: str
+
+      class Prediction(BaseModel):
+          stroke_probability: float
+          risk_tier: str
+          model_version: str
+    solution: |
+      from typing import Literal
+      from pydantic import BaseModel, Field
+
+      class Patient(BaseModel):
+          age: float = Field(ge=0, le=120)
+          avg_glucose_level: float = Field(gt=0)
+          bmi: float | None = Field(default=None, ge=10, le=80)
+          hypertension: bool
+          heart_disease: bool
+          smoking_status: Literal["never", "formerly", "smokes", "unknown"]
+
+      class Prediction(BaseModel):
+          stroke_probability: float = Field(ge=0, le=1)
+          risk_tier: Literal["LOW", "HIGH"]
+          model_version: str
+    tests:
+      - name: A valid patient parses, BMI may be missing
+        code: |
+          p = Patient(age=67, avg_glucose_level=228, hypertension=True, heart_disease=False, smoking_status="formerly")
+          assert p.bmi is None
+      - name: Out-of-range values are rejected
+        code: |
+          from pydantic import ValidationError
+          base = dict(age=67, avg_glucose_level=228, bmi=30, hypertension=True, heart_disease=False, smoking_status="never")
+          for bad in [{"age": -12}, {"age": 150}, {"avg_glucose_level": 0}, {"bmi": 5}, {"smoking_status": "sometimes"}]:
+              try:
+                  Patient(**(base | bad))
+                  raise AssertionError(f"{bad} should be rejected with a 422")
+              except ValidationError:
+                  pass
+      - name: Predictions are bounded too
+        code: |
+          from pydantic import ValidationError
+          Prediction(stroke_probability=0.41, risk_tier="HIGH", model_version="2.3.0")
+          try:
+              Prediction(stroke_probability=1.4, risk_tier="HIGH", model_version="2.3.0")
+              raise AssertionError("a probability above 1 must be rejected")
+          except ValidationError:
+              pass
+  - id: predict-endpoint
+    title: The /predict service
+    language: review
+    level: exam
+    prompt: |
+      Write `app/main.py` for the stroke API using the `Patient` and `Prediction` models: load the joblib
+      pipeline **once at startup** (lifespan), expose `GET /health` and `POST /predict`, return the model
+      version from metadata, map probability ≥ the calibrated threshold (0.22) to `"HIGH"`, and keep the
+      CPU-bound prediction off the event loop. Comment your decisions.
+    starter: |
+      from contextlib import asynccontextmanager
+      from fastapi import FastAPI
+
+      app = FastAPI()
+    solution: |
+      import json
+      from contextlib import asynccontextmanager
+
+      import joblib
+      import pandas as pd
+      from fastapi import FastAPI
+
+      from app.schemas import Patient, Prediction
+
+      THRESHOLD = 0.22  # calibrated on validation data for recall within clinic capacity
+
+      @asynccontextmanager
+      async def lifespan(app: FastAPI):
+          # Load ONCE per worker; per-request loading would add disk I/O to every call.
+          app.state.model = joblib.load("models/stroke_pipeline.joblib")
+          app.state.meta = json.load(open("models/model_metadata.json"))
+          yield
+
+      app = FastAPI(title="Stroke risk API", lifespan=lifespan)
+
+      @app.get("/health")
+      def health():
+          return {"status": "ok", "model_version": app.state.meta["model_version"]}
+
+      @app.post("/predict", response_model=Prediction)
+      def predict(patient: Patient) -> Prediction:   # plain def → runs in the threadpool (CPU-bound)
+          row = pd.DataFrame([patient.model_dump()])  # Pydantic already rejected invalid input (422)
+          p = float(app.state.model.predict_proba(row)[0, 1])
+          return Prediction(stroke_probability=p, risk_tier="HIGH" if p >= THRESHOLD else "LOW",
+                            model_version=app.state.meta["model_version"])
+    rubric:
+      - Loads the model once at startup (lifespan or module import), not inside the request handler
+      - Uses the Pydantic Patient model as the request body so invalid input gets HTTP 422
+      - Keeps CPU-bound inference off the event loop (plain def endpoint/threadpool or workers)
+      - Applies the calibrated threshold (0.22) to produce the risk tier
+      - Returns the model version (traceability) and provides a health endpoint

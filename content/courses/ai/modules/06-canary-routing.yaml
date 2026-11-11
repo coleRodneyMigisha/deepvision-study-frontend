@@ -1,0 +1,337 @@
+id: canary-routing
+title: Serving Architectures, Load Balancing & Canary Traffic Routing
+subtitle: Implement zero-downtime upgrades, blue-green environments, and canary error budgets
+recap: Zero-downtime releases put a load balancer in front of healthy replicas. Blue/Green flips all traffic
+  from v1 to a verified v2 at once; Canary sends a small slice (e.g. 5%) to v2 and watches error rate, p99
+  latency and prediction anomalies, rolling back automatically when the error budget is breached. Canary
+  limits the blast radius of a bad model.
+traps:
+  - Thinking Blue/Green limits blast radius — it switches 100% at once.
+  - Rolling out a canary without automated rollback thresholds.
+  - Watching only HTTP errors and missing silent prediction anomalies.
+lesson:
+  checkpointStep: 3
+  steps:
+    - In mission-critical hospital systems, you cannot take an AI prediction service offline for 15 minutes
+      whenever an updated model checkpoint is released. We require zero-downtime deployment strategies.
+    - A reverse proxy and load balancer (such as Nginx, Traefik, or AWS ALB) acts as the single public entry
+      point, distributing incoming traffic across multiple healthy container replicas.
+    - In Blue/Green deployment, two identical production environments exist. Blue runs v1; we deploy v2 to
+      Green, verify health checks, and instantaneously switch router traffic from Blue to Green.
+    - "Checkpoint: how does a Canary deployment mitigate risk compared to Blue/Green, and what metrics trigger
+      an automated instant rollback?"
+    - In Canary routing, we route a small fraction (e.g. 5%) of real traffic to v2 while 95% remains on v1. We
+      monitor error rates, latency p99, and prediction anomalies.
+    - If the Canary error rate breaches an error budget threshold (e.g. >1.5% 5xx errors or 300ms p99
+      latency), the router immediately drops Canary traffic back to 0% with zero clinical disruption.
+checkpoint:
+  question: Compare Blue/Green and Canary deployment strategies for machine learning models. How do you
+    configure health checks and error budgets to automate rollbacks?
+  hint: Discuss traffic percentage splits, blast radius of model regressions, liveness vs readiness probes, and
+    automated threshold alerts.
+  keywords:
+    - canary
+    - blue green
+    - traffic
+    - rollback
+    - error budget
+    - health check
+    - readiness probe
+    - blast radius
+    - latency
+  idealAnswer: "Blue/Green deployment maintains two identical full environments; once Green is validated, router
+    traffic flips 100% all at once. While fast, if a subtle bug or edge-case regression exists, 100% of
+    incoming users are affected immediately. In contrast, Canary deployment routes a tiny initial fraction
+    (e.g. 5% to 10%) of live traffic to the new model (v2) while 90% stays on stable v1, drastically
+    minimizing the blast radius. Health checks use readiness probes (checking if model weights are loaded in
+    memory) and liveness probes (verifying the HTTP loop responds). Automated rollbacks monitor an error
+    budget: if the Canary's HTTP 5xx rate exceeds 1% or p99 latency spikes above 250ms over a 2-minute rolling
+    window, the ingress controller shifts 100% of traffic back to v1 automatically."
+terms:
+  - term: Canary Deployment
+    definition: Routing a small percentage of live production traffic to a new version to validate performance
+      before wide rollout.
+  - term: Blue/Green Deployment
+    definition: Maintaining two identical environments, flipping router traffic entirely from the active to the
+      standby environment.
+  - term: Blast Radius
+    definition: The scope and severity of damage or user impact if a new deployment experiences bugs or downtime.
+  - term: Readiness Probe
+    definition: A container check ensuring the application has finished initializing (e.g. loaded model weights)
+      before receiving traffic.
+  - term: Error Budget
+    definition: The maximum allowable threshold of errors or degraded latency permitted before deployment gates
+      halt and roll back.
+quiz:
+  - question: An ingress router directs 10% of traffic to a new model v2. Within 5 minutes, v2 has an error rate
+      of 8% while v1 has 0.05%. What should happen?
+    options:
+      - Route 100% traffic to v2 to see if it fixes itself
+      - Trigger an automated rollback, dropping v2 traffic to 0% and alerting on-call engineers
+      - Restart the entire cluster
+      - Ignore the error since it is under 10% total traffic
+    answer: 1
+    explanation: An error budget breach (8% error rate) on a canary deployment must immediately trigger an
+      automated rollback to protect production stability.
+  - question: What is the primary difference between a Liveness Probe and a Readiness Probe in container orchestration?
+    options:
+      - Liveness checks if the container is running; Readiness checks if the application is ready to accept
+        incoming user requests
+      - Liveness is for databases only
+      - Readiness checks disk space
+      - There is no difference
+    answer: 0
+    explanation: A liveness probe restarts a deadlocked container; a readiness probe holds traffic until heavy
+      assets (like 1GB ML models) have fully loaded into RAM.
+  - question: What is the blast radius of a Blue/Green switch?
+    options:
+      - The canary percentage
+      - 100% of users
+      - Zero
+      - One replica
+    answer: 1
+    explanation: All traffic moves to the new version at once.
+  - question: In a canary release, what share of traffic usually goes to v2 first?
+    options:
+      - 100%
+      - 50%
+      - A small slice like 5%
+      - 0%
+    answer: 2
+    explanation: Start small to limit impact.
+  - question: Which signal should NOT be the only canary health check?
+    options:
+      - HTTP 5xx rate
+      - p99 latency
+      - Prediction distribution
+      - Process is "running"
+    answer: 3
+    explanation: A running process can still return wrong or slow answers.
+  - question: What does a shadow deployment do with v2's responses?
+    options:
+      - Returns them to users
+      - Discards them (compares offline)
+      - Averages them with v1
+      - Caches them
+    answer: 1
+    explanation: Shadow traffic carries zero user risk.
+  - question: 10% of 200 QPS to a canary with a 3% error rate for 10 minutes. Errors?
+    options:
+      - "60"
+      - "360"
+      - "600"
+      - 3,600
+    answer: 1
+    explanation: 20 QPS × 600 s × 0.03 = 360.
+  - question: What is a readiness probe for?
+    options:
+      - Rolling back
+      - Telling the load balancer an instance can receive traffic
+      - Measuring drift
+      - Scaling to zero
+    answer: 1
+    explanation: Only ready instances (model loaded) get requests.
+fact:
+  title: Shadow Deployments (Dark Traffic)
+  body: "In ultra-high stakes domains like medical diagnosis or autonomous driving, companies use Shadow
+    Deployments: real production requests are asynchronously mirrored to the new model in the background,
+    testing predictions against ground truth without exposing end users to any risk."
+lab:
+  title: Canary Release & Traffic Splitting Simulator
+  variations:
+    - title: Canary Deployment Initial Traffic Allocation
+      question: A hospital network processes <b>8,000 diagnostic queries</b> per day. During the first phase of a
+        canary release, <b>5%</b> of traffic is shifted to Model v2. Exactly how many patient requests are
+        routed to the canary model on day one?
+      answer: 400
+      tolerance: 0
+      hint: Multiply 8,000 by 0.05.
+      explanation: 8,000 × 0.05 = 400 requests. This limited sample validates production metrics while bounding
+        potential failure exposure to just 5% of users.
+    - title: Error Budget Depletion Rate Gate
+      question: During canary testing, <b>36 out of 20,000 requests</b> return HTTP 500 server errors. What is the
+        observed error rate in <b>percent</b>?
+      answer: 0.18
+      tolerance: 0.01
+      hint: Compute (36 / 20,000) × 100%.
+      explanation: (36 / 20,000) × 100% = 0.18%. If the SLA error budget is 0.10% (99.9% availability), this 0.18%
+        burn triggers an automatic deployment abort.
+    - title: Blue-Green Instant DNS Rollback
+      question: When a canary fault is detected, a Blue-Green router flips 100% of traffic back to the healthy Blue
+        environment in <b>0.45 seconds</b>. If a full redeployment would have taken <b>180 seconds</b>, how
+        many seconds of critical patient service disruption are prevented?
+      answer: 179.55
+      tolerance: 0.5
+      hint: Subtract 0.45 from 180.
+      explanation: 180 − 0.45 = 179.55 seconds of downtime avoided by having an idle, pre-warmed Blue deployment
+        standing by.
+notes:
+  - heading: Zero-downtime as a requirement
+    body: |
+      A hospital triage service can't go offline for 15 minutes every time a new model is released. Releases must be **zero-downtime**, and a bad model must be undone in seconds, not after a bug report.
+
+      The building block is a **load balancer / reverse proxy** (Nginx, Traefik, an AWS ALB) in front of several **replicas** of the service. It sends each request to a healthy replica and can split traffic between versions. Replicas report readiness with a **readiness probe** (`/health`), so traffic only goes to instances that have loaded the model.
+  - heading: Blue/Green deployment
+    body: |
+      Run two identical environments. **Blue** serves all traffic with v1. Deploy v2 to **Green**, run health checks and smoke tests against it, then switch the router so 100% of traffic goes to Green. Keep Blue running so you can switch back instantly.
+
+      - ✓ Simple and instant; rollback is just switching back.
+      - ✗ Every user hits v2 at the same moment, so the **blast radius** of a bug is 100%. Problems that only appear under real traffic — rare inputs, load — affect everyone before you notice.
+      - ✗ Needs double the capacity during the switch.
+  - heading: Canary releases
+    body: |
+      Named after canaries in coal mines: expose a **small slice** of real traffic to v2 first — say **5%** — while 95% stays on v1. Watch it closely. If it's healthy, increase step by step (5 → 25 → 50 → 100%). If not, send its traffic back to 0%.
+
+      What to watch, compared with v1 over the same period:
+
+      - **Error rate** (HTTP 5xx) and timeouts.
+      - **Latency**, especially p99.
+      - **Prediction behaviour** — distribution of predicted risk, share of high-risk flags. A model can be "healthy" by HTTP standards and still clinically wrong.
+
+      The thresholds form an **error budget**: e.g. roll back automatically if the canary's 5xx rate exceeds 1.5% or p99 exceeds 300 ms. Automating this is the point — a human might take minutes; a router takes seconds.
+  - heading: Shadow, A/B and choosing a strategy
+    body: |
+      Two more patterns worth knowing:
+
+      - **Shadow (mirrored) deployment** — v2 receives a *copy* of live traffic but its answers are discarded. Zero user risk; good for comparing predictions with v1 before any exposure.
+      - **A/B testing** — split traffic to measure which version produces better *outcomes* (not just fewer errors), usually for longer, with statistical tests.
+
+      For clinical models a sensible path is shadow → canary with automated rollback → full rollout, with the old version kept warm until the new one has a track record.
+examples:
+  - title: Errors during a canary
+    problem: A gateway sends 5% of 240 QPS to v2. Over 15 minutes v2 has a 2.5% error rate. How many failed
+      requests, and what would a 1.5% error budget do?
+    steps:
+      - Canary traffic = 240 × 0.05 = **12 QPS**.
+      - Requests in 15 min = 12 × 900 = **10,800**; errors = 10,800 × 0.025 = **270**.
+      - 2.5% > 1.5% budget → the router automatically sets v2's share to 0% (rollback).
+      - "With Blue/Green, all 240 QPS would have hit v2: 240 × 900 × 0.025 = 5,400 errors."
+    answer: 270 errors, then automatic rollback.
+    takeaway: Canary turns a 5,400-error incident into a 270-error one — and stops it automatically.
+  - title: Is the canary actually worse?
+    problem: Over one hour v1 had 18 errors in 100,000 requests (0.018%) and the canary 4 errors in 5,000 (0.08%).
+      Both are under a 1.5% budget. Should the rollout continue?
+    steps:
+      - Both are far below the absolute 1.5% budget, so an automatic gate would pass.
+      - But the canary's rate is ~4× v1's — a relative regression worth investigating.
+      - With only 4 errors, the difference could be noise; extend the canary period at 5% to collect more data
+        before increasing.
+    answer: Pause at the current percentage and gather more evidence.
+    takeaway: Compare against the baseline, not only against a fixed threshold.
+questions:
+  - question: Compare Blue/Green and Canary deployments in terms of risk and rollback.
+    kind: short
+    marks: 6
+    keywords:
+      - blue
+      - green
+      - switch
+      - 100%
+      - blast radius
+      - instant rollback
+      - canary
+      - small fraction
+      - gradual
+      - monitor
+      - automatic rollback
+      - capacity
+    idealAnswer: "Blue/Green runs v1 (Blue) and v2 (Green) side by side and switches 100% of traffic at once:
+      rollback is instant by switching back, but a bug affects every user (100% blast radius) and it needs
+      double capacity. Canary sends a small fraction (e.g. 5%) to v2, monitors it against v1 and increases
+      gradually; a bad release affects only the canary slice and is rolled back automatically by setting its
+      weight to 0%."
+  - question: Which metrics would trigger an automatic rollback of a canary stroke-risk model, and why are HTTP
+      metrics alone not enough?
+    kind: short
+    marks: 5
+    keywords:
+      - error rate
+      - 5xx
+      - p99 latency
+      - error budget
+      - threshold
+      - prediction distribution
+      - high-risk rate
+      - silent
+      - clinically wrong
+      - baseline
+    idealAnswer: "Roll back when the canary breaches the error budget relative to v1: 5xx/timeout rate above e.g.
+      1.5%, p99 latency above e.g. 300 ms, or prediction anomalies — a shifted risk distribution or a sudden
+      change in the share of high-risk flags. HTTP metrics alone aren't enough because a model can return HTTP
+      200 with valid JSON while being clinically wrong, so prediction behaviour must be monitored too."
+  - question: Plan the rollout of stroke model v2 at the referral hospital from first deployment to 100% traffic.
+      Include the infrastructure, the stages and percentages, the gates at each stage, the rollback mechanism,
+      and how you would compare v1 and v2 predictions safely before exposing patients.
+    kind: long
+    marks: 12
+    keywords:
+      - load balancer
+      - replicas
+      - readiness probe
+      - shadow
+      - mirror
+      - canary
+      - 5%
+      - 25%
+      - 50%
+      - 100%
+      - error budget
+      - p99
+      - prediction distribution
+      - automatic rollback
+      - weight 0
+      - baseline
+      - keep v1 warm
+    idealAnswer: "Infrastructure: v1 and v2 replicas behind a load balancer with weighted routing; readiness
+      probes on /health so v2 only receives traffic once the model is loaded. Stage 0 — shadow: mirror live
+      traffic to v2, discard its responses and compare its predictions and latency with v1 offline (agreement
+      rate, risk distribution, high-risk share). Stage 1 — canary 5% for a fixed window; gates: 5xx and
+      timeout rate within budget (e.g. < 1.5% and not worse than v1), p99 < 300 ms, prediction distribution
+      consistent with shadow results. If any gate fails, the router automatically sets v2's weight to 0% and
+      alerts. Stages 2–4 — 25%, 50%, 100% with the same gates and longer windows. Keep v1 deployed and warm
+      until v2 has run cleanly at 100% for an agreed period, so rollback remains instant."
+coding:
+  - id: canary-gate
+    title: An automated canary gate
+    language: python
+    level: core
+    prompt: |
+      Write `canary_decision(baseline, canary, budget)` returning `"rollback"`, `"hold"` or `"promote"`.
+      `baseline` and `canary` are dicts with `requests`, `errors`, `p99_ms` and `high_risk_rate`
+      (share of predictions flagged high-risk). `budget` has `max_error_rate`, `max_p99_ms` and
+      `max_risk_shift` (allowed absolute change in high-risk rate vs baseline).
+
+      - **rollback** if the canary breaches *any* budget.
+      - **hold** if it's within budget but has fewer than 1,000 requests (not enough evidence yet).
+      - **promote** otherwise.
+    setup: |
+      BUDGET = {"max_error_rate": 0.015, "max_p99_ms": 300, "max_risk_shift": 0.05}
+      V1 = {"requests": 100_000, "errors": 120, "p99_ms": 180, "high_risk_rate": 0.19}
+    starter: |
+      def canary_decision(baseline, canary, budget):
+          return "promote"
+    solution: |
+      def canary_decision(baseline, canary, budget):
+          err = canary["errors"] / max(1, canary["requests"])
+          shift = abs(canary["high_risk_rate"] - baseline["high_risk_rate"])
+          if err > budget["max_error_rate"] or canary["p99_ms"] > budget["max_p99_ms"] or shift > budget["max_risk_shift"]:
+              return "rollback"
+          if canary["requests"] < 1000:
+              return "hold"
+          return "promote"
+    tests:
+      - name: Too many errors → rollback
+        code: |
+          assert canary_decision(V1, {"requests": 5000, "errors": 120, "p99_ms": 190, "high_risk_rate": 0.2}, BUDGET) == "rollback"
+      - name: Slow p99 → rollback
+        code: |
+          assert canary_decision(V1, {"requests": 5000, "errors": 5, "p99_ms": 420, "high_risk_rate": 0.2}, BUDGET) == "rollback"
+      - name: Healthy HTTP but shifted predictions → rollback
+        code: |
+          assert canary_decision(V1, {"requests": 5000, "errors": 5, "p99_ms": 190, "high_risk_rate": 0.31}, BUDGET) == "rollback", "a model can return 200s and still be clinically wrong"
+      - name: Healthy but too little traffic → hold
+        code: |
+          assert canary_decision(V1, {"requests": 400, "errors": 0, "p99_ms": 170, "high_risk_rate": 0.2}, BUDGET) == "hold"
+      - name: Healthy with enough evidence → promote
+        code: |
+          assert canary_decision(V1, {"requests": 6000, "errors": 6, "p99_ms": 175, "high_risk_rate": 0.2}, BUDGET) == "promote"

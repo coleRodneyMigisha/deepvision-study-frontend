@@ -1,0 +1,403 @@
+id: pipelines-parquet
+title: "Pipelines: ETL vs ELT, Parquet & Idempotency"
+subtitle: Build modular, repeatable pipelines with columnar storage (Lab 3)
+recap: "A pipeline is modular stages (profile → validate → clean → store) that can be re-run safely. ETL
+  transforms before loading; ELT loads raw first and transforms in-engine. Parquet is columnar, typed and
+  compressed, so queries read only the columns they need. Idempotency means running twice leaves the same
+  state: use atomic temp-file swaps (os.replace) and primary-key upserts or partition overwrites, never blind
+  appends."
+traps:
+  - Using append mode — every retry or backfill duplicates rows.
+  - Writing directly to the final file so a crash leaves it half-written.
+  - Thinking Parquet compression is the only win — column pruning is usually bigger.
+lesson:
+  checkpointStep: 3
+  steps:
+    - "A notebook that only works when you run cells in a secret order is not a pipeline. In Lab 3 we
+      refactored our code into modular stages: profile → validate → clean → store, orchestrated by
+      run_pipeline.py."
+    - In classic ETL, data is transformed on a staging server before loading into storage. In modern ELT, raw
+      data lands in a lake or warehouse first and transformations run in-engine using SQL or DuckDB.
+    - "Where should cleaned data live? CSV is row-oriented, untyped, and slow to parse. Apache Parquet is
+      columnar: it stores each column contiguously with explicit types, dictionary encoding, and Snappy
+      compression."
+    - "Checkpoint: what does it mean for a data pipeline to be idempotent, and how do you prevent duplicate
+      rows or half-written files when a job re-runs?"
+    - "An idempotent pipeline produces the exact same storage state whether run once or ten times on the same
+      input: f(f(x)) = f(x). Plain append violates idempotency by doubling row counts on every retry."
+    - To make file writes atomic and idempotent, write to a temporary file and call os.replace(tmp, target).
+      In databases, use primary-key upserts (INSERT OR REPLACE) or partition overwrite by date.
+checkpoint:
+  question: Define idempotency in data pipelines. Why does a naive append mode break idempotency on retries, and
+    how do you engineer both file outputs and database loads to be idempotent?
+  hint: Mathematically f(f(x)) = f(x). Think about what happens when a task fails at 99% and Airflow retries it.
+    Mention atomic temp-file replacement and primary-key upserts / partition overwrites.
+  keywords:
+    - idempotent
+    - idempotency
+    - same
+    - repeat
+    - retry
+    - duplicate
+    - append
+    - atomic
+    - temp
+    - replace
+    - upsert
+    - primary key
+    - partition
+    - overwrite
+  idealAnswer: A pipeline is idempotent if running it multiple times on the same input leaves the target storage
+    in the exact same state as running it once. Naive append breaks this because any retry or backfill inserts
+    duplicate rows, inflating counts and corrupting aggregates. For file outputs, ensure idempotency by
+    writing to a temporary file and atomically swapping it into place (`os.replace`) or overwriting the
+    specific date partition. For database tables, enforce a composite primary key and use `INSERT OR REPLACE`
+    (upsert) or `DELETE WHERE date = ...` inside a single transaction before inserting.
+terms:
+  - term: Idempotency
+    definition: Running a job N times has the exact same effect as running it once.
+  - term: Columnar storage (Parquet)
+    definition: Stores values column-by-column; enables column pruning and high compression ratios.
+  - term: Row group & predicate pushdown
+    definition: Parquet stores min/max statistics per block so engines skip irrelevant chunks without reading them.
+  - term: Atomic write
+    definition: Write to .tmp then os.replace() so readers never see a truncated or half-written file.
+  - term: Upsert
+    definition: INSERT ... ON CONFLICT UPDATE (or INSERT OR REPLACE) keyed on the business key.
+quiz:
+  - question: A table has 12 columns (each 8 bytes/row) and 1,000,000 rows. A query selects only 2 columns.
+      Roughly how much less raw data does columnar storage scan than row-oriented CSV?
+    options:
+      - 2× less
+      - 6× less
+      - 12× less
+      - Same amount
+    answer: 1
+    explanation: "Column pruning reads only 2 of the 12 columns: 12 / 2 = 6× less I/O before even counting compression."
+  - question: Why write to 'market_prices.parquet.tmp' and call os.replace() instead of writing directly to
+      'market_prices.parquet'?
+    options:
+      - It compresses better
+      - It prevents corrupted half-written files if the process crashes mid-write
+      - It skips schema validation
+      - Parquet requires .tmp extensions
+    answer: 1
+    explanation: os.replace() is an atomic filesystem rename on POSIX; downstream readers either see the old
+      complete file or the new complete file.
+  - question: In ELT, where do transformations usually run?
+    options:
+      - On the data source
+      - In a Python staging server
+      - Inside the warehouse/engine after loading
+      - In the browser
+    answer: 2
+    explanation: ELT loads raw data first, then transforms it in-engine (e.g. SQL in DuckDB).
+  - question: Which Parquet feature lets a date filter skip whole blocks of data?
+    options:
+      - Dictionary encoding
+      - Row-group min/max statistics (predicate pushdown)
+      - Snappy compression
+      - Column names
+    answer: 1
+    explanation: Each row group stores min/max per column, so blocks that can't match are skipped.
+  - question: Why is os.replace(tmp, target) used when writing output files?
+    options:
+      - It compresses the file
+      - It is an atomic rename
+      - so readers never see a half-written file
+      - It validates the schema
+      - It deletes the raw file
+    answer: 1
+    explanation: Atomic replacement means the target is always either the old or the new complete file.
+  - question: f(f(x)) = f(x) is the definition of…
+    options:
+      - Determinism
+      - Idempotency
+      - Immutability
+      - Atomicity
+    answer: 1
+    explanation: Applying an idempotent operation again changes nothing.
+  - question: A CSV column contains "0012". What can go wrong that Parquet avoids?
+    options:
+      - Nothing
+      - Type inference may read it as the integer 12
+      - Parquet can't store strings
+      - CSV can't store numbers
+    answer: 1
+    explanation: CSV has no schema, so readers guess types; Parquet stores the declared type.
+  - question: What's the main benefit of splitting a pipeline into stages?
+    options:
+      - Fewer files
+      - Each stage can be tested
+      - rerun and retried on its own
+      - It removes the need for logging
+      - It makes Python faster
+    answer: 1
+    explanation: Small stages with clear inputs/outputs are testable and recoverable.
+fact:
+  title: Why Parquet + DuckDB beats CSV by 20×–100×
+  body: Because all values of a column sit together in Parquet, a single column of market names like 'Owino'
+    repeated 50,000 times collapses to a tiny integer dictionary plus run-length encoding — shrinking size by
+    80%+ and allowing SIMD vectorised scans.
+lab:
+  title: Parquet Columnar I/O & Idempotency Simulator
+  variations:
+    - title: Columnar Pruning + Compression I/O Savings
+      question: A dataset has <b>10 columns</b> of equal byte width and occupies <b>240 MB</b> as an uncompressed
+        CSV. Stored in Parquet with <b>3×</b> Snappy compression, how many <b>MB</b> does DuckDB read to scan
+        just <b>2 columns</b>?
+      answer: 16
+      tolerance: 0.1
+      hint: "Column pruning reads 2/10 of the table, and Snappy shrinks that by 3×: 240 × (2/10) / 3."
+      explanation: 2 of 10 columns = 48 MB uncompressed → divided by 3× compression = 16 MB scanned (a 15× reduction
+        from 240 MB!).
+    - title: Non-Idempotent Retry Row Inflation
+      question: A daily batch contains <b>1,500</b> unique records, with <b>200</b> records overlapping the previous
+        day's load. The database already holds <b>10,000</b> rows. If a broken `append` job runs <b>3
+        times</b> (initial + 2 retries), how many excess rows are in the table compared to a single idempotent
+        `upsert`?
+      answer: 3200
+      tolerance: 0
+      hint: Idempotent upsert adds only the 1,300 truly new rows (total 11,300). Naive append adds 1,500 × 3 = 4,500
+        rows (total 14,500).
+      explanation: "Idempotent upsert: 10,000 + (1,500 − 200) = 11,300 rows. 3× naive appends: 10,000 + 3 × 1,500 =
+        14,500 rows. Excess corrupt rows = 14,500 − 11,300 = 3,200."
+    - title: Parquet Row-Group Predicate Pushdown
+      question: A Parquet file has <b>800,000</b> rows split evenly into <b>8 row groups</b> sorted by `date`. A
+        query filters `WHERE date = '2025-11-15'`, which falls inside a single row group. Using min/max
+        statistics, how many thousand rows does DuckDB <b>skip</b> without reading?
+      answer: 700
+      tolerance: 0
+      hint: Each row group has 100,000 rows. 7 of the 8 row groups are skipped completely.
+      explanation: Each row group holds 800,000 / 8 = 100,000 rows. Min/max pushdown skips 7 row groups = 700,000
+        rows (700 thousand).
+notes:
+  - heading: From notebook to pipeline
+    body: |
+      A notebook is great for exploring and terrible for production: cells can run out of order, state hides in memory, and "it worked yesterday" is not a guarantee. A **pipeline** is the same logic split into small, named stages with clear inputs and outputs:
+
+      `profile.py → validate.py → clean.py → store.py`, orchestrated by `run_pipeline.py`.
+
+      Each stage reads files, does one job, writes files and logs what it did (row counts, durations). That gives you three things a notebook can't: you can **rerun one stage** without the others, you can **test each stage**, and a scheduler like Airflow can **retry the stage that failed** instead of everything.
+  - heading: ETL vs ELT
+    body: |
+      | | ETL | ELT |
+      |---|---|---|
+      | Order | Extract → Transform → Load | Extract → Load → Transform |
+      | Where transforms run | in Python on a staging machine | inside the warehouse/engine (SQL, DuckDB) |
+      | Raw data kept? | often not | yes — raw lands first |
+      | Good when | data is small, transforms are complex Python | the engine is powerful and you want to re-transform later |
+
+      Modern analytics leans towards **ELT** because storage is cheap and engines like DuckDB, BigQuery or Snowflake are fast: land the raw data once, then build cleaned tables with SQL that can be changed and rerun at any time. Our course pipeline is a hybrid — Python cleaning, then DuckDB for modelling and queries.
+  - heading: Why Parquet beats CSV
+    body: |
+      CSV is **row-oriented text**: every query has to read and parse every byte of every column, and the types are guessed each time (`"0012"` becomes 12, dates become strings).
+
+      Parquet is a **binary, columnar** format:
+
+      - **Column pruning** — values of each column are stored together, so `SELECT AVG(price_ugx)` reads only that column. Reading 2 of 10 columns reads ~20% of the data.
+      - **Compression that works** — a column of market names repeats the same few strings, so dictionary + run-length encoding shrinks it dramatically.
+      - **Typed schema** — integers stay integers, dates stay dates.
+      - **Row-group statistics** — each block stores min/max per column, so a filter like `date >= '2025-03-01'` can skip whole blocks (*predicate pushdown*).
+
+      Bytes scanned ≈ CSV size × (columns read ÷ total columns) ÷ compression ratio.
+  - heading: Idempotency, atomic writes and upserts
+    body: |
+      A stage is **idempotent** if running it once or ten times on the same input leaves the same result: f(f(x)) = f(x). This matters because schedulers *will* retry failed tasks and run backfills.
+
+      The classic violation is **append**: each retry inserts the batch again, so a table with 10,000 rows and a 1,500-row batch has 14,500 rows after three runs instead of 11,500.
+
+      Two standard fixes:
+
+      - **Files:** write to a temporary path and atomically swap it in — `os.replace("out.parquet.tmp", "out.parquet")`. Readers see either the old complete file or the new complete one, never half a file. Or overwrite the whole partition for that date.
+      - **Tables:** enforce a primary key on the business key and **upsert** (`INSERT OR REPLACE`, `ON CONFLICT DO UPDATE`), or `DELETE WHERE date = :d` then `INSERT`, inside one transaction.
+examples:
+  - title: How much does DuckDB scan?
+    problem: A 10-column market table is 300 MB as CSV. Stored as Parquet with 4× compression, how much does a
+      query reading 3 columns scan?
+    steps:
+      - "Column pruning: 3 of 10 columns → 300 × 3/10 = **90 MB** of the uncompressed data."
+      - "Compression: 90 ÷ 4 = **22.5 MB**."
+      - "Compared with CSV: 300 ÷ 22.5 ≈ **13× less I/O**."
+    answer: About 22.5 MB.
+    takeaway: Pruning and compression multiply — that's why columnar formats are so fast for analytics.
+  - title: Counting the damage of append
+    problem: A table has 8,000 rows. A 1,200-row batch (300 of its keys already exist) is loaded, the task fails
+      at the end, and Airflow retries twice. How many rows with append, and how many with an upsert?
+    steps:
+      - "Append runs 3 times: 8,000 + 3 × 1,200 = **11,600 rows**."
+      - "Upsert: 300 keys are updated in place; 900 are new → 8,000 + 900 = **8,900 rows**, whatever the
+        number of runs."
+      - "Corrupt extra rows with append: 11,600 − 8,900 = **2,700**."
+    answer: Append gives 11,600 rows; upsert gives 8,900.
+    takeaway: Idempotent loads make retries safe; append makes every retry a data-quality incident.
+questions:
+  - question: Compare ETL and ELT and say which you would choose for the Uganda market-price project, with a reason.
+    kind: short
+    marks: 5
+    keywords:
+      - extract
+      - transform
+      - load
+      - order
+      - staging
+      - warehouse
+      - raw
+      - sql
+      - duckdb
+      - re-transform
+    idealAnswer: "ETL transforms data on a staging system before loading the result; ELT loads raw data first and
+      transforms it inside the warehouse. For the market-price project ELT (or a hybrid) fits: storage is
+      cheap, DuckDB can transform millions of rows quickly with SQL, and keeping raw data in the warehouse
+      lets us rebuild cleaned tables when rules change."
+  - question: Explain three reasons Parquet is preferred over CSV for analytical storage.
+    kind: short
+    marks: 6
+    keywords:
+      - columnar
+      - column pruning
+      - compression
+      - dictionary
+      - schema
+      - types
+      - row group
+      - predicate pushdown
+    idealAnswer: Parquet is columnar, so queries read only the columns they need (column pruning). Columns
+      compress well with dictionary and run-length encoding because values repeat. It stores an explicit typed
+      schema, avoiding CSV's type guessing. Row-group min/max statistics allow predicate pushdown, skipping
+      blocks that can't match a filter.
+  - question: An Airflow task loads a daily batch into fact_market_prices using pandas to_sql(if_exists='append').
+      It failed twice last week and was retried. Explain what happened to the data, how you would detect it,
+      and how you would redesign the load to be idempotent for both the Parquet files and the database table.
+    kind: long
+    marks: 12
+    keywords:
+      - append
+      - duplicate
+      - retry
+      - row counts
+      - unique key
+      - group by having
+      - idempotent
+      - temp file
+      - os.replace
+      - partition
+      - primary key
+      - upsert
+      - transaction
+    idealAnswer: "Each retry re-appended the whole batch, so those days now have duplicate rows that inflate sums
+      and counts. Detect it by comparing row counts per load date with the source and by querying duplicates
+      on the business key (GROUP BY date, market, commodity HAVING COUNT(*) > 1). Redesign: for files, write
+      each day's output to a temp file and os.replace it atomically, or overwrite that date's partition. For
+      the table, add a primary key on (date, market, commodity) and upsert (INSERT OR REPLACE / ON CONFLICT DO
+      UPDATE), or delete-then-insert that date inside one transaction. Then a retry or backfill produces the
+      same final state, and a uniqueness check can run after each load."
+coding:
+  - id: idempotent-upsert
+    title: An idempotent upsert
+    language: python
+    level: core
+    prompt: |
+      Write `upsert(table, batch, key)` for two pandas DataFrames:
+
+      - rows of `batch` whose `key` already exists in `table` **replace** those rows;
+      - rows with new keys are **added**;
+      - the result has **no duplicate keys**, and inputs are not modified.
+
+      Then prove it's idempotent: `upsert(upsert(t, b, k), b, k)` must equal `upsert(t, b, k)`.
+      (`key` is a list of column names.)
+    setup: |
+      import pandas as pd
+      table = pd.DataFrame({"date": ["d1", "d1", "d2"], "market": ["Owino", "Gulu", "Owino"], "price": [3800, 4100, 3900]})
+      batch = pd.DataFrame({"date": ["d2", "d3"], "market": ["Owino", "Owino"], "price": [3950, 4000]})
+      KEY = ["date", "market"]
+    starter: |
+      import pandas as pd
+
+      def upsert(table, batch, key):
+          # Naive append — NOT idempotent. Fix me.
+          return pd.concat([table, batch], ignore_index=True)
+
+      once = upsert(table, batch, KEY)
+      twice = upsert(once, batch, KEY)
+      print(len(once), len(twice))
+    solution: |
+      import pandas as pd
+
+      def upsert(table, batch, key):
+          keep = ~table.set_index(key).index.isin(batch.set_index(key).index)
+          out = pd.concat([table[keep], batch], ignore_index=True)
+          return out.sort_values(key).reset_index(drop=True)
+
+      once = upsert(table, batch, KEY)
+      twice = upsert(once, batch, KEY)
+      print(len(once), len(twice))
+    tests:
+      - name: New keys are added and existing keys replaced
+        code: |
+          r = upsert(table, batch, KEY)
+          assert len(r) == 4, f"expected 4 rows (3 existing + 1 new), got {len(r)}"
+          v = r[(r.date == "d2") & (r.market == "Owino")]["price"].tolist()
+          assert v == [3950], f"(d2, Owino) should be updated to 3950, got {v}"
+      - name: No duplicate keys
+        code: |
+          r = upsert(table, batch, KEY)
+          assert not r.duplicated(subset=KEY).any()
+      - name: Running it twice gives the same table (idempotent)
+        code: |
+          once = upsert(table, batch, KEY)
+          twice = upsert(once, batch, KEY)
+          assert same_rows(once, twice), "a retry must not change the result"
+      - name: Inputs are not modified
+        code: |
+          t0, b0 = table.copy(), batch.copy()
+          upsert(table, batch, KEY)
+          assert table.equals(t0) and batch.equals(b0)
+    hints:
+      - Keep only the table rows whose key is NOT in the batch, then append the whole batch.
+      - "`table.set_index(key).index.isin(batch.set_index(key).index)` tells you which keys collide."
+  - id: atomic-write
+    title: Atomic, idempotent file output
+    language: review
+    level: core
+    prompt: |
+      Write `write_partition(df, out_dir, date)` that saves one day's cleaned prices to
+      `out_dir/date=<date>/prices.parquet` so that:
+
+      - readers can never see a half-written file, even if the process crashes mid-write;
+      - re-running for the same date **overwrites** that day's data instead of duplicating it;
+      - a failure doesn't leave temporary files behind.
+
+      Explain your choices in comments. (This is reviewed by the AI against a rubric.)
+    starter: |
+      import os
+      import pandas as pd
+
+      def write_partition(df: pd.DataFrame, out_dir: str, date: str) -> str:
+          ...
+    solution: |
+      import os
+      import tempfile
+      import pandas as pd
+
+      def write_partition(df: pd.DataFrame, out_dir: str, date: str) -> str:
+          part = os.path.join(out_dir, f"date={date}")
+          os.makedirs(part, exist_ok=True)
+          target = os.path.join(part, "prices.parquet")
+          # Write to a temp file in the SAME directory (same filesystem) so os.replace is atomic.
+          fd, tmp = tempfile.mkstemp(dir=part, suffix=".tmp")
+          os.close(fd)
+          try:
+              df.to_parquet(tmp, index=False)
+              os.replace(tmp, target)  # atomic: readers see the old file or the new one, never half
+          except BaseException:
+              if os.path.exists(tmp):
+                  os.remove(tmp)
+              raise
+          return target  # same path every run → re-running overwrites the partition (idempotent)
+    rubric:
+      - Writes to a temporary file first, in the same directory/filesystem as the target
+      - Uses os.replace (or an equivalent atomic rename) to publish the file
+      - Writes to a deterministic per-date partition path so re-runs overwrite rather than append
+      - Cleans up the temporary file if writing fails
+      - Creates the partition directory if needed

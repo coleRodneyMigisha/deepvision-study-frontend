@@ -1,0 +1,373 @@
+id: transfer-learning
+title: Transfer Learning
+subtitle: Adapt pretrained models to a new problem
+recap: "Reuse a backbone pretrained on a big dataset: early layers learn general edges and textures, only the
+  head is task-specific. Small, similar data → freeze the backbone and train a linear probe. More or different
+  data → fine-tune gently with small (discriminative) learning rates, unfreezing top-down, to avoid
+  catastrophic forgetting."
+traps:
+  - Fine-tuning everything with a large learning rate and wiping out pretrained features.
+  - Forgetting to set requires_grad=False (or to exclude frozen params from the optimiser).
+  - Assuming ImageNet features transfer to very different domains (e.g. X-rays) without fine-tuning.
+lesson:
+  checkpointStep: 3
+  steps:
+    - Training a big vision model from scratch needs millions of labelled images. Transfer learning reuses a
+      network already trained on a large dataset like ImageNet, and adapts it to your task.
+    - "Why it works: early layers learn general things — edges, colours, textures — that are useful for almost
+      any images. Only the last layers are specific to the original 1,000 classes."
+    - Small dataset similar to ImageNet? Freeze the backbone — set requires_grad to False — and train only a
+      new classification head. This is called a linear probe or feature extraction.
+    - "Checkpoint: what is catastrophic forgetting, and when should you freeze the backbone versus fine-tune
+      everything?"
+    - "Catastrophic forgetting: fine-tune with a large learning rate and big, noisy gradients from the new
+      task overwrite the useful pretrained features."
+    - "So fine-tune gently: small learning rates, often smaller for early layers and larger for the head —
+      discriminative learning rates — and unfreeze from the top down."
+    - "Today's backbones are foundation models: self-supervised models like DINOv2 learn features so general
+      they work for classification, segmentation and depth with only a light head."
+checkpoint:
+  question: What is catastrophic forgetting during fine-tuning, and under what dataset conditions would you
+    freeze the backbone versus fine-tune the whole network?
+  hint: Small + similar data → freeze. Large or very different data → fine-tune, but with a small learning rate.
+  keywords:
+    - catastrophic
+    - forgetting
+    - overwrite
+    - freeze
+    - backbone
+    - small
+    - large
+    - learning rate
+    - overfitting
+    - similar
+    - different
+    - head
+  idealAnswer: Catastrophic forgetting is when fine-tuning with large updates overwrites the pretrained weights,
+    destroying the general features that made transfer useful. If the target dataset is small and similar to
+    the source, freeze the backbone and train only a new head — fewer trainable parameters means less
+    overfitting. If the dataset is large or quite different (e.g. medical images), fine-tune more layers but
+    with a small, often layer-wise learning rate. The trade-off is adaptation versus stability.
+terms:
+  - term: Backbone
+    definition: The pretrained feature extractor (e.g. ResNet-50 without its final layer).
+  - term: Head
+    definition: The new task-specific layer(s) on top, e.g. Linear(2048 → num_classes).
+  - term: Linear probe
+    definition: Freeze everything; train only a linear classifier on the features.
+  - term: Fine-tuning
+    definition: Continue training some or all pretrained layers on the new data.
+  - term: Domain shift
+    definition: Source and target images look different (photos vs X-rays).
+quiz:
+  - question: You have 300 labelled bird photos. Best starting strategy?
+    options:
+      - Train ResNet-50 from scratch
+      - Freeze backbone, train new head
+      - Fine-tune all layers at LR 0.1
+      - Remove all pretrained layers
+    answer: 1
+    explanation: "Tiny dataset, similar domain (natural photos): freeze the backbone and train the head."
+  - question: Why use a smaller learning rate for early layers?
+    options:
+      - They are slower to compute
+      - Their general features are already good
+      - They have no gradients
+      - To speed up training
+    answer: 1
+    explanation: Early layers hold generic edges/textures — change them gently to avoid forgetting.
+  - question: Which layers of a pretrained CNN transfer best to new tasks?
+    options:
+      - The final classification layer
+      - Early layers (edges
+      - textures)
+      - Only BatchNorm layers
+      - None
+    answer: 1
+    explanation: Early features are general; later ones are task-specific.
+  - question: How do you freeze a layer in PyTorch?
+    options:
+      - model.eval()
+      - Set requires_grad = False on its parameters
+      - Delete it
+      - Lower its learning rate to 1
+    answer: 1
+    explanation: Frozen parameters receive no gradient updates.
+  - question: What is catastrophic forgetting?
+    options:
+      - Forgetting to save the model
+      - Large updates overwriting useful pretrained features
+      - Dropout removing neurons
+      - Losing the test set
+    answer: 1
+    explanation: Fine-tune gently to avoid it.
+  - question: Discriminative learning rates means…
+    options:
+      - One learning rate everywhere
+      - Smaller LRs for early layers and larger for later layers/head
+      - Random learning rates
+      - No learning rate
+    answer: 1
+    explanation: Early general features need only small adjustments.
+  - question: Small dataset of natural photos — best first strategy?
+    options:
+      - Train from scratch
+      - Freeze backbone and train a new head
+      - Fine-tune everything with lr = 0.1
+      - Use only the pretrained head
+    answer: 1
+    explanation: A linear probe avoids overfitting with little data.
+  - question: Why is DINOv2 a strong backbone choice?
+    options:
+      - It's the smallest model
+      - Self-supervised features general enough for many tasks with a light head
+      - It needs labels for every pixel
+      - It only works on ImageNet
+    answer: 1
+    explanation: Foundation-model features transfer broadly.
+fact:
+  title: DINOv2 → DINOv3
+  body: Meta's DINOv2 (2023) learned from 142M curated images with no labels at all; its features support
+    segmentation and depth with simple linear heads. DINOv3 (2025) scaled self-supervised training to about
+    1.7 billion images and a 7-billion-parameter model.
+lab:
+  title: Freeze or fine-tune?
+  variations:
+    - title: Linear Probe Trainable Weights
+      question: You replace ResNet-50's final layer with <code>nn.Linear(2048, 5)</code> and freeze the entire
+        backbone. How many <b>trainable</b> parameters are there?
+      answer: 10245
+      tolerance: 0
+      hint: A linear layer has in_features × out_features weights plus out_features biases.
+      explanation: 2048 × 5 weights + 5 biases = 10,240 + 5 = 10,245.
+    - title: Bottleneck MLP Head Parameters
+      question: "You freeze a ViT-Base backbone (768-d embedding) and attach a 2-layer head: <code>Linear(768,
+        128)</code> → ReLU → <code>Linear(128, 10)</code> (both with bias). How many trainable parameters are
+        in the head?"
+      answer: 99722
+      tolerance: 0
+      hint: Sum (768×128 + 128) + (128×10 + 10).
+      explanation: "Layer 1: 768×128 + 128 = 98,432. Layer 2: 128×10 + 10 = 1,290. Total = 98,432 + 1,290 = 99,722."
+    - title: Discriminative LR Ratio
+      question: Your classification head uses learning rate <b>1e-3</b> and you decay the learning rate by a factor
+        of <b>0.2</b> per stage across 3 stages down to stem. What is the learning rate of the earliest stage
+        in units of <b>1e-6</b>?
+      answer: 8
+      tolerance: 0.01
+      hint: "Multiply 1000 (in units of 1e-6) by 0.2 three times: 1000 × 0.2³."
+      explanation: 1e-3 × (0.2)³ = 1e-3 × 0.008 = 8e-6 → 8 (in units of 1e-6).
+notes:
+  - heading: Why reuse a pretrained network
+    body: |
+      Training a modern vision model from scratch needs millions of labelled images and days of GPU time. Most projects have hundreds or a few thousand. **Transfer learning** starts from a network already trained on a large dataset (ImageNet: 1.2 M images, 1,000 classes) and adapts it.
+
+      It works because features are **hierarchical**: early layers learn edges, colours and textures that are useful for almost any image; middle layers learn patterns and parts; only the last layers are specific to the original 1,000 classes. So we keep the general part (the **backbone**) and replace the specific part (the **head**).
+  - heading: Feature extraction vs fine-tuning
+    body: |
+      **Feature extraction / linear probe** — freeze the backbone and train only a new head:
+
+      ```python
+      model = resnet50(weights="IMAGENET1K_V2")
+      for p in model.parameters():
+          p.requires_grad = False
+      model.fc = nn.Linear(2048, num_classes)        # the only trainable layer
+      ```
+
+      Fast, needs little data, can't overfit much — but limited if your images differ a lot from ImageNet.
+
+      **Fine-tuning** — unfreeze some or all of the backbone and keep training with a small learning rate, so the features adapt to your domain.
+
+      | Your data | Similar to ImageNet | Different (X-rays, satellite) |
+      |---|---|---|
+      | **Small** | freeze backbone, train head | train head, then gently fine-tune top blocks |
+      | **Large** | fine-tune everything | fine-tune everything with discriminative LRs (or a domain-pretrained model) |
+  - heading: Catastrophic forgetting and how to fine-tune gently
+    body: |
+      If you fine-tune with a large learning rate, the first batches produce large, noisy gradients (the new head is random), which **overwrite** the useful pretrained features — **catastrophic forgetting**. Validation accuracy can end up worse than the linear probe.
+
+      Good practice:
+
+      1. **Train the head first** with the backbone frozen until it is reasonable.
+      2. **Unfreeze from the top down** — last block first, earlier blocks later if needed.
+      3. Use **discriminative learning rates**: small for early layers (1e-5), larger for later layers and the head (1e-4 to 1e-3).
+      4. Use warm-up, weight decay and strong augmentation; keep BatchNorm layers in eval mode when batches are tiny.
+  - heading: Domain shift and foundation models
+    body: |
+      **Domain shift** — when your images look different from the pretraining data (grayscale X-rays, multispectral satellite tiles, microscope slides) — reduces how much transfers. The further the domain, the more layers you need to fine-tune, and the more a **domain-specific** pretrained model helps (e.g. one pretrained on medical images).
+
+      Today's backbones are **foundation models** trained with self-supervision on huge unlabelled collections — e.g. **DINOv2**, or CLIP's image encoder. Their features are general enough that a simple linear head often matches full fine-tuning for classification, and the same features serve segmentation and depth estimation. Always try a linear probe on a foundation model as a strong, cheap baseline.
+examples:
+  - title: Counting trainable parameters
+    problem: ResNet-50 has ~23.5 M backbone parameters and outputs 2,048 features. For a 12-class head, how many
+      parameters train with (a) a linear probe and (b) full fine-tuning?
+    steps:
+      - Head = 2,048 × 12 + 12 = **24,588**.
+      - "(a) Linear probe: only the head → **24,588** (~0.1% of the model)."
+      - "(b) Full fine-tuning: 23,508,032 + 24,588 ≈ **23.53 M**."
+    answer: 24,588 vs ~23.5 M trainable parameters.
+    takeaway: A linear probe trains a thousandth of the model — that's why it needs so little data.
+  - title: Choosing a strategy
+    problem: You have 900 labelled chest X-rays for 3 classes. Which strategy, and what learning rates?
+    steps:
+      - Small dataset + different domain (grayscale medical images).
+      - "Stage 1: freeze the backbone, train a new 3-class head (lr ≈ 1e-3) until validation plateaus."
+      - "Stage 2: unfreeze the last block (layer4) with lr ≈ 1e-5 and the head with 1e-4; strong augmentation;
+        early stopping."
+      - If available, start from a medically pretrained backbone instead of ImageNet.
+    answer: Head first, then gently fine-tune the top block with discriminative learning rates.
+    takeaway: Small + different data means adapt a little, carefully.
+questions:
+  - question: Explain why transfer learning works and when you would freeze the backbone versus fine-tune.
+    kind: short
+    marks: 6
+    keywords:
+      - hierarchical
+      - early layers
+      - edges
+      - textures
+      - general
+      - specific
+      - head
+      - small dataset
+      - similar
+      - freeze
+      - large dataset
+      - different domain
+      - fine-tune
+    idealAnswer: "Features are hierarchical: early layers learn general edges, colours and textures useful for any
+      images, while later layers become specific to the original classes, so we reuse the backbone and replace
+      the head. With little data similar to ImageNet, freeze the backbone and train a new head (linear probe)
+      to avoid overfitting. With lots of data, or a domain that differs (X-rays, satellite), fine-tune more of
+      the network so the features adapt."
+  - question: What is catastrophic forgetting, and list three techniques to prevent it.
+    kind: short
+    marks: 5
+    keywords:
+      - overwrite
+      - pretrained features
+      - large learning rate
+      - random head
+      - train head first
+      - unfreeze top down
+      - discriminative learning rates
+      - small lr
+      - warm-up
+    idealAnswer: Catastrophic forgetting is when large, noisy gradients — e.g. from a randomly initialised head
+      and a high learning rate — overwrite useful pretrained features, degrading performance. Prevent it by
+      training the head first with the backbone frozen, unfreezing gradually from the top down, using small
+      discriminative learning rates (smaller for early layers), plus warm-up and weight decay.
+  - question: "A cooperative wants to classify cassava leaf diseases (5 classes) from 2,000 phone photos. Design
+      the full transfer-learning approach: backbone choice, staged training plan, learning rates,
+      augmentation, evaluation, and what you would do if validation accuracy stalls."
+    kind: long
+    marks: 12
+    keywords:
+      - pretrained
+      - resnet
+      - efficientnet
+      - dinov2
+      - linear probe
+      - head
+      - freeze
+      - unfreeze
+      - layer4
+      - discriminative
+      - learning rate
+      - augmentation
+      - imagenet normalize
+      - stratified
+      - validation
+      - early stopping
+      - f1
+      - confusion matrix
+      - domain
+    idealAnswer: "Start from a strong pretrained backbone (ResNet-50/EfficientNet, or DINOv2 as a foundation-model
+      baseline) with ImageNet normalisation. Stage 1: freeze the backbone and train a 5-class head (lr ~1e-3,
+      AdamW) — the linear-probe baseline. Stage 2: unfreeze the top block(s) with discriminative LRs (~1e-5
+      backbone, 1e-4 head), warm-up and cosine decay, weight decay, and early stopping on validation loss.
+      Augment training images with random resized crops, flips, rotations and colour jitter to mimic phone
+      lighting. Use a stratified train/validation/test split (by farm or photo session to avoid
+      near-duplicates) and report per-class precision/recall/F1 and the confusion matrix, since disease
+      classes may be imbalanced. If validation stalls: unfreeze more layers, try a stronger or domain-closer
+      backbone, add more or better-balanced data, or tune augmentation and learning rates."
+coding:
+  - id: trainable-parameters
+    title: How much will actually train?
+    language: python
+    level: warm-up
+    setup: |
+      # ResNet-50 parameter counts by stage (backbone total 23,508,032)
+      STAGES = {"stem": 9_536, "layer1": 215_808, "layer2": 1_219_584, "layer3": 7_098_368, "layer4": 14_964_736}
+      FEATURES = 2048
+    prompt: |
+      Write `trainable(num_classes, unfrozen)` → number of trainable parameters when the new head is
+      `nn.Linear(2048, num_classes)` (with bias) and `unfrozen` is a list of stage names that are also trained.
+      Also `share(num_classes, unfrozen)` → trainable / total (backbone + head).
+    starter: |
+      def trainable(num_classes, unfrozen):
+          ...
+
+      def share(num_classes, unfrozen):
+          ...
+    solution: |
+      def trainable(num_classes, unfrozen):
+          head = FEATURES * num_classes + num_classes
+          return head + sum(STAGES[s] for s in unfrozen)
+
+      def share(num_classes, unfrozen):
+          total = sum(STAGES.values()) + FEATURES * num_classes + num_classes
+          return trainable(num_classes, unfrozen) / total
+    tests:
+      - name: Linear probe trains only the head
+        code: |
+          assert trainable(12, []) == 24588
+          assert trainable(10, []) == 20490
+      - name: Unfreezing layer4 adds ~15 M
+        code: |
+          assert trainable(5, ["layer4"]) == 10245 + 14_964_736
+      - name: Share of trainable parameters
+        code: |
+          assert share(5, []) < 0.001
+          assert abs(share(5, list(STAGES)) - 1.0) < 1e-12
+  - id: fine-tune-code
+    title: Two-stage fine-tuning in PyTorch
+    language: review
+    level: core
+    prompt: |
+      Write the PyTorch code to adapt an ImageNet ResNet-50 to 5 cassava-disease classes with little data:
+      stage 1 trains only a new head (backbone frozen); stage 2 unfreezes `layer4` and fine-tunes with
+      **discriminative learning rates**. Include the optimiser setup for both stages and comment why this
+      avoids catastrophic forgetting.
+    starter: |
+      import torch
+      from torch import nn
+      from torchvision.models import resnet50
+    solution: |
+      import torch
+      from torch import nn
+      from torchvision.models import resnet50, ResNet50_Weights
+
+      model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
+
+      # Stage 1 — linear probe: freeze everything, replace the 1000-class head.
+      for p in model.parameters():
+          p.requires_grad = False
+      model.fc = nn.Linear(model.fc.in_features, 5)          # new head is trainable by default
+      opt = torch.optim.AdamW(model.fc.parameters(), lr=1e-3, weight_decay=1e-4)
+      # ... train until validation loss plateaus (the random head would otherwise send huge,
+      #     noisy gradients into the pretrained layers → catastrophic forgetting)
+
+      # Stage 2 — gentle fine-tuning of the top block with smaller LRs for pretrained weights.
+      for p in model.layer4.parameters():
+          p.requires_grad = True
+      opt = torch.optim.AdamW([
+          {"params": model.layer4.parameters(), "lr": 1e-5},
+          {"params": model.fc.parameters(), "lr": 1e-4},
+      ], weight_decay=1e-4)
+      sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=20)
+    rubric:
+      - Loads ImageNet-pretrained weights
+      - Freezes the backbone with requires_grad = False and replaces the head with a 5-class Linear layer
+      - Stage 1 optimiser only receives the head's parameters
+      - Stage 2 unfreezes layer4 only and uses a smaller learning rate for it than for the head
+      - Explains that training the head first and using small learning rates prevents catastrophic forgetting

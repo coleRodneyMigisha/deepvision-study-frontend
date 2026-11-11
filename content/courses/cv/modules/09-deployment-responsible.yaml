@@ -1,0 +1,401 @@
+id: deployment-responsible
+title: Deployment & Responsible Vision
+subtitle: Package, benchmark & explain limitations
+recap: "Deployment means meeting latency, memory and power budgets on real hardware: quantise (FP32 → INT8 is
+  4× smaller), prune, and export to runtimes like ONNX, TensorRT or TFLite, then benchmark on the target
+  device. Explain predictions with Grad-CAM and audit fairness with disaggregated per-group metrics, model
+  cards and robustness tests."
+traps:
+  - Benchmarking on your laptop instead of the target device.
+  - Reporting one overall accuracy number and hiding subgroup failures.
+  - Confusing latency (time per request) with throughput (requests per second).
+lesson:
+  checkpointStep: 3
+  steps:
+    - A model in a notebook helps no one. Deployment means running it on real hardware — phones, edge cameras,
+      cloud GPUs — within limits on latency, memory and power.
+    - Make models smaller and faster. Quantisation stores weights as 8-bit integers instead of 32-bit floats —
+      four times less memory. Pruning removes weights that barely matter.
+    - "Export to an inference runtime: ONNX as the common format, TensorRT for NVIDIA GPUs, OpenVINO for
+      Intel, TFLite or Core ML for phones. Benchmark latency, throughput and accuracy on the target device."
+    - "Checkpoint: how does Grad-CAM explain a CNN's prediction, and how do you audit a vision model for bias?"
+    - Grad-CAM takes the gradient of the class score with respect to the last conv feature maps, averages it
+      into a weight per channel, sums the weighted maps, and applies ReLU — a heatmap of what mattered.
+    - Responsible vision means measuring who it fails for. The Gender Shades study found commercial gender
+      classifiers erred up to 35% on darker-skinned women but under 1% on lighter-skinned men.
+    - "So report disaggregated metrics per subgroup, document limitations in a model card, and test
+      robustness: tiny adversarial perturbations or stickers can flip a prediction."
+checkpoint:
+  question: How does Grad-CAM produce an interpretable visual explanation of a CNN prediction? And how do you
+    audit a vision model for demographic bias?
+  hint: "Gradients → channel weights (global average pool) → weighted sum of feature maps → ReLU → heatmap.
+    Audit: metrics per subgroup, not just overall."
+  keywords:
+    - grad-cam
+    - gradient
+    - feature map
+    - last conv
+    - channel
+    - weight
+    - global average
+    - relu
+    - heatmap
+    - bias
+    - subgroup
+    - disaggregated
+    - demographic
+    - audit
+    - dataset
+  idealAnswer: Grad-CAM computes the gradient of the target class score with respect to the last convolutional
+    layer's feature maps, global-average-pools those gradients into one importance weight per channel, takes
+    the weighted sum of the feature maps and applies ReLU. Upsampled, this is a heatmap of the regions that
+    pushed the prediction toward that class. To audit for bias, evaluate disaggregated metrics — accuracy,
+    false positive and false negative rates — separately for each demographic subgroup, check the training
+    data's representation, and document gaps; a high overall accuracy can hide large subgroup failures.
+terms:
+  - term: Quantisation
+    definition: FP32 → INT8 (or FP16) weights/activations; ~4× smaller, faster on supporting hardware.
+  - term: Pruning
+    definition: Removing low-importance weights or channels.
+  - term: ONNX
+    definition: Open, framework-neutral model format for inference runtimes.
+  - term: Latency vs throughput
+    definition: Time per input vs inputs per second (batching trades one for the other).
+  - term: Model card
+    definition: Documentation of intended use, data, metrics by subgroup and limitations.
+quiz:
+  - question: A 25M-parameter model in FP32 is about 100 MB. After INT8 quantisation?
+    options:
+      - 50 MB
+      - 25 MB
+      - 12.5 MB
+      - 100 MB
+    answer: 1
+    explanation: "FP32 = 4 bytes/param, INT8 = 1 byte/param: 25M × 1 B ≈ 25 MB."
+  - question: A Grad-CAM heatmap for ‘husky’ highlights snow, not the dog. This suggests…
+    options:
+      - The model is perfect
+      - A spurious correlation in training data
+      - Quantisation broke it
+      - Grad-CAM is wrong by definition
+    answer: 1
+    explanation: Classic ‘right for the wrong reason’ — the model learned the background. Fix the data.
+  - question: Batching more requests together usually…
+    options:
+      - Improves throughput but increases per-request latency
+      - Improves both
+      - Worsens both
+      - Has no effect
+    answer: 0
+    explanation: Latency and throughput trade off.
+  - question: Which runtime targets NVIDIA GPUs?
+    options:
+      - TFLite
+      - Core ML
+      - TensorRT
+      - OpenVINO
+    answer: 2
+    explanation: TensorRT optimises for NVIDIA hardware.
+  - question: In Grad-CAM, what are the channel weights α_k?
+    options:
+      - Random
+      - Global-average-pooled gradients of the class score w.r.t. each feature map
+      - The final layer biases
+      - Pixel intensities
+    answer: 1
+    explanation: They measure each channel's importance for the class.
+  - question: Why apply ReLU in Grad-CAM?
+    options:
+      - To speed it up
+      - To keep only regions that increase the class score
+      - To normalise colours
+      - To remove the background
+    answer: 1
+    explanation: Negative evidence is discarded.
+  - question: What does a model card document?
+    options:
+      - Only the architecture
+      - Intended use
+      - data
+      - per-group performance and limitations
+      - The training code
+      - The API key
+    answer: 1
+    explanation: It's transparency documentation for users and auditors.
+  - question: Knowledge distillation trains…
+    options:
+      - A bigger teacher from a student
+      - A small student to mimic a large teacher
+      - Two identical models
+      - A model without data
+    answer: 1
+    explanation: The student learns from the teacher's outputs.
+fact:
+  title: Stickers that fool stop signs
+  body: Eykholt et al. (CVPR 2018) put a few black-and-white stickers on a real stop sign; a road-sign
+    classifier then read it as ‘Speed Limit 45’ in most test frames, from different distances and angles.
+    Physical adversarial robustness is now part of safety testing for automotive vision.
+lab:
+  title: Quantisation & model size
+  variations:
+    - title: FP32 Weight Memory Footprint
+      question: A vision model has <b>25 million</b> parameters. How many <b>MB</b> (1 MB = 10⁶ bytes) do its
+        weights occupy in <b>FP32</b>?
+      answer: 100
+      tolerance: 0.5
+      hint: FP32 uses 4 bytes per parameter.
+      explanation: 25,000,000 × 4 bytes = 100,000,000 bytes = 100 MB.
+    - title: Affine INT8 Quantisation
+      question: A weight tensor has range <b>[min = −1.0, max = 1.55]</b>. Using scale <code>s = (max −
+        min)/255</code> and zero-point <code>z = round(−min/s)</code>, what integer <code>q</code> is weight
+        <b>x = 0.50</b> quantised to?
+      answer: 150
+      tolerance: 1
+      hint: Compute s = 2.55 / 255 = 0.01, z = round(1.0 / 0.01) = 100, then q = round(0.50 / 0.01) + 100.
+      explanation: s = (1.55 − (−1.0)) / 255 = 0.01. z = round(1.0 / 0.01) = 100. q = round(0.50 / 0.01) + 100 = 50
+        + 100 = 150.
+    - title: Disaggregated Subgroup Error Gap
+      question: A classifier achieves <b>99.2%</b> accuracy on Subgroup A (err = 0.8%) and <b>65.3%</b> accuracy on
+        Subgroup B. What is the error-rate gap (in percentage points) between Subgroup B and Subgroup A?
+      answer: 33.9
+      tolerance: 0.1
+      hint: Error rate on B = 100 − 65.3 = 34.7%. Subtract 0.8%.
+      explanation: Error(B) = 34.7%, Error(A) = 0.8% → Gap = 34.7 − 0.8 = 33.9 percentage points (the Gender Shades gap).
+notes:
+  - heading: Deployment constraints
+    body: |
+      A vision model is only useful when it runs where it's needed — a phone, an edge camera at a junction, a hospital server, a cloud GPU — within that device's limits:
+
+      - **Latency** — time for one prediction (a safety system may need < 30 ms).
+      - **Throughput** — predictions per second (a video stream at 30 fps).
+      - **Memory** — RAM / VRAM for weights and activations.
+      - **Power and cost** — battery life, energy bills, cloud spend.
+
+      Latency and throughput are different: batching improves throughput but increases each request's latency. Always benchmark **on the target device**, with realistic inputs, after a warm-up, reporting p50 and p99.
+  - heading: Making models smaller and faster
+    body: |
+      - **Quantisation** — store weights (and often activations) as INT8 instead of FP32: 4× smaller and faster on hardware with integer acceleration. Post-training quantisation needs a small calibration set; quantisation-aware training recovers more accuracy.
+      - **Pruning** — remove weights or whole channels that contribute little; structured pruning gives real speed-ups.
+      - **Knowledge distillation** — train a small "student" to mimic a large "teacher's" outputs.
+      - **Efficient architectures** — MobileNet, EfficientNet, small YOLO variants.
+
+      Then export to an inference runtime: **ONNX** as the common exchange format; **TensorRT** for NVIDIA GPUs; **OpenVINO** for Intel CPUs; **TFLite** or **Core ML** for phones. Re-validate accuracy after every step.
+  - heading: Explaining predictions with Grad-CAM
+    body: |
+      **Grad-CAM** shows which image regions drove a CNN's prediction:
+
+      1. Run the image forward and pick the class score y_c.
+      2. Compute the gradient of y_c with respect to the **last convolutional feature maps** A^k.
+      3. **Global-average-pool** each gradient map to get a weight α_k per channel ("how important is this channel for class c").
+      4. Heatmap = **ReLU(Σ_k α_k A^k)**, upsampled to the image size and overlaid.
+
+      ReLU keeps only regions that *increase* the class score. Grad-CAM is how you catch **shortcut learning** — e.g. a pneumonia model that actually looks at the hospital's text marker in the corner, or a "husky" detector that looks at snow.
+  - heading: Responsible vision — fairness, documentation, robustness
+    body: |
+      A single overall accuracy can hide who the model fails. The **Gender Shades** study found commercial gender classifiers with error rates up to **34.7% for darker-skinned women** versus **0.8% for lighter-skinned men**.
+
+      Practices to know:
+
+      - **Disaggregated evaluation** — report metrics per subgroup (skin tone, age, region, camera type), and fix gaps with better data.
+      - **Model cards** — document intended use, out-of-scope uses, training data, per-group performance, limitations and ethical considerations.
+      - **Robustness testing** — small adversarial perturbations or physical patches/stickers can flip predictions; test against noise, blur, lighting and distribution shift.
+      - **Privacy** — faces and licence plates are personal data; minimise retention, blur where possible, and follow data-protection law (e.g. Uganda's Data Protection and Privacy Act 2019).
+examples:
+  - title: Fitting a model on a phone
+    problem: A 25 M-parameter detector must fit in 40 MB on a phone. Does FP32 fit? FP16? INT8?
+    steps:
+      - "FP32: 25 M × 4 B = **100 MB** — too big."
+      - "FP16: 25 M × 2 B = **50 MB** — still too big."
+      - "INT8: 25 M × 1 B = **25 MB** — fits, leaving room for the runtime."
+      - Then re-check accuracy (mAP) and latency on the phone itself.
+    answer: Only INT8 (25 MB) fits.
+    takeaway: Quantisation is often what makes on-device deployment possible.
+  - title: Disaggregated evaluation
+    problem: "A face-verification model has 96% overall accuracy on 10,000 test images: 8,000 of group A at 98%
+      and 2,000 of group B. What is group B's accuracy, and what should you report?"
+    steps:
+      - Correct overall = 0.96 × 10,000 = 9,600. Group A correct = 0.98 × 8,000 = 7,840.
+      - Group B correct = 9,600 − 7,840 = 1,760 → accuracy = 1,760 / 2,000 = **88%**.
+      - Group B's error rate (12%) is 6× group A's (2%) — hidden by the 96% headline.
+      - Report per-group metrics in the model card and address the gap (more representative data) before
+        deployment.
+    answer: 88% for group B.
+    takeaway: Always disaggregate — the average hides the people the model fails.
+questions:
+  - question: How does Grad-CAM produce a heatmap, and how can it reveal shortcut learning?
+    kind: short
+    marks: 6
+    keywords:
+      - gradient
+      - class score
+      - last convolutional
+      - feature maps
+      - global average pooling
+      - weights
+      - weighted sum
+      - relu
+      - heatmap
+      - shortcut
+      - spurious
+      - background
+    idealAnswer: Grad-CAM takes the gradient of the class score with respect to the last convolutional feature
+      maps, global-average-pools each gradient map into a channel weight, sums the feature maps weighted by
+      these, applies ReLU and upsamples the result to an image-sized heatmap of the regions that increased the
+      score. If the heatmap highlights irrelevant cues — a hospital text marker, snow behind a husky — the
+      model has learned a shortcut rather than the real features.
+  - question: How would you audit a vision model for bias? Refer to Gender Shades.
+    kind: short
+    marks: 5
+    keywords:
+      - disaggregated
+      - subgroup
+      - skin tone
+      - gender
+      - error rate
+      - gender shades
+      - 34.7%
+      - 0.8%
+      - model card
+      - representative data
+      - limitations
+    idealAnswer: Evaluate metrics separately for relevant subgroups (skin tone, gender, age, region, device)
+      instead of one overall number; Gender Shades showed commercial classifiers with up to 34.7% error for
+      darker-skinned women versus 0.8% for lighter-skinned men. Document per-group results and limitations in
+      a model card, investigate causes (unrepresentative training data), collect better data and re-test
+      before and after deployment.
+  - question: You must deploy a skin-lesion classifier as an offline app on mid-range Android phones used by
+      community health workers in rural Uganda. Describe how you would make it fit and run fast, how you would
+      verify it is accurate and fair, how you would explain its outputs, and what you would document.
+    kind: long
+    marks: 15
+    keywords:
+      - efficient architecture
+      - mobilenet
+      - distillation
+      - int8
+      - quantisation
+      - tflite
+      - on-device benchmark
+      - latency
+      - memory
+      - battery
+      - re-validate
+      - sensitivity
+      - skin tone
+      - disaggregated
+      - grad-cam
+      - model card
+      - intended use
+      - limitations
+      - referral
+      - privacy
+      - robustness
+      - lighting
+    idealAnswer: "Fit and speed: start from an efficient architecture (MobileNet/EfficientNet-Lite), optionally
+      distilled from a larger teacher; quantise to INT8 with calibration data and export to TFLite; benchmark
+      latency, memory and battery on the actual phones with warm-up, reporting p50/p99. Accuracy: re-validate
+      after each optimisation on a test set from the target setting, focusing on sensitivity for dangerous
+      lesions and on robustness to phone cameras, lighting and blur. Fairness: report metrics disaggregated by
+      skin tone (most public dermatology datasets are light-skinned, so collect local data), age and sex, and
+      fix gaps before release. Explanations: show Grad-CAM heatmaps and a calibrated risk with clear referral
+      guidance, framing the app as decision support, not diagnosis. Document a model card — intended users and
+      use, out-of-scope uses, training data, per-group performance, known limitations — and privacy measures
+      (on-device processing, consent, minimal retention under Uganda's Data Protection and Privacy Act)."
+coding:
+  - id: grad-cam
+    title: Grad-CAM from activations and gradients
+    language: python
+    level: core
+    setup: |
+      import numpy as np
+      rng = np.random.default_rng(5)
+      A = rng.random((4, 7, 7))           # last conv layer: 4 channels of 7×7 feature maps
+      A[2, 1:3, 4:6] += 3.0               # channel 2 fires on the object (top right)
+      G = np.zeros((4, 7, 7)); G[2] = 0.8; G[0] = -0.5; G[1] = 0.05   # d(class score)/dA
+    prompt: |
+      Write `grad_cam(A, G)` for activations `A` and gradients `G` of shape `C × H × W`:
+
+      1. `alpha_k` = mean of `G[k]` over the spatial dimensions (global average pooling);
+      2. heatmap = `ReLU(Σ_k alpha_k · A[k])`;
+      3. normalise to [0, 1] by dividing by the maximum (if it's > 0).
+
+      Return the `H × W` heatmap and say in a comment why the ReLU is there.
+    starter: |
+      import numpy as np
+
+      def grad_cam(A, G):
+          return A.mean(axis=0)
+    solution: |
+      import numpy as np
+
+      def grad_cam(A, G):
+          alpha = G.mean(axis=(1, 2))                       # importance of each channel for the class
+          cam = np.maximum((alpha[:, None, None] * A).sum(axis=0), 0)   # ReLU: keep evidence FOR the class
+          return cam / cam.max() if cam.max() > 0 else cam
+    tests:
+      - name: Heatmap shape and range
+        code: |
+          h = grad_cam(A, G)
+          assert h.shape == (7, 7) and h.min() >= 0 and abs(h.max() - 1) < 1e-9
+      - name: The hottest region is where channel 2 fires
+        code: |
+          h = grad_cam(A, G)
+          r, c = np.unravel_index(np.argmax(h), h.shape)
+          assert 1 <= r <= 2 and 4 <= c <= 5, f"peak at {(r, c)}"
+      - name: Negative evidence is removed by the ReLU
+        code: |
+          h = grad_cam(np.ones((1, 3, 3)), -np.ones((1, 3, 3)))
+          assert (h == 0).all()
+  - id: disaggregated-evaluation
+    title: Disaggregated evaluation
+    language: python
+    level: core
+    setup: |
+      import numpy as np
+      import pandas as pd
+      rng = np.random.default_rng(11)
+      n = 2000
+      group = rng.choice(["lighter", "darker"], n, p=[0.8, 0.2])
+      y = rng.integers(0, 2, n)
+      wrong = np.where(group == "lighter", rng.random(n) < 0.02, rng.random(n) < 0.15)
+      results = pd.DataFrame({"group": group, "y_true": y, "y_pred": np.where(wrong, 1 - y, y)})
+    prompt: |
+      `results` has one row per test image with `group`, `y_true`, `y_pred`. Write `by_group(results)`
+      returning a DataFrame indexed by group with columns `n`, `accuracy` and `error_rate`, and
+      `worst_gap(results)` → the largest error rate divided by the smallest. What does the overall accuracy hide?
+    starter: |
+      def by_group(results):
+          acc = (results.y_true == results.y_pred).mean()
+          print("overall accuracy", acc)
+
+      def worst_gap(results):
+          ...
+    solution: |
+      def by_group(results):
+          correct = results.y_true == results.y_pred
+          out = results.assign(correct=correct).groupby("group").agg(n=("correct", "size"), accuracy=("correct", "mean"))
+          out["error_rate"] = 1 - out["accuracy"]
+          return out
+
+      def worst_gap(results):
+          e = by_group(results)["error_rate"]
+          return float(e.max() / e.min())
+
+      print("overall", (results.y_true == results.y_pred).mean())
+      print(by_group(results))
+      print("gap ×", round(worst_gap(results), 1))
+    tests:
+      - name: One row per group with n, accuracy and error_rate
+        code: |
+          g = by_group(results)
+          assert set(g.index) == {"lighter", "darker"} and {"n", "accuracy", "error_rate"} <= set(g.columns)
+          assert int(g["n"].sum()) == len(results)
+      - name: Per-group numbers are correct
+        code: |
+          g = by_group(results)
+          d = results[results.group == "darker"]
+          assert abs(g.loc["darker", "accuracy"] - (d.y_true == d.y_pred).mean()) < 1e-12
+      - name: The gap is large even though overall accuracy looks fine
+        code: |
+          overall = (results.y_true == results.y_pred).mean()
+          assert overall > 0.94 and worst_gap(results) > 4

@@ -1,0 +1,354 @@
+id: model-persistence
+title: "Model Persistence: Pickle vs Joblib & Pipeline Packaging"
+subtitle: Serialize trained estimators, scalers, and encoders safely for zero-downtime serving
+recap: Serialisation turns a trained model into bytes on disk. Joblib beats pickle for NumPy-heavy models
+  (memory-mapping, compression). Always save the whole Pipeline — preprocessing plus model — or the API
+  receives unscaled, unencoded inputs. Pickle/joblib can execute arbitrary code on load, so only load files
+  from trusted, checksummed sources.
+traps:
+  - Saving only the classifier and re-implementing preprocessing in the API.
+  - Loading a .pkl from an unknown URL.
+  - Saving with one library version and loading with another without pinning.
+lesson:
+  checkpointStep: 3
+  steps:
+    - Once an ML model is trained in memory, it will disappear as soon as the Python script terminates. Model
+      serialization converts live Python objects into byte streams for disk storage or network transfer.
+    - Python's standard library provides pickle, but for models containing large numerical NumPy arrays (like
+      Random Forests or SVMs), joblib is dramatically faster and more space-efficient.
+    - Joblib implements optimized memory-mapping (mmap) and efficient array compression (zlib, lz4). However,
+      saving just the classifier object (model.predict) is a fatal operational anti-pattern.
+    - "Checkpoint: why must preprocessing scalers and encoders be saved together with the model, and what
+      security danger exists when unpickling untrusted files?"
+    - If you only serialize the XGBoost classifier, incoming raw JSON from a hospital API lacks scaling and
+      one-hot encoding, producing garbage predictions or immediate runtime dimension crashes.
+    - Furthermore, pickle and joblib execute arbitrary bytecode via the __reduce__ method. Never load
+      untrusted model files from unknown public URLs without cryptographic checksums or signed registries.
+checkpoint:
+  question: Explain why saving an isolated model estimator without its preprocessing pipeline breaks production
+    deployments, and describe the security vulnerability inherent in Python pickle deserialization.
+  hint: Recall train-serve skew and categorical alignment. Then consider the pickle __reduce__ protocol and how
+    unpickling malicious payloads can execute arbitrary OS commands.
+  keywords:
+    - pipeline
+    - train-serve skew
+    - preprocessor
+    - scaler
+    - encoder
+    - pickle
+    - joblib
+    - security
+    - arbitrary code
+    - reduce
+    - vulnerability
+  idealAnswer: "Saving an isolated estimator without its preprocessing pipeline introduces train-serve skew. Raw
+    API payloads cannot be ingested directly: numerical features must be normalized by the exact training
+    scaler parameters, and categorical features must be transformed using the exact one-hot encoder
+    categories. Bundling everything into an end-to-end `Pipeline` object guarantees identical preprocessing.
+    Regarding security, Python's pickle format is not secure: deserialization executes arbitrary constructor
+    logic defined in `__reduce__`, allowing an attacker to run malicious shell commands or reverse shells
+    simply by having your server call `pickle.load()` on an untrusted file."
+terms:
+  - term: Serialization
+    definition: Converting in-memory Python object graphs into a persistent byte sequence (file or stream).
+  - term: Joblib
+    definition: SciPy-optimized serialization library tailored for large NumPy ndarrays and scikit-learn models
+      using memory-mapping.
+  - term: Train-Serve Skew
+    definition: Discrepancy between how features are computed during training versus real-time serving.
+  - term: Arbitrary Code Execution
+    definition: A critical security flaw where unpickling unvalidated binary data executes attacker-controlled
+      system calls.
+  - term: End-to-End Pipeline
+    definition: A composite object linking Imputer → Scaler → OneHotEncoder → Classifier into a single
+      serializable artifact.
+quiz:
+  - question: Why is joblib preferred over standard pickle for saving large Random Forest classifiers?
+    options:
+      - Joblib encrypts the weights
+      - Joblib is optimized for NumPy arrays and supports efficient multi-threading and disk compression
+      - Pickle cannot save trees
+      - Joblib converts Python code to C++
+    answer: 1
+    explanation: Joblib specializes in numerical arrays, serializing large NumPy buffers with minimal memory
+      copies and optional compression (zlib/lz4).
+  - question: What should you do to prevent malicious remote code execution when loading saved ML models?
+    options:
+      - Only load model files from authenticated, signed registries and verify SHA-256 hashes
+      - Rename .pkl files to .txt
+      - Use Python 2 instead of Python 3
+      - Disable garbage collection
+    answer: 0
+    explanation: Because pickle allows arbitrary code execution during deserialization, model artifacts must come
+      from trusted, version-controlled storage with verified SHA-256 checksums.
+  - question: Why is joblib preferred over pickle for scikit-learn models?
+    options:
+      - It's more secure
+      - It handles large NumPy arrays efficiently (compression
+      - memory-mapping)
+      - It works with Java
+      - It doesn't need Python
+    answer: 1
+    explanation: Models are mostly arrays; joblib is optimised for them. It is NOT safer.
+  - question: Which artifact should the stroke API load?
+    options:
+      - The XGBClassifier only
+      - The full fitted Pipeline with preprocessing
+      - The training CSV
+      - The notebook
+    answer: 1
+    explanation: The pipeline guarantees identical preprocessing.
+  - question: What risk does pickle.load() carry?
+    options:
+      - Slow loading
+      - It can execute arbitrary code from the file
+      - It deletes the file
+      - It changes predictions randomly
+    answer: 1
+    explanation: Deserialisation can call functions via __reduce__.
+  - question: A model saved with scikit-learn 1.3 is loaded in 1.5. What can happen?
+    options:
+      - Nothing
+      - Warnings
+      - errors or changed behaviour
+      - It automatically upgrades
+      - It becomes faster
+    answer: 1
+    explanation: Pin versions so the serving environment matches training.
+  - question: What belongs in model metadata?
+    options:
+      - Patient names
+      - Version
+      - training date
+      - library versions
+      - feature names
+      - metrics
+      - The API key
+      - Nothing
+    answer: 1
+    explanation: Metadata makes every prediction traceable and reproducible.
+  - question: How should you verify a model file before loading it in production?
+    options:
+      - Check its size
+      - Compare its SHA-256 checksum with the registry
+      - Open it in a text editor
+      - Rename it
+    answer: 1
+    explanation: Checksums or signatures confirm it's the artifact you produced.
+fact:
+  title: Pickle Security in Production
+  body: Major AI platforms like Hugging Face and PyTorch now recommend SafeTensors and ONNX over raw pickles
+    because hundreds of public CVEs have demonstrated arbitrary remote code execution via poisoned pickle
+    files.
+lab:
+  title: "Model Serialization Benchmark: Pickle vs Joblib & Pipeline Packaging"
+  variations:
+    - title: "NumPy Array Serialization: Pickle vs Joblib"
+      question: A feature matrix of <b>1,000,000 float64 elements</b> occupies <b>8.0 MB</b> in raw pickle.
+        Serialized with <code>joblib.dump(..., compress=3)</code>, it achieves a <b>62% size reduction</b>.
+        What is the compressed file size in <b>MB</b>? (2 decimals)
+      answer: 3.04
+      tolerance: 0.05
+      hint: Multiply 8.0 MB by (1 − 0.62) = 0.38.
+      explanation: Compressed size = 8.0 × (1 − 0.62) = 8.0 × 0.38 = 3.04 MB. Joblib's native compression
+        significantly reduces storage and cloud deployment bundle sizes.
+    - title: Cold-Start Deserialization Latency Reduction
+      question: Deserializing an uncompressed pickle model takes <b>45.0 ms</b> on serverless cold starts. Switching
+        to memory-mapped Joblib (<code>mmap_mode='r'</code>) cuts model load time to <b>1.5 ms</b>. How many
+        <b>milliseconds</b> are saved per cold start?
+      answer: 43.5
+      tolerance: 0.1
+      hint: Subtract 1.5 ms from 45.0 ms.
+      explanation: 45.0 − 1.5 = 43.5 ms saved. Memory mapping avoids reading the entire weight matrix into Python
+        heap memory at startup.
+    - title: Pipeline Preprocessor Feature Alignment
+      question: A production <code>ColumnTransformer</code> takes raw patient dictionaries, imputes 2 missing
+        fields, one-hot encodes 3 categorical features (generating <b>8 binary columns</b>), and passes <b>3
+        numerical columns</b> unchanged. How many total columns enter the classifier?
+      answer: 11
+      tolerance: 0
+      hint: Add 8 encoded columns + 3 numerical columns.
+      explanation: 8 one-hot columns + 3 scaled numerical columns = 11 final feature columns fed into the estimator.
+notes:
+  - heading: What serialisation is for
+    body: |
+      A trained model lives in RAM; when the Python process ends, it's gone. **Serialisation** converts the live object — its learned weights, tree structures, fitted scaler means — into bytes that can be written to disk or sent over a network, and **deserialisation** rebuilds the object later, in another process or on another machine.
+
+      That's what lets you train once (on a laptop or a GPU VM) and serve many times (in a container on Render or a hospital server).
+  - heading: pickle vs joblib
+    body: |
+      Python's built-in **pickle** handles almost any object. **joblib** builds on it but is optimised for objects containing large NumPy arrays — which is what scikit-learn models are (a RandomForest is mostly arrays of thresholds and leaf values):
+
+      | | pickle | joblib |
+      |---|---|---|
+      | Large NumPy arrays | copied byte by byte | stored efficiently, can be memory-mapped |
+      | Compression | manual | built in: `compress=3`, zlib/lz4 |
+      | Multiple workers | each loads a full copy | memory-mapped arrays can be shared |
+      | Typical use | general Python objects | scikit-learn models and pipelines |
+
+      ```python
+      joblib.dump(pipeline, "models/stroke_pipeline.joblib", compress=3)
+      pipeline = joblib.load("models/stroke_pipeline.joblib")
+      ```
+
+      For deep learning or cross-language serving you'd use framework formats (PyTorch `state_dict`, ONNX) instead.
+  - heading: Save the pipeline, not just the classifier
+    body: |
+      The model was trained on *preprocessed* features: imputed BMI, scaled age and glucose, one-hot encoded categories. If you save only `XGBClassifier`, the API receives raw JSON like `{"age": 67, "work_type": "Private"}` and either:
+
+      - crashes (`could not convert string to float: 'Private'`), or worse
+      - gets numeric-only rows that aren't scaled, and returns **confident garbage**.
+
+      That's training-serving skew. Saving the **whole fitted Pipeline** (preprocessing + model) means one object takes raw input and does everything exactly as in training. Save alongside it a metadata file: model version, training date, library versions, feature names, validation metrics.
+  - heading: Unpickling is code execution
+    body: |
+      pickle (and therefore joblib) can reconstruct objects by **calling functions** — the `__reduce__` protocol. A malicious file can tell the loader to run `os.system("…")`. Loading a model file is equivalent to running a program written by whoever made the file.
+
+      Rules for production:
+
+      - Only load artifacts **you** (or your CI) produced.
+      - Verify a **checksum** (SHA-256) or signature before loading; store models in a controlled **model registry** (MLflow, a private bucket).
+      - Never load a `.pkl` from an email attachment, a public URL or a user upload.
+      - **Pin library versions**: a model pickled with scikit-learn 1.3 may fail or behave differently in 1.5.
+examples:
+  - title: Compressed artifact size
+    problem: A 400-tree RandomForest has ~0.35 MB of arrays per tree. Saved with joblib at a 3.5× compression
+      ratio, how large is the file?
+    steps:
+      - Uncompressed ≈ 400 × 0.35 = **140 MB**.
+      - Compressed ≈ 140 ÷ 3.5 = **40 MB**.
+      - "Trade-off: higher compression levels shrink the file but take longer to save and load."
+    answer: About 40 MB.
+    takeaway: Compression is a size-vs-speed dial, not free.
+  - title: Diagnosing a broken API
+    problem: "After deployment, /predict returns 500 with 'ValueError: could not convert string to float:
+      Private'. Training accuracy was fine. What happened?"
+    steps:
+      - "'Private' is a work_type category — it reached the model as a raw string."
+      - "So the deployed artifact has no OneHotEncoder in front of the model: only the classifier was saved."
+      - "Fix: retrain/save the full Pipeline (ColumnTransformer + model) and load that in the API."
+    answer: Only the classifier was serialised; save the whole preprocessing pipeline.
+    takeaway: If preprocessing isn't inside the artifact, production won't do it.
+questions:
+  - question: Compare pickle and joblib for persisting machine-learning models.
+    kind: short
+    marks: 5
+    keywords:
+      - serialisation
+      - numpy
+      - arrays
+      - compression
+      - memory-mapping
+      - mmap
+      - workers
+      - scikit-learn
+      - both execute code
+    idealAnswer: "Both serialise Python objects to bytes. joblib is optimised for objects containing large NumPy
+      arrays — like scikit-learn models — storing them efficiently with built-in compression and
+      memory-mapping so workers can share arrays, making it faster and smaller than plain pickle. Neither is
+      safe for untrusted files: both can execute code on load."
+  - question: Why must preprocessing be saved together with the model? Give the failure you would see if it isn't.
+    kind: short
+    marks: 5
+    keywords:
+      - preprocessing
+      - scaler
+      - encoder
+      - imputer
+      - pipeline
+      - raw input
+      - string
+      - crash
+      - unscaled
+      - garbage
+      - skew
+    idealAnswer: "The model expects imputed, scaled and encoded features. If only the classifier is saved, the API
+      feeds it raw input: categorical strings like 'Private' crash it with a ValueError, and unscaled numbers
+      produce confident but wrong probabilities — training-serving skew. Saving the whole fitted Pipeline
+      makes production apply exactly the training transformations."
+  - question: Describe a safe, reproducible process for packaging and deploying the stroke model artifact, from
+      training to loading in the API, including security controls.
+    kind: long
+    marks: 10
+    keywords:
+      - pipeline
+      - joblib
+      - compress
+      - metadata
+      - version
+      - pinned
+      - requirements
+      - checksum
+      - sha-256
+      - registry
+      - ci
+      - trusted
+      - load at startup
+      - never untrusted
+    idealAnswer: "Fit the full Pipeline (preprocessing + model) on training data and save it with joblib (e.g.
+      compress=3), plus metadata: model version, date, feature names, metrics and exact library versions.
+      Record its SHA-256 checksum and store both in a controlled model registry or private bucket, produced by
+      CI rather than a laptop. The serving image pins the same library versions; at startup the API downloads
+      the artifact, verifies the checksum, loads it once and reports the model version in responses. Never
+      load pickles from untrusted sources (uploads, public URLs), because deserialisation can execute
+      arbitrary code."
+coding:
+  - id: checksummed-artifacts
+    title: Save and load with a checksum
+    language: python
+    level: core
+    prompt: |
+      Write two functions:
+
+      - `save_model(obj, path)` — save with `joblib.dump(obj, path, compress=3)` and return the file's
+        **SHA-256** hex digest.
+      - `load_model(path, expected_sha256)` — compute the file's SHA-256 **before** loading; if it doesn't
+        match, raise `ValueError` without unpickling. Otherwise return `joblib.load(path)`.
+
+      This is the minimum safety net, because unpickling a file can run arbitrary code.
+    starter: |
+      import hashlib
+      import joblib
+
+      def save_model(obj, path):
+          joblib.dump(obj, path)
+
+      def load_model(path, expected_sha256):
+          return joblib.load(path)   # ✗ loads anything
+    solution: |
+      import hashlib
+      import joblib
+
+      def _sha256(path):
+          h = hashlib.sha256()
+          with open(path, "rb") as f:
+              for block in iter(lambda: f.read(1 << 20), b""):
+                  h.update(block)
+          return h.hexdigest()
+
+      def save_model(obj, path):
+          joblib.dump(obj, path, compress=3)
+          return _sha256(path)
+
+      def load_model(path, expected_sha256):
+          if _sha256(path) != expected_sha256:
+              raise ValueError(f"checksum mismatch for {path}: refusing to load")
+          return joblib.load(path)
+    tests:
+      - name: Round-trip works and returns a SHA-256 digest
+        code: |
+          from sklearn.linear_model import LogisticRegression
+          m = LogisticRegression().fit([[0], [1], [2], [3]], [0, 0, 1, 1])
+          digest = save_model(m, "m.joblib")
+          assert isinstance(digest, str) and len(digest) == 64, "return the hex SHA-256 digest"
+          assert load_model("m.joblib", digest).predict([[3]])[0] == 1
+      - name: A tampered file is refused before unpickling
+        code: |
+          digest = save_model({"w": [1, 2, 3]}, "w.joblib")
+          with open("w.joblib", "ab") as f:
+              f.write(b"tamper")
+          try:
+              load_model("w.joblib", digest)
+              raise AssertionError("a file whose checksum changed must be rejected")
+          except ValueError:
+              pass

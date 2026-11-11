@@ -1,0 +1,382 @@
+id: drift-psi
+title: Observability, Covariate Drift & Population Stability Index (PSI)
+subtitle: Detect data distribution changes and performance degradation before models fail patients
+recap: "ML fails silently: HTTP 200, wrong answers. Data drift is a change in P(X); concept drift is a change
+  in P(Y|X). PSI bins a feature and sums (A − E)·ln(A/E) across bins: < 0.1 stable, 0.1–0.25 monitor, ≥ 0.25
+  retrain and recalibrate. Monitor inputs and outputs continuously, not just uptime."
+traps:
+  - Using log base 10 instead of the natural log in PSI.
+  - Treating a PSI of 0.18 as 'retrain now' — it's the monitor band.
+  - Confusing data drift with concept drift.
+lesson:
+  checkpointStep: 3
+  steps:
+    - "Software systems fail visibly with stack traces and crash logs. Machine learning models fail silently:
+      the API continues returning HTTP 200 with clean JSON, but predictions quietly lose real-world validity."
+    - We distinguish between Data Drift (covariate shift, where the input distribution P(X) changes over time)
+      and Concept Drift (where the relationship P(Y given X) between features and target changes).
+    - For instance, if our Uganda hospital opens a pediatric or geriatric wing, the patient age and BMI
+      distributions shift dramatically from the training population.
+    - "Checkpoint: how does the Population Stability Index (PSI) quantify covariate drift, and what
+      mathematical threshold dictates when to trigger automated retraining?"
+    - "PSI divides a continuous feature into reference bins (typically 10 quantiles) and compares the expected
+      training proportion E to actual production proportion A: sum of (A minus E) times ln(A over E)."
+    - A PSI below 0.1 indicates stability. PSI between 0.1 and 0.25 flags moderate drift for monitoring. A PSI
+      of 0.25 or greater indicates significant drift requiring an automated retraining and recalibration
+      pipeline.
+checkpoint:
+  question: Define Data Drift versus Concept Drift with clinical examples, and explain how the Population
+    Stability Index (PSI) is calculated and interpreted.
+  hint: "P(X) vs P(Y|X). State the PSI formula: sum of (Actual - Expected) * ln(Actual / Expected), and the
+    standard thresholds (<0.1, 0.1-0.25, >0.25)."
+  keywords:
+    - data drift
+    - concept drift
+    - psi
+    - population stability index
+    - actual
+    - expected
+    - threshold
+    - retraining
+    - covariate shift
+  idealAnswer: "Data Drift (covariate shift) occurs when the input feature distribution $P(X)$ changes over time
+    while the true relationship remains the same—e.g., if hospital outreach causes the proportion of elderly
+    patients (age > 65) to double from training baseline. Concept Drift occurs when the underlying statistical
+    relationship between features and target $P(Y|X)$ changes—e.g., if a new preventative hypertension
+    medication decouples high blood pressure from subsequent stroke incidence. The Population Stability Index
+    (PSI) quantifies covariate shift by partitioning features into reference bins (quantiles) and calculating:
+    $\\text{PSI} = \\sum_{i=1}^k (A_i - E_i) \\times \\ln(A_i / E_i)$, where $E_i$ is expected baseline
+    frequency and $A_i$ is actual production frequency. Standard industry interpretation: PSI < 0.1 means no
+    significant change; 0.1 ≤ PSI < 0.25 indicates moderate drift; and PSI ≥ 0.25 indicates severe drift,
+    automatically alerting engineering and triggering retraining pipelines."
+terms:
+  - term: Data Drift (Covariate Shift)
+    definition: Change in the marginal distribution of input features P(X) between training and production inference.
+  - term: Concept Drift
+    definition: Change in the conditional distribution P(Y|X); the relationship between inputs and ground-truth
+      targets fundamentally changes.
+  - term: Population Stability Index (PSI)
+    definition: A symmetric metric derived from Kullback-Leibler divergence measuring the shift between two
+      probability distributions.
+  - term: Kolmogorov-Smirnov (KS) Test
+    definition: A non-parametric statistical hypothesis test comparing continuous cumulative distributions to
+      detect significant divergence.
+  - term: Automated Retraining Trigger
+    definition: A monitored workflow (e.g. in Airflow) that automatically initiates model training when drift or
+      performance metrics breach thresholds.
+quiz:
+  - question: In a production monitoring dashboard, the PSI for patient glucose distribution over the last 30 days
+      is measured at 0.32. What action should be taken?
+    options:
+      - Do nothing because 0.32 is negligible
+      - PSI >= 0.25 indicates significant drift; alert the team, inspect demographic shifts, and trigger model
+        retraining
+      - Delete the model file
+      - Scale up container replicas
+    answer: 1
+    explanation: A PSI value of 0.25 or greater indicates substantial distribution drift, demanding root-cause
+      investigation and pipeline retraining.
+  - question: During COVID-19, patient symptoms and travel patterns changed radically, altering how ML models
+      predicted respiratory risk. What type of drift is this?
+    options:
+      - Concept drift and covariate data drift simultaneously
+      - Hardware drift
+      - RAM drift
+      - Compiler drift
+    answer: 0
+    explanation: Sudden systemic shifts change both input feature patterns (covariate shift) and the disease
+      dynamics/relationships (concept drift).
+  - question: Data drift (covariate shift) is a change in…
+    options:
+      - P(Y | X)
+      - P(X)
+      - The model weights
+      - The API latency
+    answer: 1
+    explanation: The input distribution changes.
+  - question: What does PSI = 0.18 suggest?
+    options:
+      - Stable
+      - Moderate drift — investigate and monitor
+      - Retrain immediately
+      - The PSI is invalid
+    answer: 1
+    explanation: 0.10–0.25 is the monitor band.
+  - question: Which log is used in PSI?
+    options:
+      - Base 10
+      - Base 2
+      - Natural log
+      - No log
+    answer: 2
+    explanation: PSI = Σ (A − E) ln(A/E).
+  - question: Why do ML models 'fail silently'?
+    options:
+      - They log nothing
+      - They keep returning valid responses while accuracy degrades
+      - They crash quietly
+      - They stop accepting requests
+    answer: 1
+    explanation: Nothing looks broken at the HTTP level.
+  - question: Detecting concept drift requires…
+    options:
+      - Only input features
+      - Ground-truth labels (often delayed)
+      - The Docker image
+      - A GPU
+    answer: 1
+    explanation: P(Y|X) can only be measured with outcomes.
+  - question: E = 0.10, A = 0.10 in a bin. Its PSI contribution is…
+    options:
+      - "0"
+      - "0.1"
+      - "1"
+      - Undefined
+    answer: 0
+    explanation: A − E = 0, so the term is 0.
+fact:
+  title: Evidently AI & Prometheus in Production
+  body: Modern MLOps stacks export statistical drift metrics (PSI, Wasserstein distance, KS p-values) from
+    Evidently AI directly into Prometheus and Grafana dashboards, firing automated Slack/PagerDuty alerts
+    before degraded model predictions affect patients.
+lab:
+  title: Population Stability Index (PSI) & Covariate Drift Detector
+  variations:
+    - title: Population Stability Index (PSI) Bin Contribution
+      question: "In baseline training data, age bin [60–70] contained <b>20%</b> of patients (E = 0.20). In recent
+        production traffic, this bin jumped to <b>32%</b> (A = 0.32). What is the PSI contribution of this
+        single bin: <code>(A − E) × ln(A / E)</code>? (3 decimals)"
+      answer: 0.056
+      tolerance: 0.004
+      hint: Calculate (0.32 − 0.20) × ln(0.32 / 0.20) = 0.12 × ln(1.6).
+      explanation: Δ = 0.12. ln(1.6) = 0.47000. PSI_bin = 0.12 × 0.47000 = 0.0564 ≈ 0.056. Summing across all bins
+        yields the total feature PSI.
+    - title: Critical Covariate Drift Feature Count
+      question: "An MLOps drift monitor evaluates 8 clinical features. Their calculated PSI values are: <b>[0.04,
+        0.08, 0.28, 0.06, 0.12, 0.03, 0.26, 0.05]</b>. Using the standard threshold where <code>PSI ≥
+        0.25</code> indicates critical drift requiring automated retraining, how many features are in critical
+        drift?"
+      answer: 2
+      tolerance: 0
+      hint: Count how many values in the list are greater than or equal to 0.25.
+      explanation: Features with PSI = 0.28 and 0.26 exceed the 0.25 threshold (2 features). This automatically
+        alerts on-call ML engineers.
+    - title: Concept Drift F1 Degradation Percentage
+      question: At deployment, the stroke triage model achieved an <b>F1 score of 0.80</b>. Due to seasonal disease
+        distribution changes over 9 months without retraining, F1 dropped to <b>0.68</b>. What is the
+        percentage decrease in F1 score? (1 decimal)
+      answer: 15
+      tolerance: 0.2
+      hint: Compute ((0.80 − 0.68) / 0.80) × 100%.
+      explanation: (0.12 / 0.80) × 100% = 15.0% performance degradation, demonstrating why automated drift
+        monitoring is essential.
+notes:
+  - heading: Models fail silently
+    body: |
+      Ordinary software fails loudly: exceptions, stack traces, 500 errors. ML models usually fail **silently**: the API keeps returning HTTP 200 with well-formed JSON, latency is fine, dashboards are green — and the predictions are steadily getting worse because the world has changed since training.
+
+      So ML monitoring has two layers:
+
+      - **Service health** — uptime, latency, error rates (same as any API).
+      - **Model health** — are the *inputs* still like the training data? Are the *outputs* behaving as expected? When labels arrive later (did the patient have a stroke?), is accuracy holding?
+  - heading: Data drift vs concept drift
+    body: |
+      - **Data drift (covariate shift)** — the distribution of inputs **P(X)** changes. The hospital opens a geriatric wing; patient ages shift up. The relationship between features and stroke may be unchanged, but the model now sees regions of feature space it rarely saw in training.
+      - **Concept drift** — the relationship **P(Y | X)** changes. A new treatment lowers stroke risk for hypertensive patients; the same inputs now mean something different.
+
+      Data drift can be detected immediately from inputs alone. Concept drift needs **ground-truth labels**, which arrive with a delay, so you monitor proxies (prediction distribution, rate of high-risk flags) and evaluate properly when labels come in.
+  - heading: Population Stability Index (PSI)
+    body: |
+      PSI compares a feature's production distribution with its training (reference) distribution:
+
+      1. Split the reference data into bins — usually **10 quantile bins**, so each holds **E = 10%** of training rows.
+      2. Count the share **A** of production rows that fall in each of those same bins.
+      3. **PSI = Σ (A − E) · ln(A / E)** over all bins (natural log).
+
+      Each term is ≥ 0 and grows when a bin gains or loses share, so PSI is 0 when the distributions match. Industry rule of thumb:
+
+      | PSI | Meaning | Action |
+      |---|---|---|
+      | < 0.10 | stable | none |
+      | 0.10 – 0.25 | moderate shift | investigate, monitor closely |
+      | ≥ 0.25 | significant shift | retrain and recalibrate |
+
+      Practical details: use a small floor (e.g. 0.0001) so empty bins don't give ln(0); compute PSI per feature on a rolling window large enough to be stable.
+  - heading: From detection to retraining
+    body: |
+      A monitoring pipeline for the stroke model:
+
+      1. **Log** every request's features and prediction (with privacy controls).
+      2. Each day, compute **PSI per feature** against the training reference, plus the distribution of predicted risk; the **KS test** is a common alternative for continuous features.
+      3. **Alert** in the 0.10–0.25 band; **trigger retraining** at ≥ 0.25 or when evaluation on newly labelled cases shows recall dropping.
+      4. Retrain on recent data, **re-validate** (recall at the clinical threshold, calibration), and release via **canary** — never auto-deploy a retrained model straight to 100%.
+
+      PSI says *that* something changed, not *whether it matters*. A big shift in an unimportant feature may not hurt; a small shift in the most important one might. Pair drift metrics with feature importance and, when labels arrive, real performance.
+examples:
+  - title: PSI for one bin
+    problem: In the age bin 60–70, the training share is E = 0.10 and this month's share is A = 0.22. What does
+      this bin contribute to PSI?
+    steps:
+      - A − E = 0.22 − 0.10 = **0.12**.
+      - A / E = 2.2 → ln(2.2) ≈ **0.7885**.
+      - Contribution = 0.12 × 0.7885 ≈ **0.0946**.
+    answer: About 0.095.
+    takeaway: One bin doubling its share already contributes almost the whole 'monitor' threshold.
+  - title: A full PSI calculation
+    problem: With 4 bins (E = 0.25 each), production shares are 0.20, 0.25, 0.25, 0.30. Compute PSI and decide.
+    steps:
+      - "Bin 1: (0.20 − 0.25) × ln(0.8) = −0.05 × −0.2231 = 0.0112."
+      - "Bins 2 and 3: A = E → 0."
+      - "Bin 4: (0.30 − 0.25) × ln(1.2) = 0.05 × 0.1823 = 0.0091."
+      - PSI = 0.0112 + 0.0091 ≈ **0.020** → stable (< 0.10).
+    answer: PSI ≈ 0.02 — no action.
+    takeaway: Both losing and gaining share add positive amounts to PSI.
+questions:
+  - question: Distinguish data drift from concept drift with a hospital example of each.
+    kind: short
+    marks: 5
+    keywords:
+      - data drift
+      - covariate shift
+      - P(X)
+      - geriatric wing
+      - age distribution
+      - concept drift
+      - P(Y|X)
+      - relationship
+      - new treatment
+      - labels
+    idealAnswer: "Data drift is a change in the input distribution P(X): e.g. a new geriatric wing shifts patient
+      ages upward. Concept drift is a change in the relationship P(Y|X): e.g. a new hypertension treatment
+      lowers stroke risk for the same inputs. Data drift can be seen from inputs alone; concept drift needs
+      ground-truth outcomes, which arrive later."
+  - question: Explain how PSI is calculated and the thresholds used to act on it.
+    kind: short
+    marks: 6
+    keywords:
+      - reference
+      - bins
+      - quantiles
+      - expected
+      - actual
+      - proportion
+      - sum
+      - (A - E) ln(A/E)
+      - natural log
+      - "0.1"
+      - "0.25"
+      - retrain
+    idealAnswer: Split the training (reference) feature into bins, typically 10 quantiles so each has expected
+      share E = 0.10; compute the actual share A of production data in each bin; PSI = Σ (A − E)·ln(A/E) using
+      the natural log. PSI < 0.10 is stable, 0.10–0.25 is moderate drift to investigate and monitor, and ≥
+      0.25 is significant drift that should trigger retraining and recalibration.
+  - question: Design the monitoring and retraining system for the stroke model in production. Cover what is
+      logged, which metrics are computed and how often, alert and retraining thresholds, how delayed labels
+      are used, and how a retrained model reaches production safely.
+    kind: long
+    marks: 12
+    keywords:
+      - log features
+      - predictions
+      - privacy
+      - daily
+      - psi per feature
+      - ks test
+      - prediction distribution
+      - "0.1"
+      - "0.25"
+      - alert
+      - labels
+      - recall
+      - calibration
+      - retrain
+      - validate
+      - model registry
+      - canary
+      - rollback
+    idealAnswer: Log each request's features, prediction and model version (pseudonymised, access-controlled).
+      Daily, compute PSI per feature against the training reference (or a KS test for continuous features),
+      plus the distribution of predicted risk and the share of high-risk flags; also track latency and error
+      rates. Alert when any important feature's PSI enters 0.10–0.25 and trigger the retraining pipeline at ≥
+      0.25. As outcomes arrive (weeks later), join them to predictions to measure recall at the triage
+      threshold, precision and calibration — a drop triggers retraining even without input drift (concept
+      drift). Retrain on recent data, validate against the current model on a held-out recent set, register
+      the new version, and release it via shadow and canary with automatic rollback, keeping the previous
+      model as a fallback.
+coding:
+  - id: psi
+    title: Population Stability Index
+    language: python
+    level: exam
+    files:
+      - stroke_sample.csv
+    prompt: |
+      Write `psi(expected, actual, bins=10)`:
+
+      1. Bin edges are the **quantiles of `expected`** (deciles for bins=10), with the outer edges widened to
+         ±infinity so every production value lands in a bin.
+      2. E and A are the shares of `expected` and `actual` in each bin. Floor both at `1e-4` to avoid `ln(0)`.
+      3. Return Σ (A − E) · ln(A / E).
+
+      Then classify drift for the scenarios below with `drift_level(value)` → `"stable"` (< 0.1),
+      `"monitor"` (0.1–0.25) or `"retrain"` (≥ 0.25).
+    setup: |
+      import numpy as np
+      import pandas as pd
+      train_age = pd.read_csv("stroke_sample.csv")["age"].to_numpy(dtype=float)
+      rng = np.random.default_rng(1)
+      same_ward = rng.choice(train_age, 500)
+      geriatric_wing = rng.choice(train_age, 500) + 12
+    starter: |
+      import numpy as np
+
+      def psi(expected, actual, bins=10):
+          ...
+
+      def drift_level(value):
+          ...
+
+      for name, prod in [("same ward", same_ward), ("geriatric wing", geriatric_wing)]:
+          v = psi(train_age, prod)
+          print(name, v, drift_level(v))
+    solution: |
+      import numpy as np
+
+      def psi(expected, actual, bins=10):
+          expected, actual = np.asarray(expected, float), np.asarray(actual, float)
+          edges = np.quantile(expected, np.linspace(0, 1, bins + 1))
+          edges[0], edges[-1] = -np.inf, np.inf
+          e = np.histogram(expected, edges)[0] / len(expected)
+          a = np.histogram(actual, edges)[0] / len(actual)
+          e, a = np.maximum(e, 1e-4), np.maximum(a, 1e-4)
+          return float(np.sum((a - e) * np.log(a / e)))
+
+      def drift_level(value):
+          return "stable" if value < 0.1 else "monitor" if value < 0.25 else "retrain"
+
+      for name, prod in [("same ward", same_ward), ("geriatric wing", geriatric_wing)]:
+          v = psi(train_age, prod)
+          print(name, round(v, 3), drift_level(v))
+    tests:
+      - name: Identical distributions give ~0
+        code: |
+          assert abs(psi(train_age, train_age)) < 1e-9
+      - name: A resample of the same population is stable
+        code: |
+          v = psi(train_age, same_ward)
+          assert v < 0.1, f"PSI {v:.3f} — resampling the same ward shouldn't look like drift"
+      - name: The geriatric wing triggers retraining
+        code: |
+          v = psi(train_age, geriatric_wing)
+          assert v >= 0.25, f"a +12 year shift should give PSI ≥ 0.25, got {v:.3f}"
+      - name: Values beyond the training range are still counted
+        code: |
+          import numpy as np
+          v = psi(train_age, np.full(100, 150.0))
+          assert v > 1, "production ages above every training age must land in the top bin"
+      - name: drift_level thresholds
+        code: |
+          assert [drift_level(x) for x in (0.05, 0.1, 0.2, 0.25, 0.4)] == ["stable", "monitor", "monitor", "retrain", "retrain"]
+    hints:
+      - "`np.quantile(expected, np.linspace(0, 1, bins + 1))` gives the bin edges."
+      - Set the first and last edge to ±np.inf, then use `np.histogram(values, edges)`.

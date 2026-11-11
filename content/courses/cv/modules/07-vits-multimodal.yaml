@@ -1,0 +1,399 @@
+id: vits-multimodal
+title: ViTs + Multimodal
+subtitle: Use image–text & transformer-based vision
+recap: A ViT cuts the image into patches (224/16 → 14×14 = 196 tokens), projects each into an embedding, adds
+  [CLS] and position embeddings, then uses self-attention so any patch can attend to any other. Weak inductive
+  bias means ViTs need lots of data. CLIP learns a shared image–text space with a contrastive loss, enabling
+  zero-shot classification by cosine similarity with text prompts.
+traps:
+  - Forgetting the +1 [CLS] token in the sequence length.
+  - Saying ViTs are always better than CNNs — on small data CNN inductive bias usually wins.
+  - Thinking CLIP zero-shot needs task-specific training — it only needs class prompts.
+lesson:
+  checkpointStep: 3
+  steps:
+    - A Vision Transformer treats an image like a sentence. It cuts a 224×224 image into 16×16 patches — a 14
+      × 14 grid, so 196 patches — and treats each patch as a word.
+    - Each patch is flattened and linearly projected into a token embedding. A learnable [CLS] token is added
+      at the front, and position embeddings tell the model where each patch came from.
+    - "Self-attention lets every token look at every other token: attention = softmax(Q·Kᵀ / √d) · V. A patch
+      of a dog's ear can directly attend to the tail on the other side of the image."
+    - "Checkpoint: why do ViTs need much more training data than CNNs? And how does CLIP do zero-shot
+      classification?"
+    - CNNs build in locality and translation equivariance. ViTs have weak inductive bias — they must learn
+      from data that nearby patches are related. With huge pretraining data, that flexibility wins.
+    - CLIP trains an image encoder and a text encoder together on 400 million image–caption pairs, with a
+      contrastive loss that pulls matching pairs together and pushes mismatches apart.
+    - For zero-shot classification, embed prompts like ‘a photo of a dog’ for each class, embed the image, and
+      pick the class with the highest cosine similarity — no task-specific training.
+checkpoint:
+  question: Why do Vision Transformers need significantly more training data than CNNs to reach peak
+    performance? And how does CLIP perform zero-shot classification?
+  hint: "Inductive bias (locality, equivariance) vs learning it from data. CLIP: two encoders, a shared
+    embedding space, cosine similarity with text prompts."
+  keywords:
+    - inductive bias
+    - locality
+    - equivariance
+    - data
+    - learn
+    - clip
+    - contrastive
+    - text encoder
+    - image encoder
+    - cosine
+    - similarity
+    - prompt
+    - embedding
+    - zero-shot
+  idealAnswer: CNNs hard-code inductive biases — locality and translation equivariance — so they learn
+    efficiently from less data. ViTs split the image into patch tokens and use global self-attention with very
+    weak spatial bias, so they must learn spatial structure from data, which requires large-scale pretraining.
+    CLIP learns a shared embedding space for images and text via contrastive training on image–caption pairs.
+    For zero-shot classification, it embeds a text prompt per class, embeds the image, and predicts the class
+    with the highest cosine similarity.
+terms:
+  - term: Patch embedding
+    definition: Flatten a P×P×C patch and project it to a D-dim token.
+  - term: "[CLS] token"
+    definition: Extra learnable token whose final state is used for classification.
+  - term: Self-attention
+    definition: Each token mixes information from all tokens, weighted by Q·K similarity.
+  - term: Inductive bias
+    definition: Built-in assumptions (e.g. locality) that help learn from less data.
+  - term: Contrastive loss
+    definition: Pull matching image–text pairs together, push others apart.
+quiz:
+  - question: "ViT with 224×224 input and 16×16 patches: sequence length including [CLS]?"
+    options:
+      - "196"
+      - "197"
+      - "256"
+      - "224"
+    answer: 1
+    explanation: (224/16)² = 14² = 196 patches + 1 [CLS] = 197 tokens.
+  - question: Self-attention cost grows with the number of tokens N as…
+    options:
+      - N
+      - N log N
+      - N²
+      - constant
+    answer: 2
+    explanation: "Every token attends to every token: an N×N attention matrix. Halving patch size quadruples N and
+      ×16 the attention cost."
+  - question: How many patches does a 224×224 image give with 32×32 patches?
+    options:
+      - "7"
+      - "49"
+      - "196"
+      - "50"
+    answer: 1
+    explanation: 224/32 = 7 → 7² = 49.
+  - question: What are position embeddings for in a ViT?
+    options:
+      - To normalise pixels
+      - To tell the model where each patch came from
+      - To classify the image
+      - To reduce tokens
+    answer: 1
+    explanation: Without them, attention is order-agnostic.
+  - question: Why divide QKᵀ by √d?
+    options:
+      - To save memory
+      - To keep scores in a range where softmax has useful gradients
+      - To normalise images
+      - It's optional decoration
+    answer: 1
+    explanation: Large dot products saturate softmax.
+  - question: Why do ViTs need more data than CNNs?
+    options:
+      - They have fewer parameters
+      - Weak inductive bias — locality must be learned from data
+      - They can't use GPUs
+      - They only take grayscale images
+    answer: 1
+    explanation: CNNs build locality in.
+  - question: CLIP's training objective is…
+    options:
+      - Pixel reconstruction
+      - Contrastive — match image–caption pairs and separate mismatches
+      - Next-word prediction only
+      - Bounding-box regression
+    answer: 1
+    explanation: It learns a shared image–text space.
+  - question: Attention cost grows with the number of tokens N as…
+    options:
+      - N
+      - N log N
+      - N²
+      - constant
+    answer: 2
+    explanation: Every token attends to every token.
+fact:
+  title: Vision-language-action models
+  body: "Google DeepMind's RT-2 (2023) treated robot actions as text tokens, so a vision-language model could
+    output motor commands. Gemini Robotics (2025) pushed this further: robots following open-ended
+    instructions in scenes they had never seen."
+lab:
+  title: ViT tokens & CLIP zero-shot
+  variations:
+    - title: ViT-Base Sequence Length
+      question: A ViT takes <b>224×224</b> images with <b>16×16</b> patches and prepends 1 <code>[CLS]</code> token.
+        What is the total token sequence length <b>L</b>?
+      answer: 197
+      tolerance: 0
+      hint: Compute (224/16)² + 1.
+      explanation: (224/16)² = 14 × 14 = 196 patch tokens, plus 1 [CLS] token = 197.
+    - title: High-Res ViT Attention Matrix Size
+      question: If you feed a <b>384×384</b> image into a ViT with <b>16×16</b> patches (no [CLS] token), how many
+        patch tokens <b>N</b> are produced?
+      answer: 576
+      tolerance: 0
+      hint: Grid width = 384 / 16 = 24. Total patches = 24².
+      explanation: (384 / 16)² = 24 × 24 = 576 tokens (nearly 3× more tokens and ~8.5× larger attention matrix than
+        224×224!).
+    - title: Patch Linear Projection Weights
+      question: For RGB images (<b>C = 3</b>), patch size <b>P = 16</b>, and embedding dimension <b>D = 768</b>, how
+        many values are in a single flattened patch vector before projection?
+      answer: 768
+      tolerance: 0
+      hint: Flattened patch dimension = P × P × C.
+      explanation: 16 × 16 × 3 = 768 numbers per patch.
+notes:
+  - heading: An image as a sentence of patches
+    body: |
+      A **Vision Transformer (ViT)** reuses the transformer architecture from language models by turning an image into a sequence of tokens:
+
+      1. Cut the image into **P × P patches**: a 224 × 224 image with 16 × 16 patches gives a 14 × 14 grid = **196 patches**.
+      2. **Flatten** each patch (16 × 16 × 3 = 768 values) and multiply by a learned matrix — the **patch embedding** — to get a D-dimensional token.
+      3. Prepend a learnable **[CLS] token** whose final state is used for classification → sequence length **197**.
+      4. Add **position embeddings** so the model knows where each patch came from (otherwise the order of patches would be meaningless to it).
+
+      The sequence then passes through standard transformer blocks: multi-head self-attention, an MLP, layer norm and residual connections.
+  - heading: Self-attention
+    body: |
+      Each token produces a **query** (what am I looking for?), a **key** (what do I contain?) and a **value** (what do I pass on?) by linear projections.
+
+      **Attention(Q, K, V) = softmax(QKᵀ / √d) · V**
+
+      - QKᵀ scores every pair of tokens; dividing by √d keeps the scores in a range where softmax still has useful gradients.
+      - softmax turns each row into weights that sum to 1.
+      - Each token's output is a weighted mix of all values.
+
+      So a patch of a dog's ear can attend directly to the tail on the other side of the image in **one layer** — a CNN needs many layers for its receptive field to grow that large. The cost: the attention matrix is N × N, so compute and memory grow **quadratically** with the number of tokens. Halving the patch size gives 4× the tokens and ~16× the attention cost.
+  - heading: Inductive bias and data hunger
+    body: |
+      CNNs have strong built-in assumptions — locality and translation equivariance — so they learn efficiently from modest data. ViTs have **weak inductive bias**: nothing tells them that neighbouring patches are related; they must learn it from data (position embeddings start random).
+
+      Consequences:
+
+      - Trained from scratch on ImageNet-1k alone, early ViTs **underperformed** CNNs.
+      - Pretrained on very large datasets (ImageNet-21k, JFT-300M) or with self-supervision, the flexibility **wins**: ViTs match or beat CNNs and scale better.
+      - In practice you almost always **fine-tune a pretrained ViT** rather than train one; with little data and no pretraining, a CNN is the safer choice.
+
+      Hybrid designs (convolutional stems, Swin Transformer's local windows) put some locality back to get the best of both.
+  - heading: CLIP and zero-shot classification
+    body: |
+      **CLIP** trains two encoders together — an image encoder (ViT or ResNet) and a text encoder — on ~**400 million image–caption pairs** from the web. The **contrastive loss**: in a batch of N pairs, maximise cosine similarity for the N matching pairs and minimise it for the N² − N mismatched ones. The result is a **shared embedding space** for images and text.
+
+      **Zero-shot classification** — no task-specific training:
+
+      1. Write a prompt per class: "a photo of a dog", "a photo of a cat", …
+      2. Embed the prompts and the image.
+      3. Compute cosine similarities, multiply by a learned scale (≈100) and apply softmax → class probabilities.
+
+      Prompt wording matters ("a satellite photo of farmland"), and CLIP inherits biases and blind spots from web data — always evaluate on your own domain before relying on it.
+examples:
+  - title: Counting tokens and attention cost
+    problem: A ViT uses 384 × 384 images with 16 × 16 patches and a [CLS] token. How many tokens, and how many
+      entries in one attention matrix? Compare with 224 × 224 images.
+    steps:
+      - 384 / 16 = 24 → 24² = **576** patches + 1 = **577** tokens.
+      - Attention matrix = 577² = **332,929** entries per head per layer.
+      - "At 224: 197 tokens → 197² = 38,809 entries. 384 is ~8.6× more attention work."
+    answer: 577 tokens and 332,929 attention entries.
+    takeaway: Resolution increases ViT cost quadratically.
+  - title: CLIP zero-shot by hand
+    problem: "Cosine similarities: dog 0.30, cat 0.25, car 0.10. Logit scale 100. Compute the softmax probabilities."
+    steps:
+      - "Logits = 30, 25, 10. Subtract the max: 0, −5, −20."
+      - "exp: 1, 0.00674, 2.06×10⁻⁹. Sum ≈ 1.00674."
+      - P(dog) ≈ **99.3%**, P(cat) ≈ **0.67%**, P(car) ≈ 0.
+      - "With scale 10 instead: logits 3, 2.5, 1 → P(dog) ≈ 55%, P(cat) ≈ 33%, P(car) ≈ 12%."
+    answer: About 99.3% dog at scale 100.
+    takeaway: The temperature (logit scale) controls how confident the probabilities are.
+questions:
+  - question: Explain how a ViT turns an image into tokens, including the [CLS] token and position embeddings.
+    kind: short
+    marks: 5
+    keywords:
+      - patches
+      - grid
+      - flatten
+      - linear projection
+      - patch embedding
+      - cls token
+      - classification
+      - position embeddings
+      - order
+      - sequence length
+    idealAnswer: The image is split into fixed-size patches (224×224 with 16×16 patches → 196), each flattened and
+      linearly projected into a D-dimensional patch embedding. A learnable [CLS] token is prepended (197
+      tokens) and its final state is used for classification. Learned position embeddings are added so the
+      model knows each patch's location, since self-attention itself ignores order.
+  - question: Why do ViTs need more training data than CNNs, and how does CLIP perform zero-shot classification?
+    kind: short
+    marks: 6
+    keywords:
+      - inductive bias
+      - locality
+      - translation equivariance
+      - learn from data
+      - pretraining
+      - contrastive
+      - image encoder
+      - text encoder
+      - prompts
+      - cosine similarity
+      - softmax
+      - zero-shot
+    idealAnswer: CNNs build in locality and translation equivariance; ViTs have weak inductive bias and must learn
+      spatial structure from data, so they need large-scale (pre)training and underperform CNNs on small data.
+      CLIP trains image and text encoders contrastively on 400 M image–caption pairs. For zero-shot
+      classification, embed a text prompt per class ('a photo of a dog'), embed the image, compute cosine
+      similarities, scale and softmax them, and pick the highest — no task-specific training.
+  - question: A conservation group wants to identify 40 animal species from camera-trap photos but has only 30
+      labelled images per species. Compare (a) a CNN trained from scratch, (b) fine-tuning a pretrained ViT,
+      and (c) CLIP zero-shot or linear probing, and recommend an approach with an evaluation plan.
+    kind: long
+    marks: 12
+    keywords:
+      - small data
+      - overfit
+      - from scratch
+      - inductive bias
+      - pretrained
+      - fine-tune
+      - vit
+      - clip
+      - zero-shot
+      - prompts
+      - linear probe
+      - embeddings
+      - night
+      - infrared
+      - domain
+      - few-shot
+      - evaluation
+      - per-class
+      - confusion matrix
+    idealAnswer: "(a) Training any model from scratch on 1,200 images will overfit badly — reject. (b) Fine-tuning
+      a pretrained ViT (or CNN) is strong, but with 30 images per class only the head and top blocks should
+      train, with heavy augmentation. (c) CLIP zero-shot needs no labels — prompts like 'a camera-trap photo
+      of a leopard' — and a linear probe on CLIP image embeddings uses the 30 labels per class very
+      efficiently. Recommendation: start with CLIP zero-shot as a baseline, then a linear probe on CLIP/DINOv2
+      embeddings, and fine-tune only if it plateaus. Camera-trap images (night infrared, partial animals)
+      differ from web photos, so evaluate on a held-out set split by camera location, reporting per-class
+      accuracy/recall and the confusion matrix to find species the model confuses."
+coding:
+  - id: attention
+    title: Scaled dot-product attention
+    language: python
+    level: core
+    setup: |
+      import numpy as np
+      rng = np.random.default_rng(0)
+      Q, K, V = rng.normal(size=(5, 8)), rng.normal(size=(5, 8)), rng.normal(size=(5, 8))
+    prompt: |
+      Implement `softmax(x, axis=-1)` (numerically stable: subtract the max) and
+      `attention(Q, K, V)` = `softmax(Q·Kᵀ / √d) · V` returning `(output, weights)` for `N × d` arrays.
+      Also write `vit_tokens(image_size, patch)` → sequence length including `[CLS]`.
+    starter: |
+      import numpy as np
+
+      def softmax(x, axis=-1):
+          return np.exp(x) / np.exp(x).sum(axis=axis, keepdims=True)
+
+      def attention(Q, K, V):
+          ...
+
+      def vit_tokens(image_size, patch):
+          ...
+    solution: |
+      import numpy as np
+
+      def softmax(x, axis=-1):
+          z = x - x.max(axis=axis, keepdims=True)
+          e = np.exp(z)
+          return e / e.sum(axis=axis, keepdims=True)
+
+      def attention(Q, K, V):
+          d = Q.shape[-1]
+          weights = softmax(Q @ K.T / np.sqrt(d), axis=-1)
+          return weights @ V, weights
+
+      def vit_tokens(image_size, patch):
+          return (image_size // patch) ** 2 + 1
+    tests:
+      - name: Stable softmax handles big numbers
+        code: |
+          s = softmax(np.array([1000.0, 1000.0]))
+          assert np.allclose(s, [0.5, 0.5]), "subtract the max before exponentiating"
+      - name: Attention weights are N × N and rows sum to 1
+        code: |
+          out, w = attention(Q, K, V)
+          assert out.shape == (5, 8) and w.shape == (5, 5)
+          assert np.allclose(w.sum(axis=1), 1)
+      - name: Matches the formula (with the √d scaling)
+        code: |
+          out, w = attention(Q, K, V)
+          s = Q @ K.T / np.sqrt(8); e = np.exp(s - s.max(1, keepdims=True)); ref = (e / e.sum(1, keepdims=True)) @ V
+          assert np.allclose(out, ref)
+      - name: ViT sequence length
+        code: |
+          assert vit_tokens(224, 16) == 197 and vit_tokens(384, 16) == 577 and vit_tokens(224, 32) == 50
+  - id: clip-zero-shot
+    title: CLIP zero-shot classification
+    language: python
+    level: core
+    setup: |
+      import numpy as np
+      rng = np.random.default_rng(3)
+      LABELS = ["dog", "cat", "car"]
+      text_emb = rng.normal(size=(3, 16))                    # one prompt embedding per class
+      image_emb = text_emb[0] * 0.8 + rng.normal(size=16) * 0.5   # an image that looks like a dog
+    prompt: |
+      Write `zero_shot(image_emb, text_emb, labels, scale=100.0)` → `(label, probs)`:
+      L2-normalise every embedding, compute cosine similarities, multiply by `scale` (CLIP's learned logit
+      scale ≈ 100), softmax them, and return the best label and the probability array.
+    starter: |
+      import numpy as np
+
+      def zero_shot(image_emb, text_emb, labels, scale=100.0):
+          sims = text_emb @ image_emb          # ✗ not normalised
+          return labels[int(np.argmax(sims))], sims
+    solution: |
+      import numpy as np
+
+      def zero_shot(image_emb, text_emb, labels, scale=100.0):
+          img = image_emb / np.linalg.norm(image_emb)
+          txt = text_emb / np.linalg.norm(text_emb, axis=1, keepdims=True)
+          logits = scale * (txt @ img)
+          e = np.exp(logits - logits.max())
+          probs = e / e.sum()
+          return labels[int(np.argmax(probs))], probs
+    tests:
+      - name: Picks the right class with a valid distribution
+        code: |
+          label, p = zero_shot(image_emb, text_emb, LABELS)
+          assert label == "dog" and abs(p.sum() - 1) < 1e-9 and (p >= 0).all()
+      - name: Uses cosine similarity (scale of embeddings doesn't matter)
+        code: |
+          _, p1 = zero_shot(image_emb, text_emb, LABELS)
+          _, p2 = zero_shot(image_emb * 50, text_emb * np.array([[3.0], [0.2], [9.0]]), LABELS)
+          assert np.allclose(p1, p2), "normalise the embeddings so their length doesn't change the answer"
+      - name: Lower logit scale → less confident
+        code: |
+          _, hi = zero_shot(image_emb, text_emb, LABELS, 100)
+          _, lo = zero_shot(image_emb, text_emb, LABELS, 5)
+          assert hi.max() > lo.max()

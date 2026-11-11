@@ -1,0 +1,372 @@
+id: streaming
+title: Streaming, Event-Time Windows & Watermarks
+subtitle: Process unbounded events with out-of-order arrivals (Lab 9 Part 1)
+recap: Streaming processes unbounded events continuously. Always bucket by event time, not processing time,
+  because mobile networks deliver events late and out of order. Tumbling windows are [floor(ts/S)·S, +S). The
+  watermark W(t) = max_event_ts − L says when a window can be finalised; events older than the watermark go to
+  late_events, and a seen_ids store drops duplicate retries.
+traps:
+  - Grouping by processing time so delayed events land in the wrong window.
+  - Setting allowed lateness to 0 and losing every slightly late event.
+  - Deduplicating after windowing instead of before.
+lesson:
+  checkpointStep: 3
+  steps:
+    - Batch processing waits for a bounded dataset (like yesterday's file) before computing. Streaming
+      processes an unbounded sequence of events continuously as they arrive from sensors, mobile apps, or
+      market agents.
+    - "Every streaming system must distinguish two clocks: Event Time (when the price observation actually
+      occurred in the market) and Processing Time (when our server received the packet)."
+    - Mobile networks drop out! An event generated at 08:00:05 might arrive at 08:00:19. If we group by
+      Processing Time, that event lands in the wrong window and corrupts our 10-second market price averages.
+    - "Checkpoint: how does a Watermark work in event-time streaming, and how do we handle both duplicate
+      retries and late events?"
+    - A Watermark `W(t) = max_event_time − L` (where `L` is allowed lateness, e.g., 5s) is a moving threshold
+      asserting that no more events earlier than `W(t)` are expected. Any window whose `window_end <= W(t)`
+      can be finalised and emitted!
+    - In our Lab 9 consumer, we first check `event_id` against a stateful `seen_ids` set to drop duplicates,
+      then compare `event_ts < watermark` to route stragglers to `late_events.jsonl`, and bucket valid events
+      into 10s tumbling windows `[floor(ts/10)*10, +10)`.
+checkpoint:
+  question: Distinguish Event Time from Processing Time. How does a Watermark control when a tumbling window is
+    finalised, and what happens to an event whose timestamp falls behind the watermark?
+  hint: Define W(t) = max_seen_event_time − allowed_lateness. Explain the trade-off of choosing a small vs large
+    lateness bound L.
+  keywords:
+    - event time
+    - processing time
+    - watermark
+    - lateness
+    - out of order
+    - tumbling window
+    - finalise
+    - emit
+    - late
+    - drop
+    - side output
+    - duplicate
+    - state
+  idealAnswer: Event time is when the event actually occurred at the source, whereas processing time is when the
+    consumer ingests it. Because network delays cause events to arrive out of order, we group by event-time
+    windows and track a watermark `W(t) = max(event_time) − L`, where `L` is the allowed lateness. Once `W(t)
+    >= window_end`, the engine finalises and emits that window's aggregate. Any event arriving with
+    `event_time < W(t)` is classified as late and routed to a side output (`late_events.jsonl`) or dead-letter
+    stream rather than silently corrupting closed windows.
+terms:
+  - term: Event Time vs Processing Time
+    definition: When the event happened in the real world vs when the server processed it.
+  - term: Tumbling window
+    definition: "Fixed-size, non-overlapping time intervals: `[floor(t/W)·W, floor(t/W)·W + W)`."
+  - term: Watermark
+    definition: Moving threshold `max_event_time − L` signalling that windows ending at or before `W` are complete.
+  - term: Allowed lateness (L)
+    definition: Tolerance window for out-of-order events; trades off completeness against output latency.
+  - term: Stateful deduplication
+    definition: Tracking seen `event_id` keys so producer network retries do not double-count metrics.
+quiz:
+  - question: With 10-second tumbling windows starting at t=0, which window `[start, end)` does an event with
+      `event_ts = 1029.8` belong to?
+    options:
+      - "[1025, 1035)"
+      - "[1020, 1030)"
+      - "[1030, 1040)"
+      - "[1000, 1010)"
+    answer: 1
+    explanation: floor(1029.8 / 10) × 10 = 102 × 10 = 1020 → window [1020, 1030).
+  - question: Max seen event_ts is 1052.0s and allowed lateness L = 5.0s. An out-of-order event arrives with
+      event_ts = 1044.5s. How is it classified?
+    options:
+      - On-time (accepted into window)
+      - Late (event_ts < watermark 1047.0s)
+      - Duplicate
+      - Future event
+    answer: 1
+    explanation: Watermark W = 1052.0 − 5.0 = 1047.0s. Since 1044.5 < 1047.0, the event is late and routed to
+      late_events.jsonl.
+  - question: An event happened at 08:00:05 and arrived at 08:00:19. Which time should a price window use?
+    options:
+      - 08:00:19 (processing time)
+      - 08:00:05 (event time)
+      - The average of both
+      - Whichever is later
+    answer: 1
+    explanation: Event time places the observation in the period it describes.
+  - question: Which 10-second tumbling window contains event_ts = 1,238.4?
+    options:
+      - "[1230, 1240)"
+      - "[1238, 1248)"
+      - "[1240, 1250)"
+      - "[1235, 1245)"
+    answer: 0
+    explanation: ⌊1238.4 / 10⌋ × 10 = 1230.
+  - question: max_ts = 980 s, L = 15 s. What is the watermark?
+    options:
+      - 995 s
+      - 980 s
+      - 965 s
+      - 15 s
+    answer: 2
+    explanation: W = 980 − 15 = 965.
+  - question: What happens to an event older than the watermark in our consumer?
+    options:
+      - It is silently dropped
+      - It goes to late_events.jsonl
+      - It reopens its window
+      - It is added to the next window
+    answer: 1
+    explanation: Late events are side-outputted for auditing or correction.
+  - question: Why check seen_ids before the watermark?
+    options:
+      - It's faster
+      - Duplicates must never be counted
+      - whether late or not
+      - The watermark needs ids
+      - It doesn't matter
+    answer: 1
+    explanation: A retry is a duplicate regardless of timing; drop it first.
+  - question: What's the cost of a very large allowed lateness?
+    options:
+      - More late events
+      - Results are final later and more state is kept
+      - Duplicates increase
+      - Windows overlap
+    answer: 1
+    explanation: Windows stay open longer, delaying results and holding state.
+fact:
+  title: Google Dataflow & Apache Flink popularised Watermarks
+  body: Tyler Akidau's 2015 'Dataflow Model' paper formalised the What / Where / When / How of stream processing
+    — showing that event-time windows + watermarks + triggers unify batch and streaming under a single
+    mathematical model.
+lab:
+  title: Event-Time Tumbling Window & Watermark Simulator
+  variations:
+    - title: Watermark Threshold & Late Event Routing
+      question: A consumer tracks a watermark with allowed lateness <b>L = 5s</b>. The maximum seen `event_ts` so
+        far is <b>1,240s</b>. What is the current watermark timestamp <b>W(t)</b>?
+      answer: 1235
+      tolerance: 0
+      hint: W(t) = max_event_ts − L.
+      explanation: W(t) = 1,240 − 5 = 1,235s. Any incoming event with `event_ts < 1,235` is routed to `late_events.jsonl`.
+    - title: 10-Second Tumbling Window Start Alignment
+      question: With <b>10-second</b> tumbling windows aligned to epoch 0 (`floor(ts / 10) * 10`), what is the
+        `window_end` timestamp for an event with `event_ts = 1,748.6`?
+      answer: 1750
+      tolerance: 0
+      hint: window_start = floor(1748.6 / 10) × 10 = 1740. window_end = window_start + 10.
+      explanation: window_start = ⌊1,748.6 / 10⌋ × 10 = 1,740. window_end = 1,740 + 10 = 1,750.
+    - title: Stream Deduplication & Late Filtering Accounting
+      question: A producer emits <b>250</b> raw events. <b>18</b> are duplicate retries (`event_id` already in
+        `seen_ids`), and <b>12</b> of the unique events arrive with `event_ts < watermark`. How many clean
+        on-time events are aggregated into windows?
+      answer: 220
+      tolerance: 0
+      hint: Subtract both duplicates (18) and late events (12) from 250.
+      explanation: 250 total − 18 duplicates − 12 late stragglers = 220 valid windowed events.
+notes:
+  - heading: Batch vs stream
+    body: |
+      **Batch** processing waits for a bounded dataset — yesterday's file — then processes it all at once. Simple, but results are only as fresh as the last batch.
+
+      **Streaming** processes an *unbounded* sequence of events continuously as they arrive: market agents reporting prices from their phones, sensors, clicks. Results update within seconds.
+
+      Streaming forces three questions batch never asks: *Which time do I group by? When is a result final? What do I do with data that arrives late or twice?*
+  - heading: Event time vs processing time
+    body: |
+      Every event has two timestamps:
+
+      - **Event time** — when the thing actually happened (the price was observed at 08:00:05).
+      - **Processing time** — when our system received it (the phone had no signal; it arrived at 08:00:19).
+
+      If you group by processing time, delayed events land in the wrong window and your "08:00–08:10 average price" quietly includes prices from other periods. Correct analytics groups by **event time**.
+
+      **Tumbling windows** are fixed, non-overlapping buckets: for 10-second windows, an event at t falls in [⌊t/10⌋·10, ⌊t/10⌋·10 + 10). An event at 1,238.4 s goes to [1230, 1240).
+  - heading: Watermarks decide when a window is final
+    body: |
+      With out-of-order data you can never be *sure* no more events for a window will arrive. A **watermark** is the system's assumption about how late events can be:
+
+      **W(t) = max event time seen so far − L**, where L is the *allowed lateness*.
+
+      - Any window whose end ≤ W(t) is **finalised** and emitted — its result won't change.
+      - An event with event_ts < W(t) is **late**: its window is already closed. Route it to a side output (`late_events.jsonl`) for auditing or correction instead of silently dropping it.
+
+      Choosing L is a trade-off: a small L gives fast, final results but more late events; a large L catches stragglers but holds results back longer and keeps more state in memory.
+  - heading: Duplicates and state
+    body: |
+      Mobile clients retry when they don't get an acknowledgement, so the same event can arrive twice. Counting both would inflate volumes and skew averages.
+
+      Our Lab 9 consumer keeps **state**: a set of `seen_ids`. The order of checks matters:
+
+      ```python
+      watermark = max_event_ts - allowed_lateness
+      if event_id in seen_ids:        route("duplicates")      # 1. drop retries first
+      elif event_ts < watermark:      route("late_events.jsonl") # 2. too late for its window
+      else:
+          windows[(int(event_ts) // 10) * 10].add(event)        # 3. bucket by event time
+          seen_ids.add(event_id)
+      ```
+
+      State can't grow forever: once a window is final, the ids of its events can be expired. Accounting identity for a run: emitted = windowed + duplicates + late.
+examples:
+  - title: Classify three events
+    problem: Max event time seen = 1,250 s, allowed lateness L = 8 s, 10-second windows. Classify events at 1,247
+      s, 1,238 s and a retry of an already-seen id at 1,249 s.
+    steps:
+      - Watermark W = 1,250 − 8 = **1,242 s**.
+      - 1,247 ≥ 1,242 → accepted into window **[1240, 1250)**.
+      - 1,238 < 1,242 → **late**. Its window [1230, 1240) ended before the watermark and has already been
+        emitted, so the event goes to late_events.jsonl.
+      - Retry → already in seen_ids → **duplicate**, dropped before any time checks.
+    answer: Accepted, late, duplicate.
+    takeaway: Duplicate check first, then the watermark, then windowing by event time.
+  - title: Picking the allowed lateness
+    problem: "Measured network delays: 90% of events arrive within 3 s, 99% within 12 s, the worst seen was 40 s.
+      Results must be final within ~15 s. Which L would you choose?"
+    steps:
+      - L = 3 s would mark ~10% of events late — too many lost or corrected values.
+      - L = 40 s catches everything but results take ~40 s to finalise — violates the 15 s requirement.
+      - L = 12 s catches ~99% and finalises within ~12 s — meets the requirement.
+      - The remaining ~1% go to late_events.jsonl for a correction job.
+    answer: About 12 s.
+    takeaway: Lateness is a latency-vs-completeness trade-off you should base on measured delays.
+questions:
+  - question: Explain the difference between event time and processing time and why it matters for windowed averages.
+    kind: short
+    marks: 5
+    keywords:
+      - event time
+      - occurred
+      - processing time
+      - received
+      - delay
+      - out of order
+      - wrong window
+      - average
+      - distort
+    idealAnswer: Event time is when the observation happened; processing time is when the system received it.
+      Network delays make events arrive late and out of order, so grouping by processing time puts them into
+      the wrong windows and distorts each window's average. Grouping by event time keeps each observation in
+      the period it describes.
+  - question: Define a watermark and explain how it decides when a window can be emitted and which events are late.
+    kind: short
+    marks: 6
+    keywords:
+      - watermark
+      - max event time
+      - allowed lateness
+      - threshold
+      - window end
+      - finalise
+      - emit
+      - late
+      - side output
+    idealAnswer: "A watermark W(t) = max event time seen − allowed lateness L expresses that events older than W
+      are no longer expected. Any window whose end ≤ W is finalised and emitted. Events arriving with event_ts
+      < W are late: their window is closed, so they are routed to a side output such as late_events.jsonl
+      rather than changing final results."
+  - question: Design the consumer for a real-time market-price stream that receives duplicates (client retries)
+      and late events (poor mobile coverage). Specify the processing order, the windowing, how you choose the
+      allowed lateness, how you bound memory, and the accounting checks you'd run.
+    kind: long
+    marks: 12
+    keywords:
+      - event_id
+      - seen_ids
+      - duplicate
+      - watermark
+      - max event time
+      - allowed lateness
+      - late_events
+      - tumbling window
+      - floor
+      - event time
+      - measured delays
+      - expire state
+      - emitted
+      - windowed
+      - accounting
+    idealAnswer: "For each event: (1) drop it if event_id is in seen_ids (duplicate retry); (2) update
+      max_event_ts and compute W = max_event_ts − L; if event_ts < W route it to late_events.jsonl; (3)
+      otherwise add it to the 10-second tumbling window [floor(ts/10)·10, +10) by event time and record its
+      id. Emit and finalise every window whose end ≤ W. Choose L from measured delay percentiles against the
+      freshness requirement (e.g. the 99th percentile delay). Bound memory by expiring window state and
+      seen_ids for windows older than the watermark. Accounting: emitted events = windowed + duplicates + late
+      for every run, and alert if the late fraction rises above its usual level."
+coding:
+  - id: stream-consumer
+    title: A watermarking stream consumer
+    language: python
+    level: exam
+    setup: |
+      EVENTS = [  # in ARRIVAL order
+          {"id": "e1", "ts": 1201.0, "price": 3800},
+          {"id": "e2", "ts": 1204.5, "price": 3900},
+          {"id": "e3", "ts": 1213.0, "price": 4000},
+          {"id": "e2", "ts": 1204.5, "price": 3900},   # client retry (duplicate)
+          {"id": "e4", "ts": 1209.0, "price": 3700},   # out of order but in time
+          {"id": "e5", "ts": 1227.0, "price": 4100},
+          {"id": "e6", "ts": 1208.0, "price": 3600},   # too late
+          {"id": "e7", "ts": 1219.5, "price": 4200},   # also late: W is 1222 by now
+      ]
+    prompt: |
+      Implement `consume(events, lateness=5, size=10)` processing events **in arrival order**:
+
+      1. If the event's `id` was already seen → record it in `duplicates` and skip it.
+      2. Update the max event time seen; watermark `W = max_ts − lateness`.
+         If `ts < W` → record the id in `late` and skip it.
+      3. Otherwise add the price to its tumbling window, keyed by window start `floor(ts / size) * size`.
+
+      Return `{"windows": {start: [prices...]}, "late": [ids], "duplicates": [ids]}`.
+      Check the duplicate **before** the watermark. (Order of the watermark update matters — update it
+      before checking lateness.)
+    starter: |
+      import math
+
+      def consume(events, lateness=5, size=10):
+          seen, windows, late, duplicates = set(), {}, [], []
+          max_ts = float("-inf")
+          for e in events:
+              ...
+          return {"windows": windows, "late": late, "duplicates": duplicates}
+
+      print(consume(EVENTS))
+    solution: |
+      import math
+
+      def consume(events, lateness=5, size=10):
+          seen, windows, late, duplicates = set(), {}, [], []
+          max_ts = float("-inf")
+          for e in events:
+              if e["id"] in seen:
+                  duplicates.append(e["id"])
+                  continue
+              seen.add(e["id"])
+              max_ts = max(max_ts, e["ts"])
+              if e["ts"] < max_ts - lateness:
+                  late.append(e["id"])
+                  continue
+              start = math.floor(e["ts"] / size) * size
+              windows.setdefault(start, []).append(e["price"])
+          return {"windows": windows, "late": late, "duplicates": duplicates}
+
+      print(consume(EVENTS))
+    tests:
+      - name: The retry is detected as a duplicate
+        code: |
+          r = consume(EVENTS)
+          assert r["duplicates"] == ["e2"], f"expected ['e2'], got {r['duplicates']}"
+      - name: Events behind the watermark are late
+        code: |
+          r = consume(EVENTS)
+          assert r["late"] == ["e6", "e7"], f"expected ['e6', 'e7'] — both arrive after e5 pushed the watermark to 1222, got {r['late']}"
+      - name: Events land in event-time windows
+        code: |
+          r = consume(EVENTS)
+          w = {k: sorted(v) for k, v in r["windows"].items()}
+          assert w == {1200: [3700, 3800, 3900], 1210: [4000], 1220: [4100]}, f"got {w}"
+      - name: Allowed lateness changes the outcome
+        code: |
+          r = consume(EVENTS, lateness=20)
+          assert r["late"] == [] and 3600 in r["windows"][1200]
+    hints:
+      - Keep a `seen` set; check it first.
+      - Window start for ts = 1213.0 with size 10 is 1210.

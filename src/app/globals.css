@@ -1,0 +1,229 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ------------------------------------------------------------------------------------------
+   Design tokens. Warm "study desk" palette: paper, ink, a highlighter, and a per-course accent
+   (set as --accent on the course layout). Every colour flips for dark mode.
+   ------------------------------------------------------------------------------------------ */
+:root {
+  --paper: #faf6ef;
+  --card: #ffffff;
+  --sunk: #f3ece1;
+  --ink: #1e1914;
+  --ink-2: #4a4037;
+  --muted: #7a6e62;
+  --line: #e8dfd2;
+  --line-2: #d9cdbd;
+  --accent: #e8590c;
+  --accent-ink: #ffffff;
+  --hl: #ffe27a;
+  --good: #157f55;
+  --good-bg: #e4f3ea;
+  --bad: #c2362b;
+  --bad-bg: #fbe9e6;
+  --warn: #a8670d;
+  --warn-bg: #fdf1d8;
+  --shadow: 0 1px 2px rgb(30 25 20 / 0.04), 0 8px 24px -12px rgb(30 25 20 / 0.12);
+  --shadow-lg: 0 24px 60px -20px rgb(30 25 20 / 0.28);
+  --dots: rgb(30 25 20 / 0.055);
+  color-scheme: light;
+}
+
+.dark {
+  --paper: #13110e;
+  --card: #1c1915;
+  --sunk: #25201b;
+  --ink: #f3ede4;
+  --ink-2: #d2c8bb;
+  --muted: #9b9083;
+  --line: #2f2923;
+  --line-2: #3d362e;
+  --hl: #b8962b;
+  --good: #4cc790;
+  --good-bg: #15291f;
+  --bad: #f07a6d;
+  --bad-bg: #331a17;
+  --warn: #e8b04f;
+  --warn-bg: #2f2412;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 8px 24px -12px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 24px 60px -20px rgb(0 0 0 / 0.7);
+  --dots: rgb(255 245 230 / 0.04);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-card: var(--card);
+  --color-sunk: var(--sunk);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-2: var(--line-2);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-hl: var(--hl);
+  --color-good: var(--good);
+  --color-good-bg: var(--good-bg);
+  --color-bad: var(--bad);
+  --color-bad-bg: var(--bad-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+  --shadow-card: var(--shadow);
+  --shadow-lift: var(--shadow-lg);
+  --radius-card: 1.25rem;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-padding-top: 5rem;
+}
+
+body {
+  background-color: var(--paper);
+  background-image: radial-gradient(var(--dots) 1px, transparent 1px);
+  background-size: 22px 22px;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--hl);
+  color: #1e1914;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* A highlighter stroke for key words in headings. */
+.hl {
+  background: linear-gradient(transparent 58%, color-mix(in srgb, var(--hl) 80%, transparent) 58%, color-mix(in srgb, var(--hl) 80%, transparent) 92%, transparent 92%);
+  padding: 0 0.08em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* Long-form study text (notes, buddy replies, worked examples). */
+.prose-study {
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+.prose-study > * + * {
+  margin-top: 0.8em;
+}
+.prose-study strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+.prose-study h3,
+.prose-study h4 {
+  color: var(--ink);
+  font-weight: 650;
+  margin-top: 1.2em;
+}
+.prose-study ul,
+.prose-study ol {
+  padding-left: 1.3em;
+}
+.prose-study ul {
+  list-style: disc;
+}
+.prose-study ol {
+  list-style: decimal;
+}
+.prose-study li + li {
+  margin-top: 0.3em;
+}
+.prose-study li::marker {
+  color: var(--accent);
+}
+.prose-study :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--sunk);
+  border: 1px solid var(--line);
+  padding: 0.08em 0.36em;
+  border-radius: 0.4em;
+  color: var(--ink);
+}
+.prose-study pre {
+  background: #1b1814;
+  color: #efe6d6;
+  border-radius: 0.9rem;
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+.prose-study table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  display: block;
+  overflow-x: auto;
+}
+.prose-study th,
+.prose-study td {
+  border: 1px solid var(--line);
+  padding: 0.45em 0.7em;
+  text-align: left;
+}
+.prose-study th {
+  background: var(--sunk);
+  color: var(--ink);
+  font-weight: 600;
+}
+.prose-study blockquote {
+  border-left: 3px solid var(--accent);
+  padding-left: 0.9em;
+  color: var(--ink);
+}
+.prose-study a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Inline HTML allowed in challenge questions (<b>, <code>). */
+.rich b {
+  color: var(--ink);
+  font-weight: 650;
+}
+.rich code {
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  background: var(--sunk);
+  padding: 0.05em 0.35em;
+  border-radius: 0.35em;
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

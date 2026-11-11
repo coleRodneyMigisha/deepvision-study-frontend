@@ -1,0 +1,356 @@
+id: cloud-sizing
+title: Cloud Computing Concepts, Service Models & Hardware Sizing
+subtitle: Understand NIST cloud characteristics, IaaS/PaaS/SaaS/MLaaS, and GPU/CPU cost modeling
+recap: "Cloud gives elastic, on-demand compute. Know NIST's five characteristics and the service models: IaaS
+  (VMs), PaaS (managed platforms like Render), SaaS, MLaaS (SageMaker, Vertex AI). Tabular models run cheaply
+  on CPUs; large neural nets need GPUs that should scale to zero when idle. Spot/preemptible VMs are 70–90%
+  cheaper but can be reclaimed, so use them for checkpointed training and batch jobs."
+traps:
+  - Serving a small XGBoost model on an always-on GPU.
+  - Running latency-critical serving on Spot instances without fallback.
+  - Confusing PaaS with IaaS — who manages the OS?
+lesson:
+  checkpointStep: 3
+  steps:
+    - Running model deployment on a personal laptop or physical on-premise server is fraught with power cuts,
+      network drops, and fixed compute limitations. Cloud computing provides elastic, on-demand compute
+      infrastructure.
+    - "The NIST standard defines five essential characteristics of cloud computing: on-demand self-service,
+      broad network access, resource pooling, rapid elasticity, and measured service."
+    - We categorize services into IaaS (raw virtual machines like EC2/Compute Engine), PaaS (managed platforms
+      like App Engine or Render), SaaS (end-user apps), and MLaaS (specialized AI platforms like SageMaker and
+      Vertex AI).
+    - "Checkpoint: what is the cost and latency difference between CPU and GPU inference, and how do
+      Spot/Preemptible instances save up to 80% on training costs?"
+    - Tabular models like Random Forests and XGBoost run fast and cheaply on modern CPUs (20ms latency at
+      pennies per month). Massive deep neural nets require GPUs, whose high hourly cost demands auto-scaling
+      to zero when idle.
+    - Spot instances utilize spare cloud data center capacity at a 70% to 90% discount. They can be reclaimed
+      with a 2-minute warning, making them ideal for checkpointed model training and fault-tolerant batch
+      scoring.
+checkpoint:
+  question: Differentiate IaaS, PaaS, and MLaaS in the context of deploying an ML model, and explain how Spot
+    instances reduce cloud costs while managing termination risk.
+  hint: Think about who manages the OS and runtime versus the model artifact. Explain the trade-off between
+    price discount and preemptible termination warnings.
+  keywords:
+    - iaas
+    - paas
+    - mlaas
+    - spot
+    - preemptible
+    - cost
+    - cloud
+    - elasticity
+    - checkpoint
+    - gpu
+  idealAnswer: "IaaS (Infrastructure as a Service) provides raw VMs where you manage the OS, CUDA drivers,
+    Docker, and networking. PaaS (Platform as a Service, e.g. Render) abstracts the VM: you provide
+    code/Docker and the platform manages uptime and SSL. MLaaS (Machine Learning as a Service, e.g. AWS
+    SageMaker) provides managed model endpoints, auto-scaling, model registries, and drift monitoring. Spot
+    (Preemptible) instances offer surplus cloud capacity at a 70–90% discount. To mitigate termination risk,
+    workloads must be stateless or save model checkpoints frequently to durable object storage (S3/GCS),
+    allowing jobs to resume automatically when new capacity is provisioned."
+terms:
+  - term: NIST Cloud Characteristics
+    definition: "The 5 foundational pillars: On-demand self-service, Broad network access, Resource pooling, Rapid
+      elasticity, Measured service."
+  - term: IaaS
+    definition: "Infrastructure as a Service: rent virtual machines, raw storage, and virtual networks."
+  - term: PaaS
+    definition: "Platform as a Service: deploy containerized web services without managing underlying operating
+      system updates."
+  - term: MLaaS
+    definition: "Machine Learning as a Service: end-to-end cloud platforms dedicated to ML training, registries,
+      and autoscaling inference."
+  - term: Spot / Preemptible VM
+    definition: Discounted cloud instances that the provider may terminate with short notice when capacity is
+      needed elsewhere.
+quiz:
+  - question: Which cloud service model requires you to configure the Linux kernel, install Nvidia GPU drivers,
+      and manage Docker security updates yourself?
+    options:
+      - SaaS
+      - PaaS
+      - IaaS
+      - MLaaS
+    answer: 2
+    explanation: In IaaS (Infrastructure as a Service), you are responsible for managing the operating system,
+      drivers, security patches, and runtime environments.
+  - question: If an on-demand GPU VM costs $2.40/hour and a spot instance offers a 75% discount, what is the cost
+      of running a 10-hour training job on Spot?
+    options:
+      - $24.00
+      - $6.00
+      - $18.00
+      - $1.80
+    answer: 1
+    explanation: "Spot price = $2.40 × (1 − 0.75) = $0.60/hour. For 10 hours: 10 × $0.60 = $6.00."
+  - question: Which is NOT one of NIST's five essential characteristics?
+    options:
+      - Rapid elasticity
+      - Measured service
+      - Guaranteed zero downtime
+      - Resource pooling
+    answer: 2
+    explanation: The five are self-service, network access, pooling, elasticity, measured service.
+  - question: Render running your Docker container is an example of…
+    options:
+      - IaaS
+      - PaaS
+      - SaaS
+      - On-prem
+    answer: 1
+    explanation: You manage the app; the platform manages OS, runtime and scaling.
+  - question: Why are Spot VMs unsuitable for a 24/7 triage API?
+    options:
+      - They are slower
+      - They can be reclaimed with ~2 minutes' notice
+      - They have no GPUs
+      - They can't run Docker
+    answer: 1
+    explanation: Interruptions are acceptable for checkpointed training, not for live clinical serving.
+  - question: The best hardware for serving an XGBoost stroke model is usually…
+    options:
+      - An A100 GPU
+      - A small CPU instance
+      - A TPU pod
+      - A Spot GPU
+    answer: 1
+    explanation: Tabular models are cheap and fast on CPUs.
+  - question: On-demand $1.50/h, 80% Spot discount, 10 h job. Spot cost?
+    options:
+      - $1.20
+      - $3.00
+      - $12.00
+      - $15.00
+    answer: 1
+    explanation: 1.50 × 0.20 × 10 = $3.00.
+  - question: What should a GPU serving service do when there's no traffic?
+    options:
+      - Keep running at full size
+      - Scale to zero
+      - Switch to Spot
+      - Reboot
+    answer: 1
+    explanation: Idle GPUs are expensive; scale to zero when idle.
+fact:
+  title: Latency Realities in East Africa
+  body: A client in Kampala making API calls to an EU-West (Ireland) data center incurs a minimum physical
+    speed-of-light round-trip latency of ~130ms. Deploying on African edge locations (af-south-1 in Cape Town
+    or local CDNs) drops network latency to under 35ms.
+lab:
+  title: Cloud ML Sizing, Spot Cost & Latency Architecture Simulator
+  variations:
+    - title: Multi-Stage Docker Image Footprint Reduction
+      question: A single-stage Docker image containing build tools, GCC, and pip cache measures <b>1,280 MB</b>.
+        Rebuilding with multi-stage compilation and <code>python:3.11-slim</code> produces a production image
+        of <b>190 MB</b>. How many <b>MB</b> are trimmed from the image?
+      answer: 1090
+      tolerance: 0
+      hint: Subtract 190 MB from 1,280 MB.
+      explanation: 1,280 − 190 = 1,090 MB saved (an 85% reduction), drastically lowering network transfer times and
+        attack surface.
+    - title: Container Cold-Start Pull Duration
+      question: On a hospital edge gateway with a <b>100 Mbps (12.5 MB/s)</b> network link, pulling an unoptimized
+        <b>1,250 MB</b> container image took 100 seconds. How many seconds does it take to pull the optimized
+        <b>150 MB</b> multi-stage container?
+      answer: 12
+      tolerance: 0.5
+      hint: Divide 150 MB by 12.5 MB/s.
+      explanation: 150 / 12.5 = 12 seconds. In auto-scaling and failover scenarios, 12 seconds vs 100 seconds is the
+        difference between seamless scaling and service degradation.
+    - title: Docker Container Memory Ceiling Headroom
+      question: A container is allocated <b>512 MB</b> memory. Base OS and Python runtime consume <b>116 MB</b>. If
+        each concurrent batch inference thread uses <b>22 MB</b>, how many concurrent threads can run before
+        risking an OOM (Out Of Memory) kill?
+      answer: 18
+      tolerance: 0
+      hint: Subtract 116 from 512, then take the integer floor of dividing by 22.
+      explanation: Available memory = 512 − 116 = 396 MB. Threads = ⌊396 / 22⌋ = 18 concurrent requests.
+notes:
+  - heading: Why the cloud for ML
+    body: |
+      A model served from a laptop or a single on-prem server inherits all its weaknesses: power cuts, a flaky uplink, no room to grow, and a long wait to buy new hardware. Cloud computing rents compute, storage and networking on demand, billed by usage.
+
+      The **NIST definition** has five essential characteristics — learn them by name:
+
+      1. **On-demand self-service** — provision resources yourself, no human in the loop.
+      2. **Broad network access** — available over the network from standard clients.
+      3. **Resource pooling** — the provider serves many tenants from shared hardware.
+      4. **Rapid elasticity** — scale out and in quickly, even automatically.
+      5. **Measured service** — usage is metered and billed.
+  - heading: Service models — who manages what
+    body: |
+      | Model | You manage | Provider manages | ML example |
+      |---|---|---|---|
+      | **IaaS** | OS, runtime, app, data | hardware, virtualisation | an EC2 / Compute Engine VM you install Python on |
+      | **PaaS** | app and data | OS, runtime, scaling | Render, App Engine, Cloud Run running your FastAPI container |
+      | **SaaS** | just your usage | everything | a hosted analytics tool |
+      | **MLaaS** | data, model choices | training/serving infrastructure | SageMaker, Vertex AI |
+
+      Moving down the table you give up control for convenience. Our StudyRoom backend is a PaaS deployment (Render); the hospital might choose IaaS in a nearby region for data-residency reasons.
+  - heading: CPU, GPU and right-sizing
+    body: |
+      Match hardware to the model, not to the hype:
+
+      - **Tabular models** (logistic regression, RandomForest, XGBoost) do little arithmetic per prediction. A small CPU instance serves them in ~10–25 ms for pennies.
+      - **Large neural networks** (vision transformers, LLMs) do billions of multiply-adds; GPUs do these in parallel and are worth their price — but only when busy. An idle GPU still bills by the hour, so GPU services should **auto-scale to zero** when quiet.
+
+      Latency has two parts: **compute** (how long the model takes) and **network** (distance to the users). For a Ugandan hospital, a server in Johannesburg adds ~40 ms per round trip; one in Ireland ~135 ms. Often the region matters more than the instance size.
+  - heading: Spot and preemptible instances
+    body: |
+      Providers sell spare capacity as **Spot** (AWS), **Preemptible/Spot** (Google) VMs at **70–90% off** — with a catch: they can be reclaimed with about **two minutes' notice**.
+
+      - Great for **training and batch scoring**: save checkpoints regularly, and if the VM disappears, resume from the last checkpoint on a new one.
+      - Wrong for **real-time clinical serving**: a reclaimed instance means triage stops answering. Serve on on-demand (or reserved) instances, possibly with Spot capacity *added* behind a load balancer only for overflow.
+
+      Cost arithmetic: spot rate = on-demand × (1 − discount); job cost = rate × hours.
+examples:
+  - title: Spot retraining bill
+    problem: Nightly retraining runs 3 hours on a GPU that costs $2.80/h on-demand, with a 72% Spot discount. What
+      is the monthly cost (30 nights) on Spot vs on-demand?
+    steps:
+      - "On-demand: 2.80 × 3 × 30 = **$252/month**."
+      - Spot rate = 2.80 × 0.28 = $0.784/h → 0.784 × 3 × 30 = **$70.56/month**.
+      - Saving ≈ $181/month — as long as the job checkpoints and can resume.
+    answer: About $70.56 on Spot vs $252 on-demand.
+    takeaway: Spot is ideal for interruptible, checkpointed work.
+  - title: Region or instance?
+    problem: A 2-vCPU instance serves in 24 ms; an 8-vCPU instance in 9 ms. The Johannesburg region adds 42 ms of
+      network latency, an on-prem Kampala server 8 ms. Which gives the lowest total latency for hospital
+      users?
+    steps:
+      - "2-vCPU in Johannesburg: 24 + 42 = 66 ms. 8-vCPU in Johannesburg: 9 + 42 = 51 ms."
+      - "2-vCPU on-prem Kampala: 24 + 8 = **32 ms**."
+      - The small machine close to users beats the big machine far away.
+    answer: The small instance in Kampala (32 ms).
+    takeaway: For latency, distance often matters more than horsepower.
+questions:
+  - question: List NIST's five essential characteristics of cloud computing and explain rapid elasticity with an
+      ML example.
+    kind: short
+    marks: 5
+    keywords:
+      - on-demand self-service
+      - broad network access
+      - resource pooling
+      - rapid elasticity
+      - measured service
+      - scale out
+      - scale in
+      - traffic
+      - replicas
+    idealAnswer: "On-demand self-service, broad network access, resource pooling, rapid elasticity and measured
+      service. Rapid elasticity means capacity can grow and shrink quickly, often automatically: the stroke
+      API can scale from 2 to 10 replicas during the morning clinic surge and back down at night, paying only
+      for what is used."
+  - question: Explain when you would use a CPU vs a GPU for inference, and when Spot instances are appropriate.
+    kind: short
+    marks: 6
+    keywords:
+      - tabular
+      - cpu
+      - cheap
+      - latency
+      - neural network
+      - gpu
+      - parallel
+      - idle
+      - scale to zero
+      - spot
+      - discount
+      - reclaimed
+      - checkpoint
+      - training
+      - serving
+    idealAnswer: Tabular models (XGBoost, RandomForest) run quickly and cheaply on CPUs, so a GPU adds cost
+      without meaningful benefit. Large neural networks need GPUs' parallel arithmetic, but GPUs should scale
+      to zero when idle. Spot instances give 70–90% discounts but can be reclaimed with ~2 minutes' notice, so
+      they suit checkpointed training and batch scoring, not real-time clinical serving.
+  - question: Propose a cloud architecture and monthly budget for the stroke-risk system — a 24/7 prediction API
+      used by a Ugandan hospital and a nightly retraining job. Justify the service model, region, instance
+      types and pricing options, and explain how you handle a Spot interruption.
+    kind: long
+    marks: 12
+    keywords:
+      - paas
+      - iaas
+      - region
+      - latency
+      - data residency
+      - cpu
+      - on-demand
+      - replicas
+      - load balancer
+      - autoscaling
+      - gpu
+      - spot
+      - checkpoint
+      - resume
+      - cost
+      - monthly
+    idealAnswer: "Serving: a PaaS/container service (or IaaS VMs) in the closest region with acceptable
+      data-residency terms (e.g. Johannesburg, or on-prem in Kampala for lowest latency), running the CPU-only
+      XGBoost API on small on-demand instances — at least two replicas behind a load balancer with autoscaling
+      on CPU/latency. Budget example: 2 × $0.04/h × 730 h ≈ $58/month. Retraining: a nightly batch job on a
+      Spot GPU or large CPU instance (e.g. 3 h × $0.78/h × 30 ≈ $70/month), writing checkpoints to object
+      storage every few minutes; on a 2-minute reclaim notice it saves state, and the scheduler restarts the
+      job on a new instance from the last checkpoint. The new model is validated, versioned in the registry
+      and rolled out via canary, so an interruption delays retraining but never affects the live API."
+coding:
+  - id: cheapest-safe-instance
+    title: Pick the cheapest safe instance
+    language: python
+    level: core
+    prompt: |
+      Write two functions:
+
+      - `monthly_cost(hourly, hours, spot_discount=0.0)` → cost in USD, rounded to 2 dp.
+      - `choose(options, max_latency_ms, workload)` → the **name** of the cheapest option whose
+        `compute_ms + network_ms ≤ max_latency_ms`. For `workload == "serving"` ignore Spot options entirely
+        (they can be reclaimed); for `"training"` Spot is allowed. Serving runs 730 h/month, training 120 h.
+        Return `None` if nothing qualifies.
+    setup: |
+      OPTIONS = [
+          {"name": "cpu2-jnb", "hourly": 0.04, "compute_ms": 24, "network_ms": 42, "spot": False},
+          {"name": "cpu2-kla", "hourly": 0.05, "compute_ms": 24, "network_ms": 8, "spot": False},
+          {"name": "cpu8-jnb", "hourly": 0.16, "compute_ms": 9, "network_ms": 42, "spot": False},
+          {"name": "cpu2-jnb-spot", "hourly": 0.0112, "compute_ms": 24, "network_ms": 42, "spot": True},
+          {"name": "t4-jnb-spot", "hourly": 0.168, "compute_ms": 3.2, "network_ms": 42, "spot": True},
+      ]
+    starter: |
+      def monthly_cost(hourly, hours, spot_discount=0.0):
+          ...
+
+      def choose(options, max_latency_ms, workload):
+          ...
+
+      print(choose(OPTIONS, 60, "serving"))
+    solution: |
+      def monthly_cost(hourly, hours, spot_discount=0.0):
+          return round(hourly * (1 - spot_discount) * hours, 2)
+
+      def choose(options, max_latency_ms, workload):
+          hours = 730 if workload == "serving" else 120
+          ok = [o for o in options
+                if o["compute_ms"] + o["network_ms"] <= max_latency_ms and not (workload == "serving" and o["spot"])]
+          if not ok:
+              return None
+          return min(ok, key=lambda o: monthly_cost(o["hourly"], hours))["name"]
+
+      print(choose(OPTIONS, 60, "serving"))
+    tests:
+      - name: monthly_cost with and without a Spot discount
+        code: |
+          assert monthly_cost(0.04, 730) == 29.2
+          assert monthly_cost(2.4, 20, spot_discount=0.75) == 12.0
+      - name: Serving never uses Spot, and respects latency
+        code: |
+          assert choose(OPTIONS, 60, "serving") == "cpu2-kla", "cpu2-jnb is 66 ms; Spot isn't allowed for serving"
+      - name: Training may use Spot
+        code: |
+          assert choose(OPTIONS, 100, "training") == "cpu2-jnb-spot"
+      - name: Impossible budgets return None
+        code: |
+          assert choose(OPTIONS, 20, "serving") is None

@@ -1,0 +1,398 @@
+id: star-schemas
+title: Analytical Star Schemas & DuckDB
+subtitle: Model facts, dimensions & OLAP queries for fast analytics (Lab 4)
+recap: "OLTP databases handle row-by-row writes; OLAP engines like DuckDB scan few columns over many rows. A
+  star schema has a central fact table of numeric measures and foreign keys at a declared grain, surrounded by
+  descriptive dimension tables used for filtering and grouping. Declare the grain first: mixing grains makes
+  joins fan out and double-count."
+traps:
+  - Storing descriptive strings (like category names) repeatedly in the fact table.
+  - Mixing daily and monthly rows in one fact table.
+  - Joining a fact to a many-row dimension and silently multiplying SUMs (fan trap).
+lesson:
+  checkpointStep: 3
+  steps:
+    - Transactional databases (OLTP) like PostgreSQL or SQLite are optimised for fast row-by-row inserts and
+      updates. Analytical engines (OLAP) like DuckDB are built for scanning millions of rows across a few
+      columns.
+    - In dimensional modelling (Kimball's Star Schema), we split data into a central Fact table surrounded by
+      Dimension tables. Fact rows hold numeric measurements at a clearly declared grain.
+    - In our market warehouse, fact_market_prices has a grain of one row per (date, market, commodity),
+      storing price_ugx, rainfall_mm, and foreign keys to dim_date, dim_market, and dim_commodity.
+    - "Checkpoint: what is the difference between a Fact table and a Dimension table, and why must you declare
+      the grain of a fact table before writing a single SQL query?"
+    - Dimensions store descriptive context — region, district, commodity category, calendar quarter — used for
+      filtering and grouping. Facts store quantitative measurements that you sum, average, or count.
+    - If you mix grains in a fact table (e.g., daily market prices mixed with monthly regional totals), every
+      JOIN fans out and double-counts revenue or distorts averages. Declaring the grain prevents fan-traps.
+checkpoint:
+  question: Contrast Fact tables and Dimension tables in a Star Schema. Why is declaring the exact 'grain' of a
+    fact table critical before designing joins and aggregations?
+  hint: What goes into facts (measurements, foreign keys) vs dimensions (descriptive attributes, surrogate
+    keys)? What goes wrong in SUM/AVG if rows represent different levels of detail?
+  keywords:
+    - fact
+    - dimension
+    - measurement
+    - numeric
+    - descriptive
+    - context
+    - filter
+    - group by
+    - grain
+    - one row
+    - surrogate key
+    - join
+    - double count
+    - aggregation
+  idealAnswer: Fact tables store quantitative numeric measurements (such as `price_ugx` and `rainfall_mm`) and
+    foreign keys at a specific atomic event level, making them narrow and deep. Dimension tables
+    (`dim_market`, `dim_commodity`, `dim_date`) store descriptive attributes used for `WHERE` filtering and
+    `GROUP BY` labels. Declaring the grain — exactly what one fact row represents, such as one commodity in
+    one market on one day — is critical because mixing grains causes joins to fan out, silently
+    double-counting sums and biasing averages.
+terms:
+  - term: Grain
+    definition: The exact business definition of a single row in a fact table (e.g., 1 market × 1 commodity × 1 day).
+  - term: Fact table
+    definition: Central table holding numeric measures and foreign keys to dimensions.
+  - term: Dimension table
+    definition: Lookup table holding descriptive attributes (who, what, where, when) with a surrogate primary key.
+  - term: Surrogate key
+    definition: System-generated key (integer or MD5 hash) decoupling warehouse joins from operational strings.
+  - term: Vectorised execution
+    definition: Processing columns in CPU cache-sized batches (vectors of 1,024–2,048 values) instead of row-at-a-time.
+quiz:
+  - question: In our Star Schema, we cover 5 markets, 4 commodities, and 365 days with complete daily
+      observations. How many rows are in fact_market_prices?
+    options:
+      - 1,825
+      - 7,300
+      - 1,460
+      - "374"
+    answer: 1
+    explanation: Grain = market × commodity × day = 5 × 4 × 365 = 7,300 fact rows.
+  - question: Which table should store the attribute 'commodity_category = Cereals'?
+    options:
+      - fact_market_prices
+      - dim_commodity
+      - dim_market
+      - dim_date
+    answer: 1
+    explanation: Descriptive hierarchy attributes belong in the dimension table (dim_commodity), not repeated as
+      strings in the fact table.
+  - question: Which belongs in a fact table?
+    options:
+      - market_district
+      - commodity_category
+      - price_ugx
+      - month_name
+    answer: 2
+    explanation: Facts hold numeric measures; the others are descriptive dimension attributes.
+  - question: What is the grain of fact_market_prices?
+    options:
+      - One row per market
+      - One row per commodity per month
+      - One row per (day, market, commodity)
+      - One row per price change
+    answer: 2
+    explanation: One observation of one commodity in one market on one day.
+  - question: Why use a surrogate integer key instead of the market name?
+    options:
+      - Names are illegal in SQL
+      - Faster joins
+      - stable when names change
+      - and allows an Unknown member
+      - DuckDB requires it
+      - It compresses the CSV
+    answer: 1
+    explanation: Surrogate keys decouple the warehouse from changing operational strings.
+  - question: Joining facts to a dimension increased the row count from 7,300 to 9,100. What does this indicate?
+    options:
+      - Normal behaviour
+      - A fan trap — duplicate or finer-grain dimension rows
+      - The fact table was compressed
+      - A missing index
+    answer: 1
+    explanation: A many-to-one join should never add rows; extra rows mean a fan-out.
+  - question: DuckDB is best described as…
+    options:
+      - A distributed OLTP database
+      - An in-process columnar OLAP engine
+      - A key-value store
+      - A CSV editor
+    answer: 1
+    explanation: It runs inside your process and uses columnar, vectorised execution.
+  - question: Where should 'is_weekend' live?
+    options:
+      - fact_market_prices
+      - dim_date
+      - dim_market
+      - dim_commodity
+    answer: 1
+    explanation: It describes the date, so it belongs in the date dimension.
+fact:
+  title: "In-process OLAP: why DuckDB is the 'SQLite for Analytics'"
+  body: DuckDB runs embedded inside your Python process with zero server setup, yet uses a columnar-vectorised
+    execution engine written in C++ that can query Parquet files directly on disk faster than many distributed
+    clusters on datasets under 50 GB.
+lab:
+  title: Star Schema Grain & Fan-Trap Simulator
+  variations:
+    - title: Star Schema Fact Table Cardinality
+      question: Our Uganda market Star Schema tracks <b>8 markets</b>, <b>6 commodities</b>, across <b>90 days</b>
+        with 100% daily coverage. At the grain of `(date, market, commodity)`, how many rows are in
+        `fact_market_prices`?
+      answer: 4320
+      tolerance: 0
+      hint: Multiply 8 markets × 6 commodities × 90 days.
+      explanation: "|Fact| = 8 × 6 × 90 = 4,320 rows."
+    - title: Denormalised CSV vs Star Schema Storage
+      question: Storing descriptive strings directly in a <b>100,000-row</b> flat table uses <b>120 bytes/row</b>.
+        Normalising into a Star Schema shrinks each fact row to <b>24 bytes</b> (with negligible dimension
+        table size). How many <b>MB</b> (1 MB = 10⁶ bytes) are saved?
+      answer: 9.6
+      tolerance: 0.05
+      hint: Compute (120 − 24) bytes × 100,000 rows, then divide by 1,000,000.
+      explanation: Saved per row = 120 − 24 = 96 bytes. Total saved = 96 × 100,000 = 9,600,000 bytes = 9.6 MB.
+    - title: Grain Mismatch Fan-Trap Multiplier
+      question: A market price row for 'Owino · Beans · 2025-05-10' (`price = 4,000 UGX`) is accidentally joined to
+        an un-deduplicated `dim_market` table where 'Owino' appears <b>3 times</b> (for 3 sub-parishes). What
+        inflated `SUM(price_ugx)` is produced for that single observation?
+      answer: 12000
+      tolerance: 0
+      hint: A 1-to-3 dimension duplicate multiplies the fact row 3 times before SUM() runs.
+      explanation: The join fans out 1 fact row into 3 rows of 4,000 UGX → SUM = 3 × 4,000 = 12,000 UGX (3× fan-trap
+        inflation).
+notes:
+  - heading: OLTP vs OLAP
+    body: |
+      Databases are built for one of two jobs.
+
+      | | OLTP (transactions) | OLAP (analytics) |
+      |---|---|---|
+      | Typical query | insert/update one order, look up one customer | average price by region over 3 years |
+      | Rows touched | a few | millions |
+      | Columns touched | all of a row | a few |
+      | Storage | row-oriented | column-oriented |
+      | Examples | PostgreSQL, SQLite, MySQL | DuckDB, BigQuery, Snowflake |
+
+      DuckDB is "SQLite for analytics": it runs inside your Python process with no server, but uses a columnar, vectorised engine that processes values in CPU-cache-sized batches. On a laptop it can scan Parquet files faster than many clusters on data under ~50 GB.
+  - heading: Facts, dimensions and the grain
+    body: |
+      A **star schema** puts one **fact table** in the middle and **dimension tables** around it.
+
+      - The **fact table** stores *measurements*: numbers you sum, average or count (`price_ugx`, `rainfall_mm`, `litres`), plus foreign keys to the dimensions. It is long and narrow.
+      - **Dimension tables** store *descriptions* used to filter and group: `dim_market` (market, district, region), `dim_commodity` (name, category, unit), `dim_date` (day, month, quarter, year, is_weekend). They are short and wide.
+
+      Before writing SQL you **declare the grain**: what exactly one fact row represents. Here: *one commodity in one market on one day*. Every measure in the fact table must be true at that grain. That's what lets you compute fact-table size directly: |fact| ≤ |dates| × |markets| × |commodities|.
+  - heading: Surrogate keys and why not join on strings
+    body: |
+      Dimensions get a **surrogate key** — a meaningless integer like `market_key = 7` — rather than joining facts on `market_name = 'Owino'`.
+
+      Why:
+
+      - Integers are smaller and faster to join and index than strings.
+      - Names change ("Owino" → "St. Balikuddembe Market"); with a surrogate key you update one dimension row, not millions of fact rows.
+      - You can represent things the source doesn't have, like an **Unknown** member (`key = 0`) for facts whose dimension value is missing — so no fact row has a NULL key.
+      - History can be tracked (SCD Type 2): one market can have several dimension rows with different validity dates.
+  - heading: The fan trap
+    body: |
+      A **fan trap** happens when a join matches one fact row to *several* dimension rows. The fact row is repeated once per match, so `SUM(price_ugx)` is multiplied — with no error message.
+
+      Typical causes:
+
+      - the dimension has duplicate keys (the same `market_key` twice, e.g. loaded twice);
+      - you join to a table at a finer grain (e.g. daily facts joined to a table with one row per market *per vendor*);
+      - you mix grains in the fact table (daily rows next to monthly totals).
+
+      Defences: enforce **unique keys** on dimensions, **declare the grain** and stick to it, and **check row counts** before and after joins — a join to a dimension must never increase the number of fact rows.
+examples:
+  - title: Sizing a warehouse from its grain
+    problem: The warehouse covers 12 markets and 8 commodities for 2 full years (730 days) with complete coverage.
+      How many fact rows, and how many dimension rows in total?
+    steps:
+      - Grain = (day, market, commodity), so facts = 730 × 12 × 8 = **70,080 rows**.
+      - "Dimensions: dim_date 730 + dim_market 12 + dim_commodity 8 = **750 rows**."
+      - "Ratio ≈ 93 : 1 — facts dominate, which is why fact tables are kept narrow (keys + numbers)."
+    answer: 70,080 fact rows and 750 dimension rows.
+    takeaway: The grain multiplies; dimensions add.
+  - title: Spotting a fan trap
+    problem: SUM(price_ugx) for Owino on 2025-03-01 should be 4,000 UGX but the report shows 12,000. dim_market
+      has three rows with market_key = 3. Explain and fix.
+    steps:
+      - "The fact row joins to all three dim_market rows with key 3, so it appears three times: 3 × 4,000 =
+        12,000."
+      - "Find it: `SELECT market_key, COUNT(*) FROM dim_market GROUP BY 1 HAVING COUNT(*) > 1`."
+      - Fix the load so dim_market has one row per key (deduplicate, add a UNIQUE/PRIMARY KEY constraint).
+      - "Guard it: assert the fact row count is the same before and after joining each dimension."
+    answer: Duplicate dimension keys fanned the row out 3×; enforce unique keys.
+    takeaway: A join to a dimension must never change the number of fact rows.
+questions:
+  - question: Define the grain of a fact table and explain what goes wrong if you mix grains.
+    kind: short
+    marks: 5
+    keywords:
+      - grain
+      - one row
+      - represents
+      - measures
+      - mix
+      - daily
+      - monthly
+      - double count
+      - fan out
+    idealAnswer: The grain is the precise definition of what one fact row represents, e.g. one commodity in one
+      market on one day. All measures must be valid at that grain. Mixing grains — say daily prices alongside
+      monthly totals — means aggregations add incompatible rows and joins fan out, so sums are double-counted
+      and averages are biased.
+  - question: Explain why dimension tables use surrogate keys and how an Unknown member avoids NULL foreign keys.
+    kind: short
+    marks: 5
+    keywords:
+      - surrogate key
+      - integer
+      - join
+      - stable
+      - rename
+      - history
+      - unknown member
+      - key 0
+      - coalesce
+      - "null"
+      - referential integrity
+    idealAnswer: "Surrogate keys are system-generated integers: smaller and faster to join, stable when business
+      names change, and able to support history (SCD2). An Unknown member — a dimension row with key 0 — lets
+      facts whose dimension value is missing or unmatched point to a valid row (COALESCE(key, 0)) instead of
+      NULL, preserving every fact row and referential integrity."
+  - question: Design a star schema for the market-price data. List the fact table (grain, measures, keys) and
+      three dimensions with attributes, then write a DuckDB query for the average price per region and
+      commodity category in 2025, and say how you'd check it isn't affected by a fan trap.
+    kind: long
+    marks: 12
+    keywords:
+      - fact_market_prices
+      - grain
+      - price_ugx
+      - rainfall_mm
+      - date_key
+      - market_key
+      - commodity_key
+      - dim_date
+      - dim_market
+      - dim_commodity
+      - region
+      - category
+      - join
+      - group by
+      - row count
+      - unique
+    idealAnswer: "fact_market_prices: grain one row per (date, market, commodity); measures price_ugx,
+      rainfall_mm; foreign keys date_key, market_key, commodity_key. dim_date (date_key, date, month, quarter,
+      year, is_weekend); dim_market (market_key, market_name, district, region); dim_commodity (commodity_key,
+      name, category, unit). Query: SELECT m.region, c.category, AVG(f.price_ugx) FROM fact_market_prices f
+      JOIN dim_market m USING (market_key) JOIN dim_commodity c USING (commodity_key) JOIN dim_date d USING
+      (date_key) WHERE d.year = 2025 GROUP BY 1, 2. Fan-trap check: each dimension key must be unique (GROUP
+      BY key HAVING COUNT(*) > 1 returns nothing) and COUNT(*) of the joined facts for 2025 equals COUNT(*) of
+      the fact table for 2025."
+coding:
+  - id: build-star
+    title: Build the star schema in DuckDB
+    language: sql
+    level: core
+    files:
+      - market_clean.csv
+    setup: |
+      CREATE TABLE staging AS SELECT * FROM read_csv_auto('market_clean.csv');
+    compare: none
+    prompt: |
+      A table `staging` holds cleaned observations (date, market, district, region, commodity, category,
+      price_ugx, rainfall_mm). Build:
+
+      - `dim_market(market_key, market, district, region)` — one row per market;
+      - `dim_commodity(commodity_key, commodity, category)` — one row per commodity;
+      - `fact_market_prices(date, market_key, commodity_key, price_ugx, rainfall_mm)` — grain: one row per
+        (date, market, commodity).
+
+      Use integer surrogate keys (e.g. `ROW_NUMBER() OVER (ORDER BY market)`). Finish with a query that
+      shows a few fact rows.
+    starter: |
+      -- dim_market
+      CREATE TABLE dim_market AS
+      SELECT ...;
+
+      -- dim_commodity
+
+      -- fact_market_prices
+
+      SELECT * FROM fact_market_prices LIMIT 5;
+    solution: |
+      CREATE TABLE dim_market AS
+      SELECT ROW_NUMBER() OVER (ORDER BY market) AS market_key, market, district, region
+      FROM (SELECT DISTINCT market, district, region FROM staging);
+
+      CREATE TABLE dim_commodity AS
+      SELECT ROW_NUMBER() OVER (ORDER BY commodity) AS commodity_key, commodity, category
+      FROM (SELECT DISTINCT commodity, category FROM staging);
+
+      CREATE TABLE fact_market_prices AS
+      SELECT s.date, m.market_key, c.commodity_key, s.price_ugx, s.rainfall_mm
+      FROM staging s
+      JOIN dim_market m USING (market)
+      JOIN dim_commodity c USING (commodity);
+
+      SELECT * FROM fact_market_prices LIMIT 5;
+    tests:
+      - name: Dimensions have one row per member with unique keys
+        code: |
+          m = con.execute("SELECT COUNT(*), COUNT(DISTINCT market_key), COUNT(DISTINCT market) FROM dim_market").fetchone()
+          c = con.execute("SELECT COUNT(*), COUNT(DISTINCT commodity_key) FROM dim_commodity").fetchone()
+          assert m == (5, 5, 5), f"dim_market should have 5 unique markets, got {m}"
+          assert c == (4, 4), f"dim_commodity should have 4 unique commodities, got {c}"
+      - name: The fact table keeps the grain (no fan-out, no loss)
+        code: |
+          n = con.execute("SELECT COUNT(*) FROM fact_market_prices").fetchone()[0]
+          s = con.execute("SELECT COUNT(*) FROM staging").fetchone()[0]
+          assert n == s, f"fact rows ({n}) should equal staging rows ({s})"
+          d = con.execute("SELECT COUNT(*) FROM (SELECT date, market_key, commodity_key FROM fact_market_prices GROUP BY ALL HAVING COUNT(*) > 1)").fetchone()[0]
+          assert d == 0, "duplicate (date, market_key, commodity_key) rows found"
+      - name: No NULL foreign keys and measures survive the joins
+        code: |
+          nulls = con.execute("SELECT COUNT(*) FROM fact_market_prices WHERE market_key IS NULL OR commodity_key IS NULL").fetchone()[0]
+          assert nulls == 0
+          a = con.execute("SELECT ROUND(SUM(price_ugx)) FROM fact_market_prices").fetchone()[0]
+          b = con.execute("SELECT ROUND(SUM(price_ugx)) FROM staging").fetchone()[0]
+          assert a == b, "total price changed — check your joins"
+    hints:
+      - "`SELECT DISTINCT market, district, region FROM staging` gives one row per market."
+      - Join staging to each dimension on the natural key to look up the surrogate key.
+  - id: region-category
+    title: Average price by region and category
+    language: sql
+    level: core
+    files:
+      - market_clean.csv
+    compare: ordered
+    setup: |
+      CREATE TABLE staging AS SELECT * FROM read_csv_auto('market_clean.csv');
+      CREATE TABLE dim_market AS SELECT ROW_NUMBER() OVER (ORDER BY market) AS market_key, market, district, region FROM (SELECT DISTINCT market, district, region FROM staging);
+      CREATE TABLE dim_commodity AS SELECT ROW_NUMBER() OVER (ORDER BY commodity) AS commodity_key, commodity, category FROM (SELECT DISTINCT commodity, category FROM staging);
+      CREATE TABLE fact_market_prices AS SELECT s.date, m.market_key, c.commodity_key, s.price_ugx, s.rainfall_mm FROM staging s JOIN dim_market m USING (market) JOIN dim_commodity c USING (commodity);
+      DROP TABLE staging;
+    prompt: |
+      Using only the star schema (`fact_market_prices`, `dim_market`, `dim_commodity`), return
+      `region`, `category` and `avg_price` (rounded to 0 dp) for every region–category pair,
+      ordered by `region`, then `category`.
+    starter: |
+      SELECT ...
+      FROM fact_market_prices f
+    solution: |
+      SELECT m.region, c.category, ROUND(AVG(f.price_ugx), 0) AS avg_price
+      FROM fact_market_prices f
+      JOIN dim_market m USING (market_key)
+      JOIN dim_commodity c USING (commodity_key)
+      GROUP BY m.region, c.category
+      ORDER BY m.region, c.category;
+    hints:
+      - Join the fact table to both dimensions on their surrogate keys.
+      - GROUP BY the two descriptive attributes and ROUND(AVG(...), 0).

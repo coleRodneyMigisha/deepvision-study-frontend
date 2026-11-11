@@ -1,0 +1,464 @@
+id: data-cleaning
+title: Data Profiling, Validation & Cleaning
+subtitle: Turn messy field CSVs into a trusted analytical dataset (Lab 2)
+recap: "Raw data is untrusted and immutable: never edit data/raw/, always write deterministic outputs to
+  data/processed/. Profile first (types, null rates, duplicates, quantiles), then validate the data contract,
+  then clean: standardise strings, drop rows missing the composite key, deduplicate on (date, market,
+  commodity), and impute prices with the per-commodity median because prices are skewed and differ by
+  commodity."
+traps:
+  - Imputing with the global mean — outliers and different commodities distort it.
+  - Overwriting the raw CSV so a cleaning bug can never be undone.
+  - Deduplicating on all columns instead of the business key.
+lesson:
+  checkpointStep: 3
+  steps:
+    - Every real-world data system begins with untrusted raw data. In our Uganda market monitoring pipeline,
+      field enumerators submit daily CSVs with missing prices, negative quantities, and duplicate
+      market-commodity-date rows.
+    - "Rule number one of data engineering: raw data is immutable. Never overwrite
+      data/raw/market_prices_dirty.csv. Instead, profile it first, validate its contract, and write cleaned
+      outputs to data/processed/."
+    - "Data profiling measures shape, data types, null rates, cardinality, and quantiles before touching a
+      single value. Validation then checks hard invariants: required columns, parseable ISO dates, and
+      non-negative prices."
+    - "Checkpoint: why should you impute missing prices using the per-commodity median rather than the global
+      mean, and why must raw data remain read-only?"
+    - Agricultural prices are heavily right-skewed and differ wildly by commodity — beans at 3,800 UGX/kg vs
+      maize at 1,800 UGX/kg. A global mean distorts both and is pulled up by extreme outliers; group-wise
+      median is robust.
+    - During cleaning, we standardise strings, drop rows missing primary keys (date, market, commodity),
+      deduplicate on the composite business key, and cap or filter impossible domain values like negative
+      rainfall or prices.
+checkpoint:
+  question: Why should missing market prices be imputed using the per-commodity median rather than the overall
+    dataset mean, and why is raw data kept strictly immutable?
+  hint: Think about price skew/outliers across different commodities (beans vs maize), and what happens if a bug
+    is discovered in your cleaning script two weeks later.
+  keywords:
+    - median
+    - skew
+    - outlier
+    - robust
+    - commodity
+    - group
+    - raw
+    - immutable
+    - reproducible
+    - re-run
+    - bug
+    - audit
+  idealAnswer: "Market prices are skewed, contain extreme outliers, and vary across commodities (e.g., beans vs
+    maize). Using a global mean mixes incompatible distributions and is sensitive to outliers, whereas the
+    per-commodity median is robust and preserves each commodity's typical price level. Raw data must remain
+    immutable so the pipeline is reproducible and auditable: if cleaning logic changes or has a bug, we can
+    re-run from the untouched source CSV without permanent data loss."
+terms:
+  - term: Data profiling
+    definition: Inspecting row counts, types, null rates, uniqueness and distributions before cleaning.
+  - term: Data contract
+    definition: Formal schema + domain rules (e.g. price_ugx > 0, rainfall_mm in [0, 500]) that data must pass.
+  - term: Composite business key
+    definition: "Columns that uniquely identify an observation: (date, market, commodity)."
+  - term: IQR outlier rule
+    definition: Flag values outside [Q1 − 1.5·IQR, Q3 + 1.5·IQR], where IQR = Q3 − Q1.
+  - term: Immutability of raw
+    definition: Never mutate data/raw/; always write deterministic outputs to data/processed/.
+quiz:
+  - question: A dataset has Q1 = 2,000 UGX and Q3 = 3,200 UGX. What is the upper Tukey 1.5×IQR fence?
+    options:
+      - 4,400 UGX
+      - 5,000 UGX
+      - 3,800 UGX
+      - 6,200 UGX
+    answer: 1
+    explanation: IQR = 3,200 − 2,000 = 1,200. Upper fence = Q3 + 1.5×1,200 = 3,200 + 1,800 = 5,000 UGX.
+  - question: 10,000 raw rows have 4% missing primary keys, and 5% of the remaining valid rows are duplicates. How
+      many clean rows remain?
+    options:
+      - 9,100
+      - 9,120
+      - 9,500
+      - 9,000
+    answer: 1
+    explanation: "After dropping 4% missing keys: 10,000 × 0.96 = 9,600. After dropping 5% duplicates: 9,600 ×
+      0.95 = 9,120 rows."
+  - question: Which step should come first in a cleaning pipeline?
+    options:
+      - Impute missing prices
+      - Profile the dataset
+      - Drop duplicates
+      - Write to data/processed/
+    answer: 1
+    explanation: Profiling first tells you what is wrong and how much, without changing anything.
+  - question: Three rows have market values "Owino", "owino " and "OWINO". What happens if you group by market
+      before cleaning?
+    options:
+      - They merge automatically
+      - Owino is counted as three different markets
+      - The query fails
+      - Only the first row is kept
+    answer: 1
+    explanation: Strings must be standardised (strip + consistent case) before grouping or joining.
+  - question: What is the business key for the market-price dataset?
+    options:
+      - (date)
+      - (market, commodity)
+      - (date, market, commodity)
+      - (price_ugx)
+    answer: 2
+    explanation: One observation is one commodity in one market on one day; duplicates are defined on that key.
+  - question: Why add a price_imputed flag column?
+    options:
+      - It makes the file smaller
+      - So analysts can tell real observations from filled ones
+      - Pandas requires it
+      - It speeds up groupby
+    answer: 1
+    explanation: Imputed values are estimates; keeping that visible prevents them being treated as measurements.
+  - question: A validation rule says rainfall_mm must be in [0, 500]. A row has 812. What should validation do?
+    options:
+      - Silently set it to 500
+      - Flag or reject the row according to the contract
+      - Ignore it
+      - Replace it with the mean
+    answer: 1
+    explanation: Validation enforces the contract; any fix (capping) is a documented cleaning decision, not a
+      silent change.
+  - question: Q1 = 1,600 and Q3 = 2,400. What is the lower Tukey fence?
+    options:
+      - "400"
+      - "800"
+      - 1,200
+      - "0"
+    answer: 0
+    explanation: IQR = 800; lower fence = 1,600 − 1.5 × 800 = 400.
+fact:
+  title: Garbage In, Garbage Out costs billions
+  body: Gartner estimates poor data quality costs organisations an average of $12.9 million per year. In
+    production ML systems, fixing a schema or unit mismatch in ingestion almost always beats tuning model
+    hyperparameters.
+lab:
+  title: Data Profiler, Tukey Outlier Gate & Median Imputer
+  variations:
+    - title: Tukey 1.5×IQR Upper Outlier Fence
+      question: In `market_prices_dirty.csv`, beans prices have <b>Q1 = 2,200 UGX</b> and <b>Q3 = 3,400 UGX</b>.
+        What is the exact upper Tukey outlier fence (<code>Q3 + 1.5 × IQR</code>)?
+      answer: 5200
+      tolerance: 0
+      hint: First compute IQR = Q3 − Q1 = 3,400 − 2,200 = 1,200, then add 1.5 × 1,200 to Q3.
+      explanation: IQR = 3,400 − 2,200 = 1,200 UGX. Upper fence = 3,400 + 1.5 × 1,200 = 3,400 + 1,800 = 5,200 UGX.
+    - title: Multi-Stage Cleaning Retention Count
+      question: A raw batch has <b>5,000</b> rows. Validation drops <b>6%</b> for missing primary keys, and
+        deduplication removes <b>10%</b> of the remaining rows. How many clean rows are written to
+        `data/processed/`?
+      answer: 4230
+      tolerance: 0
+      hint: Remaining after primary key check = 5,000 × 0.94. Then multiply that result by 0.90.
+      explanation: "After dropping 6% missing keys: 5,000 × 0.94 = 4,700 rows. After removing 10% duplicates: 4,700
+        × 0.90 = 4,230 clean rows."
+    - title: Per-Commodity Median Imputation vs Mean Distortion
+      question: Five observed maize prices in Owino are <b>[1800, 1900, 2000, 2100, 9700]</b> UGX (where 9700 is a
+        data-entry typo). By how many UGX does the <b>mean</b> exceed the <b>median</b>?
+      answer: 1500
+      tolerance: 0
+      hint: The median of the 5 sorted numbers is the 3rd value (2000). Compute the mean of all 5 and subtract 2000.
+      explanation: Mean = (1800 + 1900 + 2000 + 2100 + 9700) / 5 = 17,500 / 5 = 3,500 UGX. Median = 2,000 UGX.
+        Difference = 3,500 − 2,000 = 1,500 UGX.
+notes:
+  - heading: Why raw data can't be trusted
+    body: |
+      Field data is produced by people and devices under pressure: enumerators typing prices on a phone at a busy market, sensors dropping packets, spreadsheets merged by hand. Every one of those steps introduces a characteristic kind of error, and a data engineer's first job is to **name them** before fixing anything:
+
+      | Error type | Example in the market-price data | What it breaks |
+      |---|---|---|
+      | Missing values | `price_ugx` is blank | averages, model training |
+      | Invalid domain | `price_ugx = -1500`, `rainfall_mm = 900` | every aggregate that touches it |
+      | Inconsistent format | `"owino "`, `"OWINO"`, `"Owino"` | joins and group-bys silently split one market into three |
+      | Duplicates | the same (date, market, commodity) row submitted twice | sums and counts are inflated |
+      | Unparseable values | `date = "bad-date"` | time-series logic crashes or drops rows |
+
+      The point of the table is that each error type has a *different* fix. Treating them all as "dirty data, drop it" throws away information and hides the real problem from whoever produced the data.
+  - heading: Profile → validate → clean, in that order
+    body: |
+      **Profiling** measures the data without changing it: row count, column types, null rate per column, number of distinct values (cardinality), min/max and quantiles. A profile turns "the data looks messy" into numbers like *4.2% of prices are missing and 38 rows are negative* — numbers you can put in a report and check again next week.
+
+      **Validation** checks hard rules — the *data contract*: required columns exist, `date` parses as ISO-8601, `price_ugx > 0`, `rainfall_mm` is between 0 and 500, and `(date, market, commodity)` is unique. Validation answers "may this data enter the pipeline?" A failed contract should stop the pipeline loudly rather than let bad rows leak downstream.
+
+      **Cleaning** applies deterministic, documented fixes: standardise strings (`strip().title()`), parse dates, drop rows missing any part of the business key, de-duplicate on that key, cap or reject impossible values, and impute the rest.
+
+      Doing these in order matters. If you clean before profiling, you can't say how dirty the data was. If you validate before standardising strings, `" owino"` fails a membership check it should pass.
+  - heading: Why the per-commodity median
+    body: |
+      Imputation replaces a missing value with a best guess. The question is which guess.
+
+      - The **global mean** mixes every commodity together. Beans (~3,800 UGX/kg) and maize (~1,800 UGX/kg) average to a price that is wrong for *both*.
+      - The mean is also **sensitive to outliers**. One typo of 97,000 instead of 9,700 drags it far from the typical value.
+      - The **median** is the middle value of the sorted data, so a single extreme value can't move it much — it is *robust*. Computing it **per commodity** (`groupby("commodity")`) keeps each commodity's own price level.
+
+      ```python
+      df["price_ugx"] = df.groupby("commodity")["price_ugx"].transform(lambda s: s.fillna(s.median()))
+      ```
+
+      Imputation is still a guess. Good pipelines add a flag column (e.g. `price_imputed = True`) so analysts and models can tell real observations from filled ones.
+  - heading: Raw data is immutable
+    body: |
+      The rule is simple: **never modify `data/raw/`**. Read from it; write cleaned outputs to `data/processed/`.
+
+      Why it matters in practice:
+
+      1. **Reproducibility.** Anyone can rerun the pipeline from the same inputs and get the same outputs.
+      2. **Recoverability.** Two weeks later you discover the cleaning script dropped valid rows. If you overwrote the raw file, that data is gone. If you didn't, you fix the script and rerun.
+      3. **Auditability.** You can always show exactly what came in and what each step did to it.
+
+      In exams, pair this with the IQR rule: values outside **[Q1 − 1.5·IQR, Q3 + 1.5·IQR]** (IQR = Q3 − Q1) are *flagged* as outliers. Whether you drop, cap or keep them is a decision you justify — not something the formula decides for you.
+examples:
+  - title: Tukey fences on beans prices
+    problem: Beans prices in one week have Q1 = 3,200 UGX and Q3 = 4,000 UGX. A row shows 6,900 UGX. Is it an
+      outlier by the 1.5×IQR rule?
+    steps:
+      - IQR = Q3 − Q1 = 4,000 − 3,200 = **800 UGX**.
+      - Upper fence = Q3 + 1.5 × IQR = 4,000 + 1,200 = **5,200 UGX**. Lower fence = 3,200 − 1,200 = **2,000
+        UGX**.
+      - 6,900 > 5,200, so the row is **flagged** as an outlier.
+      - "Check before deleting: is it a typo (e.g. 690 × 10), a different unit (per sack, not per kg), or a
+        genuine price spike? The fence flags; you decide."
+    answer: Yes — it is above the 5,200 UGX upper fence.
+    takeaway: The fence is a flag for investigation, not an automatic delete.
+  - title: Mean vs median imputation
+    problem: "Five maize prices in Owino: 1,800, 1,900, 2,000, 2,100 and a typo of 9,700. A sixth price is
+      missing. What would mean-imputation and median-imputation fill in?"
+    steps:
+      - Mean = (1,800 + 1,900 + 2,000 + 2,100 + 9,700) / 5 = 17,500 / 5 = **3,500 UGX**.
+      - Sorted, the middle value is **2,000 UGX** — that's the median.
+      - Mean-imputation would invent a price 75% higher than any real maize price; the median stays at a
+        realistic level.
+    answer: Mean fills 3,500 UGX; median fills 2,000 UGX.
+    takeaway: One bad value is enough to make the mean misleading — that's what "not robust" means.
+questions:
+  - question: Describe the difference between profiling, validation and cleaning, giving one concrete example of
+      each for the market-price data.
+    kind: short
+    marks: 6
+    keywords:
+      - profiling
+      - measure
+      - null rate
+      - validation
+      - contract
+      - rule
+      - cleaning
+      - fix
+      - standardise
+      - impute
+    idealAnswer: Profiling measures the data without changing it — e.g. computing that 4.2% of price_ugx is
+      missing and 38 rows are negative. Validation enforces the data contract and decides whether data may
+      enter the pipeline — e.g. date must parse as ISO-8601 and price_ugx must be > 0. Cleaning applies
+      deterministic fixes — e.g. strip().title() on market names, dropping rows missing the business key,
+      de-duplicating on (date, market, commodity) and imputing missing prices with the per-commodity median.
+  - question: A colleague imputed missing prices with the global mean and overwrote data/raw/market_prices.csv.
+      Explain the two problems and how you would fix the pipeline.
+    kind: short
+    marks: 6
+    keywords:
+      - global mean
+      - commodity
+      - skew
+      - outlier
+      - median
+      - robust
+      - immutable
+      - raw
+      - re-run
+      - reproducible
+    idealAnswer: "First, the global mean mixes commodities with very different price levels and is pulled by
+      outliers, so it produces unrealistic values for every commodity; the per-commodity median is robust and
+      preserves each commodity's level. Second, overwriting raw data destroys the original evidence: the
+      change can't be audited or undone. Fix: restore the raw file from source, treat data/raw/ as read-only,
+      write outputs to data/processed/, impute with groupby('commodity') median plus an imputed flag, and
+      rerun."
+  - question: Design a cleaning pipeline for a raw daily market-price CSV. For each stage, state what it does,
+      what it outputs, and how you would prove that no rows were lost unexpectedly.
+    kind: long
+    marks: 12
+    keywords:
+      - profile
+      - validate
+      - contract
+      - standardise
+      - business key
+      - deduplicate
+      - median
+      - impute
+      - outlier
+      - iqr
+      - immutable
+      - processed
+      - row counts
+      - log
+    idealAnswer: "1) Profile the raw file (types, null rates, cardinality, quantiles) and save the report. 2)
+      Validate the contract: required columns, ISO dates, price_ugx > 0, rainfall in range, uniqueness of
+      (date, market, commodity); failures stop the run or are written to a rejects file with reasons. 3)
+      Standardise strings (strip/title), parse dates and numeric types. 4) Drop rows missing any part of the
+      business key; de-duplicate on the key. 5) Flag outliers with Tukey fences and decide (cap, keep or
+      reject) explicitly. 6) Impute remaining missing prices with the per-commodity median and add
+      price_imputed. 7) Write atomically to data/processed/ (Parquet). Prove no unexpected loss by logging row
+      counts in and out of every stage and asserting rows_in = rows_out + rows_rejected + duplicates_removed,
+      while data/raw/ is never modified."
+coding:
+  - id: profile-and-fence
+    title: Profile the batch & compute Tukey fences
+    language: python
+    level: warm-up
+    files:
+      - market_prices_dirty.csv
+    prompt: |
+      Before cleaning anything, **measure** it. `market_prices_dirty.csv` is in your working directory.
+
+      1. `null_rates(df)` → a dict mapping every column name to the **% of missing values**, rounded to 1 dp.
+      2. `tukey_fences(values)` → a tuple `(lower, upper)` with `Q1 − 1.5·IQR` and `Q3 + 1.5·IQR`
+         (use pandas' default quantiles). It must accept a list or a Series.
+    starter: |
+      import pandas as pd
+
+      df = pd.read_csv("market_prices_dirty.csv")
+
+      def null_rates(df):
+          """{column: % missing, rounded to 1 dp}"""
+          ...
+
+      def tukey_fences(values):
+          """(Q1 - 1.5*IQR, Q3 + 1.5*IQR)"""
+          ...
+
+      print(null_rates(df))
+      print(tukey_fences(df["price_ugx"].dropna()))
+    solution: |
+      import pandas as pd
+
+      df = pd.read_csv("market_prices_dirty.csv")
+
+      def null_rates(df):
+          return {c: round(df[c].isna().mean() * 100, 1) for c in df.columns}
+
+      def tukey_fences(values):
+          s = pd.Series(values, dtype="float64")
+          q1, q3 = s.quantile(0.25), s.quantile(0.75)
+          iqr = q3 - q1
+          return (q1 - 1.5 * iqr, q3 + 1.5 * iqr)
+
+      print(null_rates(df))
+      print(tukey_fences(df["price_ugx"].dropna()))
+    tests:
+      - name: null_rates covers every column
+        code: |
+          r = null_rates(df)
+          assert isinstance(r, dict), "null_rates must return a dict"
+          assert set(r) == set(df.columns), f"expected keys {list(df.columns)}"
+      - name: null_rates gives percentages rounded to 1 dp
+        code: |
+          r = null_rates(df)
+          exp = round(df["price_ugx"].isna().mean() * 100, 1)
+          assert r["price_ugx"] == exp, f"price_ugx should be {exp}% missing, got {r['price_ugx']}"
+          assert r["date"] == 0.0
+      - name: tukey_fences on a simple list
+        code: |
+          lo, hi = tukey_fences([1, 2, 3, 4, 5, 6, 7, 8])
+          assert abs(lo - (-2.5)) < 1e-9 and abs(hi - 11.5) < 1e-9, f"expected (-2.5, 11.5), got {(lo, hi)}"
+      - name: tukey_fences uses quartiles, not min/max
+        code: |
+          lo, hi = tukey_fences([10, 11, 12, 13, 14, 1000])
+          assert hi < 1000, "an extreme value should fall outside the upper fence"
+    hints:
+      - "`df[c].isna().mean()` is the fraction missing in column c."
+      - "`pd.Series(values).quantile(0.25)` gives Q1."
+  - id: clean-prices
+    title: Write clean_prices()
+    language: python
+    level: exam
+    files:
+      - market_prices_dirty.csv
+    prompt: |
+      Implement `clean_prices(raw)` that returns a **new** cleaned DataFrame (never modify `raw`):
+
+      1. Strip whitespace and title-case `market` and `commodity` (`" owino"` → `"Owino"`).
+      2. Parse `date` with `pd.to_datetime(..., errors="coerce")`.
+      3. Drop rows missing any part of the business key `(date, market, commodity)`.
+      4. Treat impossible values as missing: `price_ugx <= 0` → NaN, `rainfall_mm` outside `[0, 500]` → NaN.
+      5. De-duplicate on the business key, keeping the first row.
+      6. Add a boolean column `price_imputed` (True where the price was missing), then fill missing prices
+         with the **median price of the same commodity**.
+    starter: |
+      import pandas as pd
+
+      raw = pd.read_csv("market_prices_dirty.csv")
+
+      def clean_prices(raw):
+          df = raw.copy()
+          # your steps here
+          return df
+
+      clean = clean_prices(raw)
+      print(len(raw), "→", len(clean))
+      print(clean.head())
+    solution: |
+      import pandas as pd
+
+      raw = pd.read_csv("market_prices_dirty.csv")
+      KEY = ["date", "market", "commodity"]
+
+      def clean_prices(raw):
+          df = raw.copy()
+          for col in ["market", "commodity"]:
+              df[col] = df[col].str.strip().str.title()
+              df.loc[df[col] == "", col] = None
+          df["date"] = pd.to_datetime(df["date"], errors="coerce")
+          df = df.dropna(subset=KEY)
+          df.loc[df["price_ugx"] <= 0, "price_ugx"] = float("nan")
+          df.loc[~df["rainfall_mm"].between(0, 500), "rainfall_mm"] = float("nan")
+          df = df.drop_duplicates(subset=KEY, keep="first").copy()
+          df["price_imputed"] = df["price_ugx"].isna()
+          df["price_ugx"] = df.groupby("commodity")["price_ugx"].transform(lambda s: s.fillna(s.median()))
+          return df.reset_index(drop=True)
+
+      clean = clean_prices(raw)
+      print(len(raw), "→", len(clean))
+    tests:
+      - name: Doesn't modify the raw DataFrame
+        code: |
+          before = raw.copy()
+          clean_prices(raw)
+          assert raw.equals(before), "raw data must stay untouched — work on a copy"
+      - name: Names are standardised
+        code: |
+          c = clean_prices(raw)
+          assert set(c["market"]) <= {"Owino", "Nakasero", "Kalerwe", "Gulu"}, f"unexpected markets: {set(c['market'])}"
+          assert set(c["commodity"]) <= {"Beans", "Maize", "Matooke", "Rice"}, f"unexpected commodities: {set(c['commodity'])}"
+      - name: Unparseable dates and missing keys are dropped
+        code: |
+          c = clean_prices(raw)
+          assert pd.api.types.is_datetime64_any_dtype(c["date"]), "date should be parsed to datetime"
+          assert c[["date", "market", "commodity"]].notna().all().all()
+      - name: No duplicate business keys
+        code: |
+          c = clean_prices(raw)
+          assert not c.duplicated(subset=["date", "market", "commodity"]).any(), "duplicates on (date, market, commodity) remain"
+      - name: Impossible values are treated as missing
+        code: |
+          c = clean_prices(raw)
+          assert (c["price_ugx"] > 0).all(), "prices must be positive after cleaning"
+          assert not (c["rainfall_mm"] > 500).any(), "rainfall above 500 mm should be NaN"
+      - name: Prices are imputed with the per-commodity median
+        code: |
+          c = clean_prices(raw)
+          assert "price_imputed" in c and c["price_imputed"].dtype == bool, "add a boolean price_imputed column"
+          assert c["price_imputed"].sum() >= 4, "every missing or invalid price should be flagged"
+          assert c["price_ugx"].notna().all(), "no missing prices should remain"
+          real = c[~c["price_imputed"]]
+          for _, row in c[c["price_imputed"]].iterrows():
+              med = real.loc[real["commodity"] == row["commodity"], "price_ugx"].median()
+              assert abs(row["price_ugx"] - med) < 1e-6, f"{row['commodity']} should be imputed with its median {med}, got {row['price_ugx']}"
+    hints:
+      - "`df[col].str.strip().str.title()` standardises text; empty strings should count as missing."
+      - Set `price_imputed` BEFORE you fill the NaNs, otherwise you can't tell which were missing.
+      - "`df.groupby('commodity')['price_ugx'].transform(lambda s: s.fillna(s.median()))`"

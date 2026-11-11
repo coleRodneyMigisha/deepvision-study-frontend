@@ -1,0 +1,250 @@
+# Course pack — see content/README.md for the schema.
+id: ai
+code: CSC3119
+title: AI Model Deployment and Scaling
+shortTitle: AI Deployment
+tagline: "From notebook to hospital: pipelines, serialisation, APIs, cloud, Docker, canaries, ONNX, drift and XAI."
+accent: "#3B5BDB"
+persona: You are an expert professor of AI Systems, MLOps and Cloud Computing teaching CSC3119 (AI Model
+  Deployment and Scaling) at Uganda Christian University. You hold students to rigorous standards across the
+  deployment lifecycle — data pipelines, Pickle/Joblib persistence, FastAPI/Pydantic, cloud service models and
+  Spot pricing, multi-stage non-root Docker, Canary/Blue-Green routing, ONNX and INT8 quantisation, PSI drift
+  monitoring, and the Uganda Regional Referral Hospital stroke-risk capstone with SHAP explanations.
+formulas:
+  - name: Little's Law (API Concurrency)
+    expr: L = λ × W  (concurrency = arrival rate × latency)
+  - name: INT8 Quantization Memory
+    expr: Size(INT8) = Size(FP32) / 4 = 0.25 × Size(FP32)
+  - name: Population Stability Index (PSI)
+    expr: PSI = Σ (A_i − E_i) × ln(A_i / E_i)
+  - name: Clinical Recall (Sensitivity)
+    expr: Recall = TP / (TP + FN)  (proportion of strokes flagged)
+  - name: Precision (Positive Predictive Value)
+    expr: Precision = TP / (TP + FP)  (proportion of alerts true)
+  - name: F-Beta Score (Clinical Emphasis on Recall)
+    expr: F_β = (1 + β²) × (Precision × Recall) / ((β² × Precision) + Recall)
+  - name: Quantization Affine Mapping
+    expr: q = round(r / S) + Z  (scale S, zero-point Z)
+  - name: Tukey IQR Outlier Fences
+    expr: "[Q1 − 1.5×IQR, Q3 + 1.5×IQR]  (IQR = Q3 − Q1)"
+  - name: Error Budget Depletion Rate
+    expr: Burn Rate = Observed Error Rate / Allowable Error Rate
+  - name: Spot Instance Cost Savings
+    expr: Savings% = (1 − Spot Price / On-Demand Price) × 100
+  - name: SHAP Additive Efficiency Property
+    expr: f(x) = φ_0 + Σ φ_i  (base risk + feature attributions)
+  - name: Amdahl's Law for Inference Parallelism
+    expr: Speedup = 1 / ((1 − p) + p / s)
+  - name: Cross-Entropy Loss with Focal Weighting
+    expr: FL(p_t) = −α_t (1 − p_t)^γ ln(p_t)
+exam:
+  durationMinutes: 10
+  written:
+    - prompt: Explain why data leakage occurs when standard scaling or imputation is applied to an entire dataset
+        prior to splitting, and describe how an scikit-learn Pipeline prevents this in production.
+      module: data-preparation
+      keywords:
+        - leakage
+        - split
+        - fit
+        - fit_transform
+        - train
+        - test
+        - pipeline
+        - statistics
+        - generalization
+      idealAnswer: "Data leakage happens when information from outside the training partition leaks into the model.
+        If you apply `StandardScaler().fit_transform(X)` before `train_test_split`, the mean and variance
+        computed reflect the test set, creating overly optimistic validation metrics that degrade in
+        production. An `sklearn.pipeline.Pipeline` wraps preprocessing and estimators together: calling
+        `pipeline.fit(X_train, y_train)` computes scaling parameters solely from training data, and
+        `pipeline.predict(X_test)` applies those stored parameters without learning anything new from incoming
+        inference samples."
+      tip: "Emphasize: 'Fit on train, transform on test'—never compute parameters across the full dataset."
+    - prompt: Compare Python's built-in pickle with joblib for machine learning persistence. When is joblib
+        preferred, and why is unpickling untrusted files a critical security risk?
+      module: model-persistence
+      keywords:
+        - pickle
+        - joblib
+        - numpy
+        - array
+        - memory map
+        - mmap
+        - security
+        - arbitrary code execution
+        - reduce
+        - vulnerability
+      idealAnswer: While `pickle` is Python's standard object serializer, `joblib` is preferred for machine learning
+        because it is optimized for large NumPy numerical arrays, utilizing disk compression and
+        memory-mapping (mmap) to prevent duplicate RAM copies across child worker processes. However, both
+        pickle and joblib deserialize objects via the `__reduce__` protocol, which can execute arbitrary
+        bytecode and shell commands. Ingesting an unauthenticated model file from the public internet can
+        instantly grant an attacker a reverse root shell on your inference server.
+      tip: "Structure your answer into 3 parts: serialization performance, NumPy memory mapping, and the __reduce__
+        arbitrary code execution vulnerability."
+    - prompt: How does FastAPI combined with Pydantic handle incoming inference payloads, and why is boundary
+        validation vital for maintaining high API availability?
+      module: fastapi-serving
+      keywords:
+        - fastapi
+        - pydantic
+        - schema
+        - validation
+        - "422"
+        - boundary
+        - uptime
+        - contract
+        - exceptions
+      idealAnswer: FastAPI utilizes Pydantic `BaseModel` classes to define and enforce strict data contracts at the
+        network boundary. Incoming JSON payloads are parsed and validated against expected data types and
+        domain constraints (such as positive glucose and valid blood pressure ranges). If a payload is
+        malformed, FastAPI automatically generates an HTTP 422 Unprocessable Entity error and halts execution
+        before any model code is called. This protects downstream estimators from uncaught exceptions, avoids
+        silent data corruption, and ensures the service maintains 99.9% uptime without crashing.
+      tip: Highlight that boundary validation catches errors before compute-heavy model operations are triggered.
+    - prompt: Define the five essential characteristics of Cloud Computing according to NIST, and explain why
+        elasticity is particularly crucial for machine learning inference services.
+      module: cloud-sizing
+      keywords:
+        - nist
+        - on-demand self-service
+        - broad network access
+        - resource pooling
+        - rapid elasticity
+        - measured service
+        - scaling
+        - autoscaling
+      idealAnswer: "The five NIST cloud characteristics are: 1) On-demand self-service, 2) Broad network access, 3)
+        Resource pooling, 4) Rapid elasticity, and 5) Measured service. Rapid elasticity is critical for ML
+        serving because inference request volume is heavily diurnal and unpredictable. During peak hospital
+        triage hours, traffic may jump from 5 to 500 requests per second. Elastic autoscaling provisions
+        additional container replicas to absorb spikes without dropping requests or breaching SLA latency,
+        then scales compute down to zero during nighttime to minimize cloud spend."
+      tip: List the 5 NIST traits cleanly before diving into the specific benefits of rapid elasticity for traffic
+        spikes.
+    - prompt: Explain how multi-stage Docker builds reduce container image size and minimize the security attack
+        surface for a Python ML microservice.
+      module: docker
+      keywords:
+        - multi-stage
+        - docker
+        - builder
+        - slim
+        - attack surface
+        - compilers
+        - cve
+        - wheels
+      idealAnswer: A multi-stage Docker build uses separate `FROM` instructions to isolate the build environment
+        from the final execution runtime. In the builder stage, heavy tools like `gcc`, `g++`, and header
+        packages compile Python wheels. The final production stage starts from a minimal `python:3.11-slim`
+        image and copies only the compiled wheels and application code, omitting compilers, package managers,
+        and build artifacts. This slashes image size from ~1.2 GB to ~150 MB, speeds up deployment pulls
+        across cloud nodes, and drastically shrinks the attack surface by eliminating vulnerable OS binaries.
+      tip: Contrast the 'builder' environment with the lean 'runtime' image to demonstrate architectural clarity.
+    - prompt: Contrast Blue/Green deployment with Canary routing for releasing an updated AI model. How do you
+        configure automated rollbacks using error budgets?
+      module: canary-routing
+      keywords:
+        - canary
+        - blue-green
+        - traffic
+        - rollback
+        - error budget
+        - blast radius
+        - p99
+        - latency
+      idealAnswer: "Blue/Green deployment maintains two complete identical environments and switches 100% of user
+        traffic instantaneously from Blue to Green. While fast, any unseen bug affects all incoming users
+        immediately. In Canary deployment, the ingress load balancer sends a small percentage (e.g. 5%) of
+        live traffic to the new model (v2) while 95% remains on v1, drastically limiting the blast radius.
+        Automated rollbacks monitor an error budget: if the Canary's HTTP 5xx error rate exceeds 1% or p99
+        latency exceeds 250ms over a rolling evaluation window, the router immediately sets Canary traffic to
+        0%, preserving production stability."
+      tip: Define 'blast radius' and explain how canary traffic splitting minimizes risk to real users.
+    - prompt: Describe the mechanics of INT8 post-training quantization. Why does it produce an immediate 4x memory
+        savings, and how does it accelerate CPU inference?
+      module: inference-optimization
+      keywords:
+        - quantization
+        - int8
+        - fp32
+        - 4x
+        - scale
+        - zero-point
+        - simd
+        - memory bandwidth
+        - latency
+      idealAnswer: "Post-training quantization maps continuous 32-bit floating-point weights (FP32) into 8-bit
+        integers (INT8) through a linear affine equation: q = round(r/S) + Z, where S is the scale and Z is
+        the zero-point offset. Because an INT8 number occupies 1 byte while FP32 requires 4 bytes, memory
+        footprint is reduced by exactly 4x (75% savings). In inference, single-sample latency is typically
+        memory-bandwidth bound; loading 4x fewer bytes from RAM into CPU caches eliminates bus stalls. Modern
+        CPUs also feature SIMD vector extensions (AVX-512 VNNI) that execute four INT8 matrix operations in
+        parallel per clock cycle."
+      tip: Mention both the storage benefit (4 bytes to 1 byte) and the compute benefit (SIMD integer
+        vectorization).
+    - prompt: What is the difference between Data Drift (covariate shift) and Concept Drift? How does the Population
+        Stability Index (PSI) detect data drift in production?
+      module: drift-psi
+      keywords:
+        - data drift
+        - covariate shift
+        - concept drift
+        - psi
+        - population stability index
+        - actual
+        - expected
+        - retraining
+      idealAnswer: "Data Drift (covariate shift) is a change in the input feature distribution P(X) while the target
+        relationship remains constant—such as a hospital opening an elderly clinic and shifting the age
+        distribution. Concept Drift is a change in the conditional relationship P(Y|X) between inputs and
+        outputs—such as a medical breakthrough that decouples hypertension from stroke. The Population
+        Stability Index (PSI) quantifies drift by binning features into quantiles and calculating: sum of
+        (Actual_i - Expected_i) * ln(Actual_i / Expected_i). A PSI < 0.1 indicates no drift; 0.1 to 0.25
+        indicates moderate drift; and PSI >= 0.25 flags severe drift requiring pipeline retraining."
+      tip: "Be explicit: PSI < 0.1 is clean, 0.1–0.25 needs monitoring, and >= 0.25 requires immediate model
+        retraining."
+    - prompt: In the Uganda Referral Hospital stroke risk dataset, why is raw accuracy misleading, and how do you
+        calibrate the classification decision threshold for clinical utility?
+      module: stroke-capstone
+      keywords:
+        - accuracy
+        - stroke
+        - imbalance
+        - threshold
+        - calibration
+        - false negative
+        - recall
+        - cost-sensitive
+      idealAnswer: "With ~5% positive stroke prevalence in clinical registries, a naive model predicting 'No Stroke'
+        for all patients scores 95% accuracy while achieving 0% recall, missing every single life-threatening
+        event. In medical triage, misclassification costs are highly asymmetric: a False Negative can cause
+        death or permanent disability, while a False Positive results in a low-cost preventative exam. By
+        calibrating the decision threshold down from the default 0.5 to around 0.20–0.25, we boost Recall to
+        over 85%, ensuring high-risk patients are successfully routed into the chronic care clinic as mandated
+        by Ministry of Health guidelines."
+      tip: "Ground your answer in real clinical consequences: false negatives kill patients; false positives trigger
+        extra checkups."
+    - prompt: Explain how SHAP (SHapley Additive exPlanations) values establish clinical trust for physicians acting
+        on AI recommendations at hospital triage.
+      module: stroke-capstone
+      keywords:
+        - shap
+        - shapley
+        - xai
+        - explainable
+        - attribution
+        - game theory
+        - trust
+        - waterfall
+        - physician
+      idealAnswer: "Doctors rightly reject 'black-box' probabilities because they cannot verify the clinical
+        reasoning or justify treatments to patients. SHAP values, grounded in cooperative game theory, provide
+        mathematically guaranteed local feature attributions that satisfy the efficiency axiom: the patient's
+        predicted risk exactly equals the population base rate plus the sum of all individual feature effects.
+        A clinician sees an intuitive breakdown—e.g., base hospital risk 5%, plus 18% from age 68, plus 12%
+        from chronic hypertension, plus 7% from elevated glucose. This transparency allows doctors to validate
+        that predictions align with medical pathophysiology and focus treatment on actionable risk factors."
+      tip: "State that SHAP decomposes predictions additively: Base Rate + Sum of Feature Effects = Final
+        Probability."

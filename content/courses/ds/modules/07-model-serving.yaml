@@ -1,0 +1,458 @@
+id: model-serving
+title: "From Model to Data Product: FastAPI & Docker"
+subtitle: Serve ML models with zero training-serving skew (Lab 9 Part 2 / Lab 10)
+recap: A model becomes a data product when it sits behind a validated HTTP API. Save the model with its
+  metadata (version, feature columns, metrics), load it once at startup rather than per request, validate
+  inputs with strict Pydantic schemas (HTTP 422 for bad payloads), and share feature code between training and
+  serving to prevent training-serving skew. Package it with pinned dependencies in Docker.
+traps:
+  - Loading model.joblib inside the /predict handler.
+  - Re-implementing feature logic in the API (training-serving skew).
+  - Unpinned requirements so the container differs from training.
+lesson:
+  checkpointStep: 3
+  steps:
+    - A trained scikit-learn model sitting in a Jupyter notebook is not a data product. Downstream
+      applications need a reliable HTTP API that accepts a JSON request, validates it, and returns a
+      prediction in milliseconds.
+    - In Lab 9 Part 2 (Assignment 04), we serialised our RandomForestRegressor to `models/model.joblib`
+      alongside `models/model_metadata.json` recording `model_version`, `feature_columns`, and training
+      metrics.
+    - Our FastAPI service loads the model once at module startup (`lifespan` / module import), NOT inside
+      `POST /predict`. Loading a 50 MB model from disk on every request turns a 2 ms inference into a 300 ms
+      disk bottleneck.
+    - "Checkpoint: what is training-serving skew, how did we witness it in Step 8 of our lab, and what
+      architectural pattern prevents it permanently?"
+    - Training-serving skew happens when feature logic at inference diverges from training. In Step 8,
+      changing `is_rainy` from `rainfall_mm > 5.0` to `> 10.0` for `rainfall_mm = 8.2` silently shifted the
+      beans prediction from 2,927.25 to 2,889.58 UGX with zero HTTP errors!
+    - We prevent skew by placing `make_features()` and `FEATURE_COLUMNS` in a single shared module
+      (`src/common/features.py`) imported by both `src/ml/train.py` and `src/api/main.py`, enforcing strict
+      Pydantic input schemas, and packaging the exact runtime in Docker.
+checkpoint:
+  question: What is training-serving skew in ML systems? Explain how a subtle threshold mismatch causes silent
+    prediction errors, and how shared feature modules, Pydantic schemas, and Docker work together to make a
+    model service reproducible.
+  hint: Reference `src/common/features.py` (`make_features`), why silent bugs are worse than HTTP 422/500
+    errors, and why `model.joblib` must be loaded once at startup inside a pinned Docker container.
+  keywords:
+    - training-serving skew
+    - skew
+    - feature
+    - shared
+    - make_features
+    - silent
+    - pydantic
+    - validation
+    - "422"
+    - startup
+    - docker
+    - container
+    - pinned
+    - reproducible
+  idealAnswer: Training-serving skew occurs when the feature transformations applied during live inference
+    differ from those used during model training. Because the model still receives a numeric vector of the
+    expected shape, it raises no HTTP or runtime error — instead, it silently outputs wrong predictions (such
+    as when `is_rainy` threshold drifted from 5.0 mm to 10.0 mm in our lab). We eliminate this by defining
+    `make_features()` and `FEATURE_COLUMNS` in a single shared module (`src/common/features.py`) imported by
+    both `train.py` and `main.py`, validating raw request bounds with Pydantic (returning HTTP 422 on bad
+    inputs), loading `model.joblib` once at startup, and locking the OS and Python dependencies in a
+    Dockerfile.
+terms:
+  - term: Training-serving skew
+    definition: Mismatch between feature engineering or data distribution at training time vs inference time.
+  - term: Pydantic schema validation
+    definition: Declarative type + range checks (`Literal`, `Field(ge=0, le=500)`) that reject bad payloads with
+      HTTP 422.
+  - term: Startup model loading
+    definition: Deserialising `model.joblib` once into memory when the worker starts rather than per HTTP request.
+  - term: Model metadata artifact
+    definition: "`model_metadata.json` storing `model_version`, `trained_at`, `feature_columns`, and test metrics
+      (`r2`)."
+  - term: Docker layer caching
+    definition: Copying `requirements.txt` and running `pip install` before `COPY src/` so code edits rebuild in seconds.
+quiz:
+  - question: In a Dockerfile, why should `COPY requirements.txt .` and `RUN pip install -r requirements.txt` come
+      BEFORE `COPY src/ ./src/`?
+    options:
+      - Docker requires alphabetical order
+      - So editing Python code in src/ reuses the cached pip install layer instead of reinstalling packages
+        every build
+      - It makes the model more accurate
+      - FastAPI won't start otherwise
+    answer: 1
+    explanation: Docker caches layers top-down; placing rarely-changing `requirements.txt` before
+      frequently-edited `src/` saves minutes on every rebuild.
+  - question: Loading `model.joblib` from disk takes 180 ms and `model.predict()` takes 4 ms. For 100 sequential
+      requests, how much total time is saved by loading the model ONCE at startup instead of on every request?
+    options:
+      - 1.78 seconds
+      - 17.82 seconds
+      - 18.00 seconds
+      - 0.40 seconds
+    answer: 1
+    explanation: "Per-request load: 100 × (180 + 4) = 18,400 ms. Startup load once: 180 + 100 × 4 = 580 ms. Saved
+      = 18,400 − 580 = 17,820 ms = 17.82 seconds!"
+  - question: Where should make_features() live?
+    options:
+      - Copied into both train.py and the API
+      - In one shared module imported by both
+      - Only in the notebook
+      - In the Dockerfile
+    answer: 1
+    explanation: A single shared implementation makes skew structurally impossible.
+  - question: An API receives rainfall_mm = -4. With a Pydantic Field(ge=0), what happens?
+    options:
+      - The model predicts anyway
+      - HTTP 500
+      - HTTP 422 with the field error
+      - The value is set to 0
+    answer: 2
+    explanation: Validation rejects it at the boundary with a precise message.
+  - question: Why store model_version in model_metadata.json and return it from the API?
+    options:
+      - It's required by joblib
+      - So every prediction can be traced to the model that made it
+      - To make the file smaller
+      - For Docker caching
+    answer: 1
+    explanation: Traceability is essential for debugging and audits.
+  - question: Training-serving skew usually shows up as…
+    options:
+      - A stack trace
+      - HTTP 500 errors
+      - Valid responses with silently wrong predictions
+      - Slow startup
+    answer: 2
+    explanation: That's what makes it dangerous — nothing looks broken.
+  - question: Which Dockerfile order keeps rebuilds fast?
+    options:
+      - COPY . then pip install
+      - pip install then COPY requirements
+      - COPY requirements.txt → pip install → COPY code
+      - It makes no difference
+    answer: 2
+    explanation: Dependencies change rarely, so their layer stays cached.
+  - question: Why pin scikit-learn in requirements.txt?
+    options:
+      - It's faster
+      - A model saved with one version may not load or behave the same in another
+      - Docker requires it
+      - To reduce image size
+    answer: 1
+    explanation: Serialised models are tied to library versions.
+fact:
+  title: Hidden Technical Debt in Machine Learning Systems
+  body: Google's famous NeurIPS paper ('Hidden Technical Debt in ML Systems', Sculley et al.) showed that the ML
+    model code itself is often less than 5% of a production ML system — the other 95% is data verification,
+    feature extraction, serving infrastructure, and monitoring.
+lab:
+  title: FastAPI Model Serving & Training-Serving Skew Lab
+  variations:
+    - title: Startup Model Load vs Per-Request Load Latency
+      question: Loading `model.joblib` from disk takes <b>150 ms</b> and `model.predict()` takes <b>5 ms</b>. For
+        <b>200</b> requests, how many <b>seconds</b> are saved by loading the model once at FastAPI startup
+        instead of inside `/predict`?
+      answer: 29.85
+      tolerance: 0.05
+      hint: Per-request load = 200 × 155 ms = 31,000 ms. Startup load = 150 + 200 × 5 = 1,150 ms. Subtract and
+        convert to seconds.
+      explanation: "Per-request: 200 × (150 + 5) = 31,000 ms. Startup once: 150 + 200 × 5 = 1,150 ms. Saved = 29,850
+        ms = 29.85 seconds."
+    - title: Training-Serving Skew Prediction Drift (Step 8)
+      question: In Lab 9 Part 2 Step 8, for `Ownio · Beans · rainfall_mm = 8.2`, the true model (`is_rainy =
+        rainfall > 5.0`) predicts <b>2,927.25 UGX</b>, while the skewed API (`rainfall > 10.0`) predicts
+        <b>2,889.58 UGX</b>. What is the absolute prediction error (in UGX, to 2 decimals) caused purely by
+        training-serving skew?
+      answer: 37.67
+      tolerance: 0.02
+      hint: Compute 2927.25 − 2889.58.
+      explanation: 2,927.25 − 2,889.58 = 37.67 UGX of silent error with HTTP 200 OK.
+    - title: One-Hot Feature Vector Dimensionality
+      question: Our shared `make_features()` extracts <b>3 numeric features</b> (`rainfall_mm`, `is_rainy`, `month`,
+        `day_of_week` = <b>4</b> numeric features total) plus one-hot encodings for <b>4 markets</b> and <b>4
+        commodities</b> (without dropping first). How many total columns are in `FEATURE_COLUMNS`?
+      answer: 12
+      tolerance: 0
+      hint: Add 4 numeric/temporal features + 4 market indicators + 4 commodity indicators.
+      explanation: 4 numeric/calendar features (`rainfall_mm`, `is_rainy`, `month`, `day_of_week`) + 4 market
+        columns + 4 commodity columns = 12 features.
+notes:
+  - heading: What makes a model a data product
+    body: |
+      A model in a notebook answers questions only for the person running the notebook. A **data product** answers them for other systems, reliably: an HTTP endpoint that accepts a JSON request, validates it, returns a prediction in milliseconds, logs what happened, and behaves the same tomorrow as today.
+
+      The pieces from Lab 9 Part 2 / Assignment 04:
+
+      - `models/model.joblib` — the serialised model (or pipeline).
+      - `models/model_metadata.json` — `model_version`, `feature_columns`, training date, metrics. The API reports the version so every prediction can be traced to a model.
+      - `src/common/features.py` — the *one* place features are computed.
+      - `src/api/main.py` — FastAPI app with a Pydantic request schema and a `/predict` endpoint.
+      - A `Dockerfile` with pinned `requirements.txt`, so the runtime is identical everywhere.
+  - heading: Load once, at startup
+    body: |
+      Loading a model from disk takes time — tens to hundreds of milliseconds for a medium RandomForest. Predicting one row takes a few milliseconds. If `/predict` calls `joblib.load()` every time, almost all of every request is spent re-reading the same file.
+
+      Load it **once** when the app starts (module import or FastAPI `lifespan`) and keep it in memory:
+
+      ```python
+      @asynccontextmanager
+      async def lifespan(app):
+          app.state.model = joblib.load("models/model.joblib")
+          yield
+      ```
+
+      Total time for N requests: per-request loading = N × (load + infer); startup loading = load + N × infer. With load = 150 ms, infer = 5 ms and 200 requests, that's 31 s vs 1.15 s.
+  - heading: Training-serving skew
+    body: |
+      **Training-serving skew** is when the features the model sees in production are computed differently from the features it was trained on. Nothing crashes — the API returns HTTP 200 with a perfectly valid number — but the number is wrong.
+
+      In Lab 9.2 Step 8, training defined `is_rainy = rainfall_mm > 5.0`, but a copy of the logic in the API used `> 10.0`. For `rainfall_mm = 8.2`, training says rainy, the API says not rainy, and the beans prediction silently moves from **2,927.25 to 2,889.58 UGX**.
+
+      The fix is architectural, not "be more careful": put `make_features()` and `FEATURE_COLUMNS` in **one shared module** imported by both `train.py` and the API, save the feature list in the model metadata, and check at startup that the request schema produces exactly those columns in that order.
+  - heading: Validation with Pydantic and packaging with Docker
+    body: |
+      A Pydantic model turns the API's input contract into code:
+
+      ```python
+      class PriceRequest(BaseModel):
+          market: Literal["Owino", "Nakasero", "Kalerwe", "Gulu"]
+          commodity: Literal["Beans", "Maize", "Matooke", "Rice"]
+          rainfall_mm: float = Field(ge=0, le=500)
+          date: datetime.date
+      ```
+
+      A bad payload — a negative rainfall, an unknown market, a missing field — gets an automatic **HTTP 422** with a message saying exactly which field is wrong, before any model code runs.
+
+      **Docker** then freezes everything else: the Python version, the exact library versions (`scikit-learn==1.5.2`, not "whatever pip installs today" — a pickled model can break across versions), the code and the model file. Ordering the Dockerfile as *copy requirements → pip install → copy code* lets Docker cache the dependency layer, so a code change rebuilds in seconds.
+examples:
+  - title: Is my API skewed?
+    problem: Training used is_rainy = rainfall_mm > 5.0; the API uses > 10.0. Requests arrive with rainfall 2.0,
+      7.5, 9.9 and 14.0 mm. Which get a wrong prediction?
+    steps:
+      - "2.0 mm: training 0, API 0 → agree."
+      - "7.5 mm: training 1, API 0 → **skewed**."
+      - "9.9 mm: training 1, API 0 → **skewed**."
+      - "14.0 mm: training 1, API 1 → agree."
+    answer: The 7.5 mm and 9.9 mm requests.
+    takeaway: Skew hides in a band of inputs — tests that only use typical values miss it.
+  - title: Startup loading pays for itself
+    problem: Model load = 220 ms, predict = 6 ms. How many seconds does loading at startup save over 500 requests,
+      and what's the speed-up?
+    steps:
+      - "Per-request loading: 500 × (220 + 6) = 113,000 ms = **113 s**."
+      - "Startup loading: 220 + 500 × 6 = 3,220 ms = **3.22 s**."
+      - Saved = 109.78 s; speed-up ≈ 113 / 3.22 ≈ **35×**.
+    answer: About 109.8 s saved, ~35× faster.
+    takeaway: The more requests you serve, the more per-request loading costs.
+questions:
+  - question: What is training-serving skew? Use the Lab 9.2 Step 8 example and give the architectural fix.
+    kind: short
+    marks: 6
+    keywords:
+      - training-serving skew
+      - feature logic
+      - differs
+      - is_rainy
+      - "5.0"
+      - "10.0"
+      - silent
+      - shared module
+      - make_features
+      - FEATURE_COLUMNS
+    idealAnswer: Training-serving skew is a mismatch between how features are computed in training and in
+      production. In Step 8 training used is_rainy = rainfall_mm > 5.0 while the API used > 10.0; for 8.2 mm
+      the API computed is_rainy = 0, shifting the beans prediction from 2,927.25 to 2,889.58 UGX with no
+      error. The fix is to define make_features() and FEATURE_COLUMNS once in a shared module
+      (src/common/features.py) imported by both training and the API, and record the feature list in model
+      metadata.
+  - question: Why should the model be loaded at startup and not inside the /predict handler? Quantify with load =
+      150 ms, predict = 5 ms and 200 requests.
+    kind: short
+    marks: 5
+    keywords:
+      - startup
+      - lifespan
+      - once
+      - memory
+      - per request
+      - disk
+      - latency
+      - "31"
+      - "1.15"
+    idealAnswer: "Loading reads and deserialises the model from disk, which costs far more than a prediction.
+      Loading per request repeats that work every time: 200 × (150 + 5) ms = 31 s. Loading once at startup
+      (module import or lifespan) and keeping it in memory gives 150 + 200 × 5 ms = 1.15 s — about 27× faster,
+      and each request's latency is just the inference time."
+  - question: Design the FastAPI + Docker service for the market-price model. Describe the project layout, the
+      request schema with at least three validation rules, how you prevent training-serving skew, how the
+      model is loaded and versioned, and how the Dockerfile keeps builds reproducible and fast.
+    kind: long
+    marks: 12
+    keywords:
+      - src/common/features.py
+      - make_features
+      - FEATURE_COLUMNS
+      - pydantic
+      - Literal
+      - Field
+      - ge
+      - "422"
+      - lifespan
+      - joblib
+      - model_metadata
+      - model_version
+      - Dockerfile
+      - pinned
+      - requirements
+      - layer cache
+      - slim
+    idealAnswer: "Layout: src/common/features.py (make_features, FEATURE_COLUMNS), src/ml/train.py,
+      src/api/main.py, models/model.joblib and models/model_metadata.json, requirements.txt, Dockerfile.
+      Schema: market and commodity as Literal enums, rainfall_mm Field(ge=0, le=500), date as datetime.date —
+      invalid payloads get HTTP 422. Skew: both train.py and the API import make_features and FEATURE_COLUMNS;
+      at startup the API checks the metadata's feature list matches FEATURE_COLUMNS. Loading: the model is
+      loaded once in the lifespan handler and kept on app.state; the response includes model_version from the
+      metadata. Dockerfile: FROM python:3.11-slim, COPY requirements.txt and pip install pinned versions first
+      (cached layer), then COPY src and models, run uvicorn as a non-root user — the same image runs
+      identically everywhere."
+coding:
+  - id: shared-features
+    title: One make_features() for training and serving
+    language: python
+    level: core
+    prompt: |
+      Write the shared feature module that both `train.py` and the API import:
+
+      - `FEATURE_COLUMNS = ["rainfall_mm", "is_rainy", "month", "is_beans", "is_maize", "is_matooke"]`
+      - `make_features(df)` → a DataFrame with **exactly** those columns, in that order:
+        - `is_rainy` = 1 if `rainfall_mm > 5.0` else 0 (strictly greater)
+        - `month` = month number of `date`
+        - `is_beans`, `is_maize`, `is_matooke` = one-hot of `commodity` (0/1)
+
+      It must work on a **single-row** request too — that's where naive `pd.get_dummies` breaks, because
+      a one-row frame only produces one dummy column.
+    starter: |
+      import pandas as pd
+
+      FEATURE_COLUMNS = ["rainfall_mm", "is_rainy", "month", "is_beans", "is_maize", "is_matooke"]
+
+      def make_features(df):
+          out = pd.get_dummies(df, columns=["commodity"])   # breaks for single rows!
+          return out
+
+      req = pd.DataFrame([{"date": "2025-03-04", "commodity": "Beans", "rainfall_mm": 8.2}])
+      print(make_features(req))
+    solution: |
+      import pandas as pd
+
+      FEATURE_COLUMNS = ["rainfall_mm", "is_rainy", "month", "is_beans", "is_maize", "is_matooke"]
+      COMMODITIES = ["Beans", "Maize", "Matooke"]
+
+      def make_features(df):
+          out = pd.DataFrame(index=df.index)
+          out["rainfall_mm"] = df["rainfall_mm"].astype(float)
+          out["is_rainy"] = (out["rainfall_mm"] > 5.0).astype(int)
+          out["month"] = pd.to_datetime(df["date"]).dt.month
+          for c in COMMODITIES:
+              out[f"is_{c.lower()}"] = (df["commodity"] == c).astype(int)
+          return out[FEATURE_COLUMNS]
+
+      req = pd.DataFrame([{"date": "2025-03-04", "commodity": "Beans", "rainfall_mm": 8.2}])
+      print(make_features(req))
+    tests:
+      - name: Exact columns in the agreed order
+        code: |
+          import pandas as pd
+          f = make_features(pd.DataFrame([{"date": "2025-03-04", "commodity": "Maize", "rainfall_mm": 1.0}]))
+          assert list(f.columns) == FEATURE_COLUMNS, f"got {list(f.columns)}"
+      - name: is_rainy uses rainfall > 5.0 (strict)
+        code: |
+          import pandas as pd
+          df = pd.DataFrame({"date": ["2025-03-01"] * 3, "commodity": ["Beans"] * 3, "rainfall_mm": [5.0, 5.1, 8.2]})
+          assert make_features(df)["is_rainy"].tolist() == [0, 1, 1]
+      - name: One-hot works for a single-row request
+        code: |
+          import pandas as pd
+          f = make_features(pd.DataFrame([{"date": "2025-07-15", "commodity": "Matooke", "rainfall_mm": 0}]))
+          assert f[["is_beans", "is_maize", "is_matooke"]].iloc[0].tolist() == [0, 0, 1]
+          assert int(f["month"].iloc[0]) == 7
+      - name: Batch and row-by-row give identical features (no skew)
+        code: |
+          import pandas as pd
+          df = pd.DataFrame({"date": ["2025-03-01", "2025-04-02"], "commodity": ["Beans", "Maize"], "rainfall_mm": [9.0, 2.0]})
+          batch = make_features(df).reset_index(drop=True)
+          rows = pd.concat([make_features(df.iloc[[i]]) for i in range(2)]).reset_index(drop=True)
+          assert batch.equals(rows)
+    hints:
+      - "Build each one-hot column explicitly: `(df['commodity'] == 'Beans').astype(int)`."
+      - Finish with `out[FEATURE_COLUMNS]` to fix the order.
+  - id: price-request-schema
+    title: Validate requests with Pydantic
+    language: python
+    level: core
+    prompt: |
+      Define a Pydantic model `PriceRequest` for the `/predict` endpoint:
+
+      - `market`: one of `"Owino"`, `"Nakasero"`, `"Kalerwe"`, `"Gulu"`
+      - `commodity`: one of `"Beans"`, `"Maize"`, `"Matooke"`
+      - `rainfall_mm`: float between 0 and 500 inclusive
+      - `date`: a `datetime.date`
+
+      FastAPI turns any `ValidationError` into an HTTP 422 automatically — the tests construct the model
+      directly the same way FastAPI does.
+    starter: |
+      import datetime
+      from typing import Literal
+      from pydantic import BaseModel, Field
+
+      class PriceRequest(BaseModel):
+          market: str
+          commodity: str
+          rainfall_mm: float
+          date: str
+    solution: |
+      import datetime
+      from typing import Literal
+      from pydantic import BaseModel, Field
+
+      class PriceRequest(BaseModel):
+          market: Literal["Owino", "Nakasero", "Kalerwe", "Gulu"]
+          commodity: Literal["Beans", "Maize", "Matooke"]
+          rainfall_mm: float = Field(ge=0, le=500)
+          date: datetime.date
+    tests:
+      - name: A valid request parses (and the date becomes a date)
+        code: |
+          import datetime
+          r = PriceRequest(market="Owino", commodity="Beans", rainfall_mm=8.2, date="2025-03-04")
+          assert r.date == datetime.date(2025, 3, 4)
+      - name: Negative rainfall is rejected
+        code: |
+          from pydantic import ValidationError
+          try:
+              PriceRequest(market="Owino", commodity="Beans", rainfall_mm=-1, date="2025-03-04")
+              raise AssertionError("rainfall_mm = -1 should be rejected")
+          except ValidationError:
+              pass
+      - name: Unknown market or commodity is rejected
+        code: |
+          from pydantic import ValidationError
+          for bad in [{"market": "Lira"}, {"commodity": "Cassava"}]:
+              try:
+                  PriceRequest(**({"market": "Owino", "commodity": "Beans", "rainfall_mm": 3, "date": "2025-03-04"} | bad))
+                  raise AssertionError(f"{bad} should be rejected")
+              except ValidationError:
+                  pass
+      - name: Missing fields and bad dates are rejected
+        code: |
+          from pydantic import ValidationError
+          for payload in [{"market": "Owino", "commodity": "Beans", "date": "2025-03-04"},
+                          {"market": "Owino", "commodity": "Beans", "rainfall_mm": 3, "date": "not-a-date"}]:
+              try:
+                  PriceRequest(**payload)
+                  raise AssertionError(f"{payload} should be rejected")
+              except ValidationError:
+                  pass
+    hints:
+      - "`Literal[...]` restricts a field to exact values; `Field(ge=0, le=500)` bounds a number."

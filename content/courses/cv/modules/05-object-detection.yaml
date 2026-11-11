@@ -1,0 +1,380 @@
+id: object-detection
+title: Object Detection
+subtitle: Find object classes & locations
+recap: Detection outputs class + confidence + box for every object. Two-stage detectors (Faster R-CNN) propose
+  regions then refine them; one-stage detectors (YOLO) predict on a grid in one pass for real-time speed. IoU
+  measures box overlap; NMS keeps the best box and removes overlapping duplicates above an IoU threshold; mAP
+  evaluates the whole detector.
+traps:
+  - Computing IoU as intersection over the sum of areas (forgetting to subtract the intersection).
+  - Running NMS across different classes when it should be per class.
+  - Setting the NMS IoU threshold so low that neighbouring objects get suppressed.
+lesson:
+  checkpointStep: 3
+  steps:
+    - Classification asks ‘what is in the image?’ Detection asks ‘what, and where?’ — for every object it
+      outputs a class, a confidence score, and a bounding box (x, y, width, height).
+    - Two-stage detectors like Faster R-CNN first propose candidate regions with a Region Proposal Network,
+      then classify and refine each one. Accurate, but slower.
+    - One-stage detectors like YOLO predict boxes and classes in a single pass over a grid of cells. Very fast
+      — the standard choice for real-time video.
+    - "Checkpoint: explain Non-Maximum Suppression step by step, and define IoU."
+    - IoU — intersection over union — is the overlap area divided by the combined area of two boxes. 1 means
+      identical, 0 means no overlap. IoU ≥ 0.5 is a common ‘correct detection’ threshold.
+    - Detectors fire many overlapping boxes on one object. NMS sorts boxes by confidence, keeps the best,
+      deletes any remaining box overlapping it above an IoU threshold, and repeats.
+    - Detection is evaluated with mean Average Precision, mAP. And one-stage detectors face extreme imbalance
+      — most anchors are background — which focal loss fixes by down-weighting easy examples.
+checkpoint:
+  question: Walk me through how Non-Maximum Suppression (NMS) works, and explain why it is necessary in object
+    detection.
+  hint: Duplicates → sort by confidence → keep top box → compute IoU with the rest → suppress above threshold →
+    repeat.
+  keywords:
+    - duplicate
+    - overlap
+    - confidence
+    - sort
+    - highest
+    - iou
+    - intersection over union
+    - threshold
+    - suppress
+    - remove
+    - repeat
+    - greedy
+  idealAnswer: "Detectors output many overlapping boxes for the same object, so NMS removes the duplicates.
+    First drop boxes below a confidence threshold. Sort the rest by confidence, keep the highest, compute its
+    IoU — intersection area over union area — with every remaining box of that class, and suppress any above a
+    threshold like 0.5. Repeat with the next highest until none remain. Trade-off: too low a threshold deletes
+    real objects in crowds; too high leaves duplicates."
+terms:
+  - term: Bounding box
+    definition: (x, y, w, h) or (x1, y1, x2, y2) rectangle around an object.
+  - term: IoU
+    definition: Area of overlap / area of union between two boxes.
+  - term: NMS
+    definition: Greedy removal of duplicate boxes using confidence and IoU.
+  - term: Anchor box
+    definition: Pre-defined box shapes the detector refines into predictions.
+  - term: mAP
+    definition: Mean of per-class Average Precision (area under the precision–recall curve).
+quiz:
+  - question: Box A and B are both 10×10 and overlap in a 5×10 strip. IoU?
+    options:
+      - "0.5"
+      - "0.25"
+      - "0.33"
+      - "0.67"
+    answer: 2
+    explanation: Intersection 50, union 100 + 100 − 50 = 150 → 50/150 ≈ 0.33.
+  - question: Raising the NMS IoU threshold from 0.3 to 0.8 will…
+    options:
+      - Remove more boxes
+      - Keep more (possibly duplicate) boxes
+      - Change class labels
+      - Have no effect
+    answer: 1
+    explanation: A box is only suppressed if its IoU exceeds the threshold, so a higher threshold suppresses less.
+  - question: A predicted box and a ground-truth box have IoU = 0.62. With the usual threshold, is it a correct
+      detection?
+    options:
+      - Yes
+      - No
+      - Only if confidence > 0.9
+      - IoU doesn't matter
+    answer: 0
+    explanation: IoU ≥ 0.5 is the common threshold.
+  - question: What does the Region Proposal Network do in Faster R-CNN?
+    options:
+      - Classifies the whole image
+      - Suggests candidate object regions
+      - Runs NMS
+      - Computes mAP
+    answer: 1
+    explanation: It's the first stage of the two-stage detector.
+  - question: Why was focal loss introduced?
+    options:
+      - To speed up NMS
+      - To handle extreme foreground/background imbalance in one-stage detectors
+      - To compute IoU
+      - To resize images
+    answer: 1
+    explanation: It down-weights easy background examples.
+  - question: Lowering the NMS IoU threshold from 0.7 to 0.3 tends to…
+    options:
+      - Keep more duplicate boxes
+      - Suppress more boxes
+      - including nearby distinct objects
+      - Change confidence scores
+      - Have no effect
+    answer: 1
+    explanation: More boxes exceed a low overlap threshold.
+  - question: mAP@[.5:.95] differs from mAP@0.5 by…
+    options:
+      - Using more classes
+      - Averaging over stricter IoU thresholds
+      - rewarding precise boxes
+      - Ignoring confidence
+      - Counting only large objects
+    answer: 1
+    explanation: COCO mAP rewards localisation quality.
+  - question: For real-time video on an edge camera, which detector family is the usual choice?
+    options:
+      - Two-stage Faster R-CNN
+      - One-stage YOLO-style
+      - Sliding window with a CNN
+      - None
+    answer: 1
+    explanation: One-stage detectors are fast enough for real time.
+fact:
+  title: Detectors that skip NMS
+  body: DETR (2020) treated detection as set prediction with Hungarian matching — no NMS needed. YOLOv10 (2024)
+    brought NMS-free training to YOLO with consistent dual assignments, and Ultralytics' YOLO26 continues the
+    end-to-end, NMS-free design for faster, more predictable edge deployment.
+lab:
+  title: IoU & NMS simulator
+  variations:
+    - title: Horizontal Strip Overlap IoU
+      question: Box A = <code>(0, 0, 10, 10)</code> and Box B = <code>(5, 0, 15, 10)</code> in <code>(x1, y1, x2,
+        y2)</code> form. What is their <b>IoU</b>? (2 decimals)
+      answer: 0.33
+      tolerance: 0.01
+      hint: Intersection width = 10 − 5 = 5, height = 10. Union = Area(A) + Area(B) − Intersection.
+      explanation: Intersection = 5 × 10 = 50. Union = 100 + 100 − 50 = 150. IoU = 50 / 150 = 0.333 ≈ 0.33.
+    - title: 2D Corner Overlap IoU
+      question: Box A = <code>(0, 0, 20, 20)</code> and Box B = <code>(10, 10, 30, 30)</code>. Compute their exact
+        <b>IoU</b> (to 2 decimals).
+      answer: 0.14
+      tolerance: 0.01
+      hint: Overlap is from (10,10) to (20,20) → 10×10 = 100. Each box has area 400.
+      explanation: Intersection = 10 × 10 = 100. Union = 400 + 400 − 100 = 700. IoU = 100 / 700 = 0.1428 ≈ 0.14.
+    - title: NMS Surviving Box Count
+      question: Four 'car' boxes have confidences <b>0.92, 0.85, 0.70, 0.25</b>. Confidence threshold is
+        <b>0.30</b>, NMS IoU threshold is <b>0.50</b>. The top box (0.92) has IoU <b>0.68</b> with the 0.85
+        box and IoU <b>0.15</b> with the 0.70 box. How many boxes survive NMS?
+      answer: 2
+      tolerance: 0
+      hint: Drop <0.30 first, keep 0.92, check which remaining boxes exceed IoU 0.50 with it.
+      explanation: 0.25 is dropped (<0.30). 0.92 is kept. 0.85 is suppressed (IoU 0.68 > 0.50). 0.70 survives (IoU
+        0.15 ≤ 0.50). Total surviving = 2.
+notes:
+  - heading: From "what" to "what and where"
+    body: |
+      Classification outputs one label per image. **Object detection** outputs a list of objects, each with:
+
+      - a **class** ("car", "person"),
+      - a **confidence score** (0–1),
+      - a **bounding box**, as (x1, y1, x2, y2) corners or (x, y, w, h).
+
+      Detectors are trained with two losses at once: a **classification loss** for each predicted box and a **regression loss** (e.g. smooth L1 or IoU-based) for the box coordinates. Many detectors predict boxes relative to predefined **anchor boxes** of several shapes and sizes placed across the image.
+  - heading: Two-stage vs one-stage detectors
+    body: |
+      | | Two-stage (Faster R-CNN) | One-stage (YOLO, SSD, RetinaNet) |
+      |---|---|---|
+      | How | 1) a Region Proposal Network suggests ~hundreds of candidate regions; 2) each is classified and its box refined | predicts classes and boxes for every grid cell / anchor in one pass |
+      | Speed | slower | fast — real-time video |
+      | Accuracy | traditionally higher, especially small objects | close or equal in modern versions |
+
+      One-stage detectors face **extreme class imbalance**: most of tens of thousands of anchors are background. **Focal loss** (RetinaNet) down-weights easy, well-classified examples so training focuses on the hard ones: FL = −(1 − p)^γ log p.
+  - heading: IoU and Non-Maximum Suppression
+    body: |
+      **Intersection over Union** measures how much two boxes overlap:
+
+      **IoU = area(A ∩ B) / area(A ∪ B)**, with area(A ∪ B) = area(A) + area(B) − area(A ∩ B).
+
+      1 means identical boxes; 0 means no overlap. A prediction usually counts as correct if IoU with a ground-truth box ≥ 0.5.
+
+      Detectors fire many overlapping boxes on the same object. **Non-Maximum Suppression (NMS)** cleans them up, per class:
+
+      1. Drop boxes below a confidence threshold.
+      2. Sort the rest by confidence.
+      3. Keep the highest; remove every remaining box whose IoU with it exceeds the NMS threshold (e.g. 0.5).
+      4. Repeat with the next highest remaining box.
+
+      A low NMS threshold suppresses aggressively (can delete a genuine neighbouring object in a crowd); a high one leaves duplicates.
+  - heading: Evaluating with mAP
+    body: |
+      Detection is evaluated with **mean Average Precision (mAP)**:
+
+      1. For one class, sort all predictions by confidence. Walk down the list, marking each as TP (matches an unmatched ground-truth box with IoU ≥ threshold) or FP.
+      2. This gives a **precision–recall curve**; **AP** is the area under it.
+      3. **mAP** averages AP over classes.
+
+      Report the IoU threshold: **mAP@0.5** (PASCAL VOC style) is lenient; **mAP@[.5:.95]** (COCO) averages over IoU thresholds 0.5 to 0.95 and rewards precise localisation. A model can have good mAP@0.5 but poor COCO mAP if its boxes are sloppy.
+examples:
+  - title: IoU of two boxes
+    problem: Box A = (10, 10, 50, 50) and Box B = (30, 20, 70, 60), as (x1, y1, x2, y2). Compute IoU.
+    steps:
+      - "Intersection: x from max(10,30)=30 to min(50,70)=50 → 20; y from max(10,20)=20 to min(50,60)=50 → 30.
+        Area = **600**."
+      - Area A = 40 × 40 = 1,600; area B = 40 × 40 = 1,600.
+      - Union = 1,600 + 1,600 − 600 = **2,600**.
+      - IoU = 600 / 2,600 ≈ **0.23**.
+    answer: About 0.23.
+    takeaway: Always subtract the intersection once when computing the union.
+  - title: NMS by hand
+    problem: "Three 'car' boxes: A (0.95), B (0.80, IoU with A = 0.72), C (0.60, IoU with A = 0.10, IoU with B =
+      0.15). NMS threshold 0.5. Which survive?"
+    steps:
+      - "Sort: A, B, C. Keep **A**."
+      - B's IoU with A = 0.72 > 0.5 → **suppress B**.
+      - C's IoU with A = 0.10 ≤ 0.5 → C stays in the list.
+      - Next highest remaining is C → **keep C**.
+    answer: A and C survive.
+    takeaway: NMS removes duplicates of the same object but keeps separate objects.
+questions:
+  - question: Define IoU and explain Non-Maximum Suppression step by step.
+    kind: short
+    marks: 6
+    keywords:
+      - intersection
+      - union
+      - overlap
+      - area
+      - confidence threshold
+      - sort
+      - keep highest
+      - suppress
+      - iou threshold
+      - per class
+      - repeat
+    idealAnswer: "IoU = area of intersection / area of union of two boxes (union = A + B − intersection); 1 is
+      identical, 0 is no overlap. NMS, per class: discard boxes below the confidence threshold, sort the rest
+      by confidence, keep the highest, remove all remaining boxes whose IoU with it exceeds the NMS threshold,
+      then repeat with the next highest remaining box until none are left."
+  - question: Compare two-stage and one-stage object detectors.
+    kind: short
+    marks: 5
+    keywords:
+      - two-stage
+      - faster r-cnn
+      - region proposal network
+      - refine
+      - accurate
+      - slower
+      - one-stage
+      - yolo
+      - single pass
+      - grid
+      - anchors
+      - real-time
+      - imbalance
+      - focal loss
+    idealAnswer: Two-stage detectors like Faster R-CNN first propose candidate regions with a Region Proposal
+      Network, then classify and refine each one — traditionally more accurate, especially for small objects,
+      but slower. One-stage detectors like YOLO predict classes and boxes for every grid cell/anchor in a
+      single pass — fast enough for real-time video, but they face extreme background imbalance, addressed
+      with techniques like focal loss.
+  - question: You must count vehicles at a busy Kampala junction from a roadside camera in real time. Choose a
+      detector, explain how you'd train and tune it (including NMS and confidence thresholds), and how you'd
+      evaluate it, noting the challenges of crowded scenes.
+    kind: long
+    marks: 12
+    keywords:
+      - one-stage
+      - yolo
+      - real-time
+      - pretrained
+      - coco
+      - fine-tune
+      - annotations
+      - augmentation
+      - confidence threshold
+      - nms threshold
+      - occlusion
+      - crowded
+      - small objects
+      - map@0.5
+      - map@[.5:.95]
+      - precision
+      - recall
+      - count error
+    idealAnswer: "Use a one-stage YOLO-family detector pretrained on COCO (which already includes cars, buses,
+      motorcycles), fine-tuned on annotated frames from this junction covering different times, weather and
+      crowding, with augmentation (scale, brightness, blur). Tune the confidence threshold on validation data
+      to balance missed vehicles vs false alarms, and the NMS IoU threshold carefully: too low suppresses
+      vehicles packed side by side (boda bodas), too high leaves duplicates — class-specific NMS or soft-NMS
+      can help in crowds. Evaluate with per-class AP and mAP@0.5 and mAP@[.5:.95], recall on small and
+      occluded vehicles, and the end metric — counting error per minute against manual counts — while checking
+      frames per second on the target hardware."
+coding:
+  - id: iou
+    title: Intersection over Union
+    language: python
+    level: warm-up
+    prompt: |
+      Write `iou(a, b)` for boxes given as `(x1, y1, x2, y2)` with `x2 > x1` and `y2 > y1`.
+      Return 0.0 when boxes don't overlap.
+    starter: |
+      def iou(a, b):
+          ...
+    solution: |
+      def iou(a, b):
+          ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+          iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+          inter = ix * iy
+          union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+          return inter / union if union else 0.0
+    tests:
+      - name: Identical, disjoint and touching boxes
+        code: |
+          assert iou((0, 0, 10, 10), (0, 0, 10, 10)) == 1.0
+          assert iou((0, 0, 10, 10), (20, 20, 30, 30)) == 0.0
+          assert iou((0, 0, 10, 10), (10, 0, 20, 10)) == 0.0
+      - name: Partial overlap
+        code: |
+          assert abs(iou((0, 0, 10, 10), (5, 0, 15, 10)) - 1 / 3) < 1e-9
+          assert abs(iou((10, 10, 50, 50), (30, 20, 70, 60)) - 600 / 2600) < 1e-9
+      - name: One box inside another
+        code: |
+          assert abs(iou((0, 0, 10, 10), (2, 2, 4, 4)) - 0.04) < 1e-9
+  - id: nms
+    title: Non-Maximum Suppression
+    language: python
+    level: exam
+    setup: |
+      def iou(a, b):
+          ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0])); iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+          inter = ix * iy
+          return inter / ((a[2]-a[0])*(a[3]-a[1]) + (b[2]-b[0])*(b[3]-b[1]) - inter)
+
+      DETECTIONS = [  # (box, score, class)
+          ((60, 70, 210, 220), 0.95, "car"), ((80, 85, 230, 230), 0.82, "car"), ((45, 60, 190, 200), 0.64, "car"),
+          ((260, 50, 330, 250), 0.91, "person"), ((270, 70, 345, 260), 0.55, "person"), ((350, 180, 420, 260), 0.22, "dog"),
+      ]
+    prompt: |
+      Write `nms(detections, iou_threshold=0.5, score_threshold=0.3)` → list of **indices** of kept
+      detections, ordered by descending score. Drop boxes below `score_threshold`; suppress only boxes of
+      the **same class** whose IoU with a kept box is **greater than** `iou_threshold`. `iou` is provided.
+    starter: |
+      def nms(detections, iou_threshold=0.5, score_threshold=0.3):
+          return list(range(len(detections)))
+    solution: |
+      def nms(detections, iou_threshold=0.5, score_threshold=0.3):
+          order = sorted((i for i, d in enumerate(detections) if d[1] >= score_threshold),
+                         key=lambda i: detections[i][1], reverse=True)
+          keep = []
+          while order:
+              best = order.pop(0)
+              keep.append(best)
+              box, _, cls = detections[best]
+              order = [i for i in order
+                       if detections[i][2] != cls or iou(box, detections[i][0]) <= iou_threshold]
+          return keep
+    tests:
+      - name: Keeps one car and one person, drops the low-score dog
+        code: |
+          assert nms(DETECTIONS) == [0, 3], f"got {nms(DETECTIONS)}"
+      - name: A high IoU threshold keeps duplicates
+        code: |
+          assert nms(DETECTIONS, iou_threshold=0.9) == [0, 3, 1, 2, 4]
+      - name: Different classes never suppress each other
+        code: |
+          dets = [((0, 0, 10, 10), 0.9, "car"), ((0, 0, 10, 10), 0.8, "person")]
+          assert nms(dets) == [0, 1]
+      - name: Score threshold applies before suppression
+        code: |
+          assert 5 in nms(DETECTIONS, score_threshold=0.2)
+    hints:
+      - Sort the surviving indices by score, take the first, filter the rest, repeat.

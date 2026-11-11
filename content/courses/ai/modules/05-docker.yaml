@@ -1,0 +1,344 @@
+id: docker
+title: Containerization, Multi-Stage Docker & Security Hardening
+subtitle: Package microservices with lightweight base images, layer caching, and rootless users
+recap: Docker packages code, runtime and libraries into immutable layered images so 'works on my laptop' works
+  everywhere. Multi-stage builds compile wheels in a heavy builder stage and copy only the results into a slim
+  base, cutting size by ~80% and removing compilers from the attack surface. Run as a non-root user and use
+  .dockerignore to keep secrets and data out of the image.
+traps:
+  - Shipping gcc and build tools in the production image.
+  - Running the container as root.
+  - Copying source before installing requirements, which breaks layer caching.
+lesson:
+  checkpointStep: 3
+  steps:
+    - A web API that works on your developer laptop often fails when deployed to cloud servers due to
+      mismatched Python versions, missing C-libraries, or differing OS packages. Docker solves this.
+    - A Docker image is a standalone, executable software package bundling code, runtime, system tools, and
+      libraries into immutable, layered container images.
+    - A naive Dockerfile starts from a bloated 1GB Ubuntu image and installs build compilers (gcc, g++) that
+      linger in the final container, creating huge attack surfaces and slow deployment times.
+    - "Checkpoint: why are multi-stage Docker builds essential for Python ML APIs, and why should containers
+      never run as root in production?"
+    - Multi-stage builds use a heavy build environment with compilers to compile Python wheels, then copy only
+      the compiled packages into a pristine, minimal python:3.11-slim base image, slashing size by 80%.
+    - Running as non-root (USER appuser) ensures that if an attacker exploits a code vulnerability or
+      malicious pickle file, they cannot break out to modify root system files or mount host drives.
+checkpoint:
+  question: Explain the architecture of a multi-stage Docker build for a Python ML serving image, and detail two
+    security best practices for production container deployment.
+  hint: Describe the 'builder' stage versus the final 'runner' stage. Mention image size reduction, compiler
+    elimination, non-root users, and .dockerignore.
+  keywords:
+    - multi-stage
+    - docker
+    - builder
+    - slim
+    - root
+    - user
+    - security
+    - attack surface
+    - layer
+    - caching
+  idealAnswer: "A multi-stage Docker build splits compilation from execution. The first stage (`FROM python:3.11
+    AS builder`) installs build tools (`gcc`, `g++`, `libpq-dev`) to compile heavy Python dependencies and
+    generate wheels. The final production stage (`FROM python:3.11-slim`) copies only the pre-compiled wheels
+    and application code, discarding compiler binaries, header files, and build cache. This shrinks image size
+    from ~1.2GB down to ~160MB, accelerating container startup and scaling. Two critical security best
+    practices are: 1) Enforcing a dedicated non-root user (`RUN useradd -m appuser && USER appuser`) to block
+    host privilege escalation if a vulnerability is exploited; and 2) Using a strict `.dockerignore` file to
+    exclude virtualenvs, test datasets, git history, and secrets."
+terms:
+  - term: Docker Image Layer
+    definition: A read-only filesystem diff created by instructions (RUN, COPY, ADD) in a Dockerfile, cached for
+      fast rebuilds.
+  - term: Multi-Stage Build
+    definition: A Docker feature allowing developers to use multiple FROM statements, copying only necessary
+      artifacts between stages.
+  - term: Base Image
+    definition: The foundational container image (e.g. python:3.11-slim) providing OS userland and runtime dependencies.
+  - term: Rootless Container
+    definition: Running the main container application process as an unprivileged user (UID >= 1000) rather than root.
+  - term: .dockerignore
+    definition: Configuration file specifying files and directories to omit when sending the build context to the
+      Docker daemon.
+quiz:
+  - question: Why place 'COPY requirements.txt .' and 'RUN pip install' before 'COPY . .' in a Dockerfile?
+    options:
+      - To enable Docker layer caching so pip install isn't re-run every time application code changes
+      - To make Python run faster
+      - Docker syntax requires dependencies first
+      - To encrypt requirements.txt
+    answer: 0
+    explanation: Docker caches image layers from top to bottom. If requirements.txt has not changed, Docker reuses
+      the cached pip layer, making subsequent code-only builds complete in seconds.
+  - question: Which base image provides the best balance of minimal size and compatibility for
+      PyTorch/Scikit-Learn microservices?
+    options:
+      - ubuntu:22.04 (850MB)
+      - python:3.11-slim (140MB)
+      - alpine:latest (5MB, musl libc)
+      - python:3.11-full (1.2GB)
+    answer: 1
+    explanation: python:3.11-slim uses standard glibc (compatible with all C-extensions and pre-compiled wheels)
+      while removing unnecessary system packages.
+  - question: What does a multi-stage build mainly remove from the final image?
+    options:
+      - The model
+      - Compilers and build tools
+      - Python
+      - The app code
+    answer: 1
+    explanation: Only the built artifacts are copied into the runtime stage.
+  - question: Why copy requirements.txt before the application code?
+    options:
+      - Docker requires it
+      - So the dependency layer stays cached when only code changes
+      - It makes the image smaller
+      - For security
+    answer: 1
+    explanation: Layer caching is invalidated from the first changed layer down.
+  - question: Why can python:3.11-alpine make ML image builds slower?
+    options:
+      - It's bigger
+      - It uses musl
+      - so many scientific wheels compile from source
+      - It has no pip
+      - It can't run Python 3.11
+    answer: 1
+    explanation: Prebuilt manylinux wheels target glibc.
+  - question: What does USER appuser protect against?
+    options:
+      - Slow startup
+      - An exploit gaining root inside the container
+      - Large images
+      - Network latency
+    answer: 1
+    explanation: Least privilege limits what a compromised process can do.
+  - question: What belongs in .dockerignore?
+    options:
+      - requirements.txt
+      - .git
+      - .env and local datasets
+      - The Dockerfile
+      - The app code
+    answer: 1
+    explanation: Keep the build context small and secrets out of the image.
+  - question: Where should the GEMINI_API_KEY go?
+    options:
+      - Hard-coded in the Dockerfile
+      - Copied in a .env file
+      - Injected as an environment variable at runtime
+      - In the image label
+    answer: 2
+    explanation: Images are shareable artifacts; secrets must not be baked in.
+fact:
+  title: Why Alpine Linux Can Slow Python Builds
+  body: Alpine Linux uses musl libc instead of glibc. Because most scientific Python packages (NumPy, SciPy,
+    pandas) publish pre-compiled wheels for glibc (manylinux), Alpine forces slow compilation from source
+    during build, often taking 20+ minutes and creating larger final images than python-slim.
+lab:
+  title: Docker Multi-Stage Build & Image Layer Optimizer
+  variations:
+    - title: AWS EC2 On-Demand vs Spot Cost Delta
+      question: An <code>m5.xlarge</code> instance costs <b>$0.192 per hour</b> On-Demand. For fault-tolerant batch
+        stroke retraining, AWS Spot instances offer a <b>72% discount</b>. What is the Spot price per hour in
+        dollars? (3 decimals)
+      answer: 0.054
+      tolerance: 0.003
+      hint: Multiply $0.192 by (1 − 0.72) = 0.28.
+      explanation: $0.192 × 0.28 = $0.05376 ≈ $0.054/hr. Over a 720-hour month, this saves ~$100 per instance.
+    - title: Auto-Scaling Target Group Sizing
+      question: Peak clinical triage volume reaches <b>1,800 requests/minute</b>. If one container replica reliably
+        serves <b>150 requests/minute</b> at < 50ms latency, what is the minimum number of instances required
+        in the Auto-Scaling Group?
+      answer: 12
+      tolerance: 0
+      hint: Divide 1,800 by 150.
+      explanation: 1,800 / 150 = 12 instances required to handle peak surge without request buffering or SLA breach.
+    - title: Monthly Serverless Cost vs Reserved VM
+      question: A small clinic makes <b>50,000 API calls/month</b>. AWS Lambda charges $0.20/1M calls + compute,
+        totaling <b>$0.15/month</b>, while a reserved VM costs <b>$15.00/month</b>. How many <b>dollars</b>
+        does the clinic save per month by adopting serverless?
+      answer: 14.85
+      tolerance: 0.1
+      hint: Subtract $0.15 from $15.00.
+      explanation: $15.00 − $0.15 = $14.85 saved per month (a 99% cost reduction for intermittent rural clinic workloads).
+notes:
+  - heading: '"Works on my machine"'
+    body: |
+      An API that runs on your laptop can fail on a server because of a different Python version, a missing system library (`libgomp` for XGBoost), different package versions, or environment variables you forgot existed.
+
+      A **Docker image** packages *everything* the app needs — OS libraries, the Python runtime, pinned packages, your code and model — into one immutable artifact. A **container** is a running instance of that image. The same image runs identically on your laptop, in CI and in production.
+  - heading: Layers and caching
+    body: |
+      Each Dockerfile instruction creates a **layer**. Docker caches layers and reuses them if the instruction and its inputs haven't changed. Because a change invalidates **that layer and every layer after it**, order matters:
+
+      ```dockerfile
+      FROM python:3.11-slim
+      WORKDIR /app
+      COPY requirements.txt .                     # changes rarely
+      RUN pip install --no-cache-dir -r requirements.txt
+      COPY app/ app/                              # changes often
+      ```
+
+      With this order, editing your code rebuilds only the last layer (seconds). If you `COPY . .` before `pip install`, every code change reinstalls all dependencies (minutes). A `.dockerignore` keeps `.git`, `.env`, notebooks and datasets out of the build context — smaller, faster, and no leaked secrets.
+  - heading: Multi-stage builds
+    body: |
+      Some packages need compilers (gcc, g++, build headers) to install. Those tools are hundreds of MB and are pure attack surface once the app is built.
+
+      A **multi-stage build** uses a heavy *builder* stage to compile, then copies only the results into a clean, minimal runtime stage:
+
+      ```dockerfile
+      FROM python:3.11 AS builder
+      COPY requirements.txt .
+      RUN pip wheel --wheel-dir /wheels -r requirements.txt
+
+      FROM python:3.11-slim
+      COPY --from=builder /wheels /wheels
+      RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
+      COPY app/ app/
+      ```
+
+      Typical result: a ~1.2 GB image becomes ~150–200 MB — faster to push, pull and start, and with no compilers for an attacker to use. Base image choice matters too: `python:3.11-slim` (Debian, glibc) is the safe default; **Alpine** is tiny but uses musl, so NumPy/XGBoost wheels often must compile from source — slow builds and subtle bugs.
+  - heading: Run as non-root, and other hardening
+    body: |
+      By default a container's process runs as **root**. If an attacker exploits a vulnerability in your code, a dependency — or a **malicious pickle** — they get root inside the container, which makes escaping to the host or tampering with mounted volumes much easier.
+
+      ```dockerfile
+      RUN useradd --create-home appuser
+      USER appuser
+      CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+      ```
+
+      Other hardening worth naming in an exam: pin base image versions (or digests), scan images for CVEs (Trivy, Docker Scout), keep secrets out of the image (inject them as environment variables at runtime), add a `HEALTHCHECK`, and keep the image minimal.
+examples:
+  - title: How much did the multi-stage build save?
+    problem: A single-stage ubuntu-based image is 1,315 MB (850 MB base, 420 MB build tools, 45 MB app). Rebuilt
+      multi-stage on python:3.11-slim (140 MB) it's 185 MB. What's the reduction?
+    steps:
+      - Reduction = (1,315 − 185) / 1,315 = 1,130 / 1,315 ≈ **85.9%**.
+      - "Where it came from: a 710 MB smaller base and 420 MB of compilers left behind in the builder stage."
+    answer: About 86% smaller.
+    takeaway: Base image and leftover build tools are where the size hides.
+  - title: Why does every build take 2 minutes?
+    problem: "A Dockerfile has: FROM python:3.11-slim → COPY . . → RUN pip install -r requirements.txt → CMD ….
+      Each one-line code change triggers a full reinstall. Why, and how do you fix it?"
+    steps:
+      - COPY . . includes the code, so any code change invalidates that layer and every layer after it —
+        including pip install.
+      - "Fix: COPY requirements.txt first, RUN pip install, then COPY the code."
+      - "Now a code change only rebuilds the final COPY layer: seconds instead of minutes."
+    answer: Layer order — copy and install dependencies before copying code.
+    takeaway: Put what changes least at the top of the Dockerfile.
+questions:
+  - question: Explain how Docker layer caching works and how Dockerfile order affects build time.
+    kind: short
+    marks: 5
+    keywords:
+      - layer
+      - instruction
+      - cache
+      - invalidated
+      - subsequent
+      - requirements
+      - pip install
+      - copy code
+      - order
+      - seconds
+      - minutes
+    idealAnswer: Each instruction creates a layer that Docker caches; if an instruction and its inputs are
+      unchanged the cached layer is reused, but a change invalidates that layer and every layer after it.
+      Copying requirements.txt and running pip install before copying the code keeps the expensive dependency
+      layer cached, so code edits rebuild only the last layers in seconds rather than reinstalling everything.
+  - question: Why should production containers never run as root?
+    kind: short
+    marks: 4
+    keywords:
+      - root
+      - privilege
+      - exploit
+      - vulnerability
+      - malicious pickle
+      - escape
+      - host
+      - volumes
+      - least privilege
+      - user
+    idealAnswer: If the app is compromised — through a code vulnerability, a dependency or a malicious pickle —
+      the attacker gets the process's privileges. As root they can modify system files, tamper with mounted
+      volumes and more easily escape to the host. Running as an unprivileged user (USER appuser) applies least
+      privilege and limits the damage.
+  - question: Write a production Dockerfile for the stroke-risk FastAPI service and explain each decision (base
+      image, stages, caching, security, configuration, health).
+    kind: long
+    marks: 12
+    keywords:
+      - multi-stage
+      - builder
+      - wheels
+      - python:3.11-slim
+      - requirements
+      - cache
+      - copy app
+      - model
+      - useradd
+      - user appuser
+      - env
+      - secrets
+      - healthcheck
+      - expose
+      - uvicorn
+      - dockerignore
+    idealAnswer: "Stage 1 FROM python:3.11 AS builder: COPY requirements.txt; RUN pip wheel -r requirements.txt
+      into /wheels (compilers live only here). Stage 2 FROM python:3.11-slim (small, glibc-compatible): COPY
+      --from=builder /wheels, pip install --no-cache-dir and remove the wheels; then COPY app/ and models/
+      last so code changes don't invalidate the dependency layer. RUN useradd appuser and USER appuser for
+      least privilege. Configuration such as GEMINI_API_KEY and model paths come from environment variables at
+      runtime, never baked in; .dockerignore excludes .git, .env and data. EXPOSE 8000, add HEALTHCHECK
+      calling /health, and CMD uvicorn app.main:app --host 0.0.0.0 --port 8000. Result: a ~150–200 MB
+      reproducible image with no build tools, fast rebuilds and a minimal attack surface."
+coding:
+  - id: production-dockerfile
+    title: A production Dockerfile
+    language: review
+    level: exam
+    prompt: |
+      Write the Dockerfile for the stroke FastAPI service (`app/`, `models/`, `requirements.txt`).
+      Requirements: multi-stage build with no compilers in the final image, a slim base, dependency layer
+      caching, a non-root user, no secrets baked in, a health check, and Uvicorn on port 8000.
+      Also list what goes in `.dockerignore` as a comment.
+    starter: |
+      FROM ubuntu:22.04
+      RUN apt-get update && apt-get install -y python3 python3-pip gcc g++
+      COPY . /app
+      WORKDIR /app
+      RUN pip3 install -r requirements.txt
+      CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0"]
+    solution: |
+      # .dockerignore: .git  .env  *.ipynb  data/  __pycache__/  tests/
+      FROM python:3.11 AS builder
+      WORKDIR /build
+      COPY requirements.txt .
+      RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt   # compilers live only here
+
+      FROM python:3.11-slim
+      ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+      WORKDIR /app
+      COPY --from=builder /wheels /wheels
+      RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels \
+          && useradd --create-home appuser
+      COPY app/ app/            # code last → code edits don't invalidate the dependency layer
+      COPY models/ models/
+      USER appuser              # least privilege: an exploit doesn't get root
+      EXPOSE 8000
+      HEALTHCHECK CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
+      # Secrets (e.g. API keys) are injected as environment variables at runtime, never COPY'd in.
+      CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    rubric:
+      - Uses a multi-stage build so compilers and build tools are not in the final image
+      - Uses a slim base image for the runtime stage
+      - Copies requirements and installs dependencies before copying application code (layer caching)
+      - Runs as a non-root user
+      - Keeps secrets out of the image and lists sensible .dockerignore entries
+      - Adds a health check and starts Uvicorn on 0.0.0.0:8000

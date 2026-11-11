@@ -1,0 +1,449 @@
+id: stroke-capstone
+title: "Capstone: Regional Referral Hospital Stroke Risk Pipeline & Explainable AI (XAI)"
+subtitle: Deploy the Ministry of Health stroke predictor with threshold calibration and SHAP feature attributions
+recap: "The capstone ties everything together for the Regional Referral Hospital: with ~5% prevalence the
+  default 0.5 threshold misses most strokes, so calibrate it (e.g. 0.22) to maximise recall within triage
+  capacity. Physicians need explanations, not bare probabilities: SHAP gives each feature's additive
+  contribution from the base rate to this patient's risk, turning a score into clinical action."
+traps:
+  - Keeping the 0.5 threshold on a 5%-positive problem.
+  - Presenting a risk score with no explanation to a physician.
+  - Reading SHAP values as causal effects rather than model attributions.
+lesson:
+  checkpointStep: 3
+  steps:
+    - "We unite all eight preceding modules into our comprehensive capstone: deploying the Cerebrovascular
+      Accident Risk Predictor for a high-volume Regional Referral Hospital in Uganda."
+    - Per the Ministry of Health service integration guidelines of June 2025, high-risk patients identified at
+      hospital triage are automatically enrolled in the chronic care clinic.
+    - Because only ~5% of patients suffer strokes, the default 0.5 classification threshold is catastrophic.
+      By calibrating the decision threshold to 0.22, we maximize clinical Recall while controlling triage
+      capacity.
+    - "Checkpoint: why is a 'black-box' prediction unacceptable to a referral physician, and how do SHAP
+      values provide mathematically grounded local explanations?"
+    - Physicians will not trust or act upon an unexplained numerical probability. Explainable AI (XAI) with
+      SHAP (SHapley Additive exPlanations) calculates each feature's exact marginal contribution to the
+      patient's risk score.
+    - "An attending doctor sees immediately: 'Base hospital risk is 5%. This patient is predicted at 42% risk
+      (+18% due to Age 68, +12% due to Hypertension, +7% due to Glucose 220 mg/dL)'. Explainability turns
+      predictions into clinical action."
+checkpoint:
+  question: Why must clinical classification thresholds be calibrated away from the default 0.5, and how does
+    SHAP (Shapley Additive exPlanations) establish clinical trust for attending doctors?
+  hint: Contrast symmetric classification cost with asymmetric clinical cost (missing a stroke vs ordering an
+    extra test). Mention game theory, local feature attributions, and actionable medical insight.
+  keywords:
+    - threshold
+    - calibration
+    - recall
+    - shap
+    - shapley
+    - explainability
+    - xai
+    - clinical trust
+    - feature attribution
+    - asymmetric cost
+  idealAnswer: "The default 0.5 probability threshold assumes symmetric misclassification costs (a False
+    Positive equals a False Negative). In clinical triage, a False Negative (missing a high-risk stroke
+    patient who then suffers permanent disability or death) is catastrophic, whereas a False Positive (an
+    extra diagnostic evaluation or chronic clinic check) is low-cost. We calibrate the decision threshold down
+    (e.g. to 0.20–0.25) to achieve 85%+ Recall. SHAP values, rooted in cooperative game theory, establish
+    clinical trust by decomposing the final prediction into exact, additive feature attributions:
+    $\\text{Prediction} = \\text{Base Risk} + \\sum \\phi_i$. Rather than seeing an untrusted black-box
+    probability, the doctor sees precisely which risk factors (e.g., Age +16%, Hypertension +14%, Glucose +8%)
+    drove the prediction, validating clinical plausibility and guiding immediate therapeutic intervention."
+terms:
+  - term: Threshold Calibration
+    definition: Adjusting the classification decision boundary away from 0.5 to optimize clinical utility under
+      asymmetric error costs.
+  - term: Explainable AI (XAI)
+    definition: Methods and techniques in machine learning that make the outputs and internal reasoning of models
+      interpretable to humans.
+  - term: SHAP (SHapley Additive exPlanations)
+    definition: Game-theoretic approach to explain individual predictions by computing the average marginal
+      contribution of each feature across all subsets.
+  - term: Local Feature Attribution
+    definition: Quantifying how much each specific input feature value shifted the prediction for an individual
+      patient relative to the dataset average.
+  - term: Chronic Clinic Integration
+    definition: Uganda Ministry of Health June 2025 protocol integrating predictive risk triage to refer high-risk
+      cardiovascular patients into longitudinal care.
+quiz:
+  - question: A hospital model outputs stroke probability = 0.28. If the threshold is 0.5, the patient is flagged
+      negative; if threshold is 0.20, flagged positive. Why choose 0.20?
+    options:
+      - 0.20 lowers false negatives, ensuring critical stroke-risk patients receive urgent preventative care
+      - 0.20 uses less computer memory
+      - 0.20 is required by Python
+      - 0.20 guarantees 100% precision
+    answer: 0
+    explanation: Lowering the decision threshold prioritizes sensitivity/recall, capturing life-threatening
+      conditions where missing a patient is far costlier than a false alarm.
+  - question: What property guarantees that the sum of all SHAP values plus the baseline expected value equals the
+      model's exact prediction for a patient?
+    options:
+      - Efficiency (Additivity) property of Shapley values
+      - Bayes theorem
+      - The Central Limit Theorem
+      - Occam's Razor
+    answer: 0
+    explanation: The Efficiency (Additivity) axiom from Shapley game theory proves that the sum of feature
+      attributions exactly equals the difference between the model output and the expected base rate.
+  - question: Why is the 0.5 threshold a poor default for the stroke model?
+    options:
+      - It's too strict on false positives
+      - With ~5% prevalence most stroke patients score below 0.5
+      - so recall is low
+      - Sklearn doesn't allow it
+      - It's too slow
+    answer: 1
+    explanation: Calibrate the threshold to the clinical costs.
+  - question: Lowering the threshold usually…
+    options:
+      - Increases precision and recall
+      - Increases recall and lowers precision
+      - Lowers both
+      - Changes nothing
+    answer: 1
+    explanation: More patients are flagged — more true and false positives.
+  - question: Where should the decision threshold be chosen?
+    options:
+      - On the test set
+      - On the training set
+      - On a validation set (then confirmed on test)
+      - In production by trial and error
+    answer: 2
+    explanation: Choosing on the test set leaks information into the evaluation.
+  - question: SHAP values for one patient sum to…
+    options:
+      - 1
+      - The model's prediction minus the base value
+      - The number of features
+      - Zero
+    answer: 1
+    explanation: prediction = base value + Σ contributions.
+  - question: "'+12 points from hypertension' in a SHAP plot means…"
+    options:
+      - Hypertension causes 12% more strokes
+      - The model's prediction for this patient rose by 12 points due to that feature
+      - 12% of patients have hypertension
+      - The model is biased
+    answer: 1
+    explanation: SHAP explains the model, not causality.
+  - question: How do you get global feature importance from SHAP?
+    options:
+      - Use one patient
+      - Average the absolute SHAP values across many patients
+      - Sum the base values
+      - You can't
+    answer: 1
+    explanation: Mean |SHAP| ranks features globally.
+fact:
+  title: Uganda MOH 2025 Integrated Non-Communicable Disease Guidelines
+  body: In Sub-Saharan Africa, cerebrovascular accidents occur at younger median ages (often under 55) due to
+    undiagnosed hypertension. Integrating predictive MLOps pipelines with explainable SHAP dashboards in
+    regional referral hospitals allows early preventative intervention before catastrophic acute events.
+lab:
+  title: Clinical Stroke Risk, Threshold Calibration & SHAP Feature Attribution Simulator
+  variations:
+    - title: Decision Threshold Calibration for Clinical Recall
+      question: At the default 0.50 probability threshold, the classifier flags 30 out of 50 stroke cases (60%
+        recall). Calibrating the decision threshold down to <b>0.22</b> enables the model to detect <b>46 out
+        of 50 stroke cases</b>. What is the new clinical Recall in <b>percent</b>?
+      answer: 92
+      tolerance: 0.5
+      hint: Compute (46 / 50) × 100%.
+      explanation: (46 / 50) × 100% = 92.0% Recall. Lowering the threshold prioritizes catching life-threatening
+        stroke events at the expense of a minor increase in false alerts.
+    - title: SHAP Additive Log-Odds Attribution Sum
+      question: "A stroke risk model has baseline log-odds <b>φ_0 = −2.80</b>. For an admitted patient, SHAP local
+        attributions are: Age: <b>+0.95</b>, Glucose: <b>+0.65</b>, Hypertension: <b>+0.40</b>, BMI:
+        <b>−0.20</b>. According to the SHAP efficiency property <code>f(x) = φ_0 + Σ φ_i</code>, what is the
+        final model log-odds output?"
+      answer: -1
+      tolerance: 0.05
+      hint: Add −2.80 + 0.95 + 0.65 + 0.40 − 0.20.
+      explanation: −2.80 + (0.95 + 0.65 + 0.40 − 0.20) = −2.80 + 1.80 = −1.00. The doctor can clearly see how each
+        biomarker pushed the risk score upward.
+    - title: Hospital Stroke Bed Triage Allocation
+      question: A regional hospital has <b>24 high-dependency beds</b>. An alert threshold is chosen so that <b>120
+        suspected stroke patients</b> are flagged each month with a <b>20% Positive Predictive Value
+        (Precision)</b>. Exactly how many true stroke cases will be admitted?
+      answer: 24
+      tolerance: 0
+      hint: Multiply 120 by 0.20.
+      explanation: 120 × 0.20 = 24 confirmed stroke patients admitted, matching the hospital's high-dependency unit
+        bed capacity.
+notes:
+  - heading: The end-to-end system
+    body: |
+      The capstone joins every module into one service for a high-volume Ugandan Regional Referral Hospital:
+
+      1. **Data** — the stroke dataset with leakage-free preprocessing in an sklearn Pipeline (module 1).
+      2. **Artifact** — the whole pipeline saved with joblib, versioned and checksummed (module 2).
+      3. **API** — FastAPI + Pydantic `/predict`, model loaded once per worker (module 3).
+      4. **Infrastructure** — CPU instances in a nearby region, Spot only for retraining (module 4).
+      5. **Container** — multi-stage, non-root Docker image (module 5).
+      6. **Release** — canary with automatic rollback (module 6).
+      7. **Performance** — ONNX/INT8 if latency demands it (module 7).
+      8. **Monitoring** — PSI drift detection and delayed-label evaluation (module 8).
+
+      What the capstone adds: choosing the **decision threshold** for clinical use, and **explaining** each prediction to the physician.
+  - heading: The threshold is a clinical decision
+    body: |
+      A classifier outputs a probability; a **threshold** turns it into an action (refer to the chronic-care clinic or not). The default 0.5 is arbitrary — and terrible when only ~5% of patients have strokes, because most stroke patients get probabilities well below 0.5.
+
+      Lowering the threshold trades precision for recall:
+
+      | Threshold | Recall | Strokes missed / 1,000 patients | Referrals / month |
+      |---|---|---|---|
+      | 0.50 | ~65% | ~18 | ~64 |
+      | 0.22 | ~88% | ~6 | ~187 |
+      | 0.15 | ~92% | ~4 | ~264 |
+
+      The right threshold balances the cost of a missed stroke against the clinic's **capacity** to see referred patients. Choose it on a **validation** set (never the test set), document why, and revisit it when prevalence or capacity changes. Per the Ministry of Health integration guidelines (June 2025), high-risk patients at triage are enrolled in the chronic care clinic — so the threshold directly sets the clinic's workload.
+  - heading: Why black boxes are not acceptable
+    body: |
+      "This patient's stroke risk is 42%" is not enough for a referral physician. They need to know **why** — to check the model against their own judgement, catch data errors (an age typed as 670), explain the decision to the patient, and decide what to treat.
+
+      Explainability also supports **accountability** and **fairness**: you can audit whether the model leans on features it shouldn't, and justify decisions to patients and regulators. In clinical settings an unexplained score is often simply ignored.
+  - heading: SHAP — local, additive explanations
+    body: |
+      **SHAP** (SHapley Additive exPlanations) assigns each feature a contribution to *this* prediction, based on Shapley values from cooperative game theory. The contributions are **additive**:
+
+      **prediction = base value + Σ feature contributions**
+
+      where the base value is the model's average output (≈ the hospital's base rate). For a patient: "base risk 5% → this patient 42%: +18 points from age 68, +12 from hypertension, +7 from glucose 220 mg/dL…".
+
+      Key properties for exams:
+
+      - **Local** — explains one prediction; averaging |SHAP| across patients gives *global* importance.
+      - **Additive and consistent** — contributions sum exactly to the prediction (in the model's output space, e.g. log-odds for logistic/XGBoost models).
+      - **TreeSHAP** computes exact values efficiently for tree models like XGBoost.
+      - SHAP explains the **model**, not causality: "+12 from hypertension" means the model's prediction rose, not that hypertension causes 12 points of risk for this person.
+examples:
+  - title: Choosing a threshold under capacity
+    problem: The clinic can take at most 200 new referrals a month from ~1,000 screened patients (5% prevalence).
+      Using the table, which threshold would you pick and what do you trade off?
+    steps:
+      - 0.50 → 64 referrals, but ~18 strokes missed per month.
+      - 0.22 → 187 referrals (within 200), recall ~88%, ~6 missed.
+      - 0.15 → 264 referrals — over capacity.
+      - "Choose **≈0.22**: the lowest threshold that fits capacity, maximising strokes caught."
+    answer: About 0.22.
+    takeaway: The threshold is set by clinical costs and capacity, not by the model.
+  - title: Reading a SHAP explanation
+    problem: "Base value (log-odds) = −2.95 (≈5%). A patient's contributions: age +0.94, glucose +1.54, BMI +0.32,
+      hypertension +0.85, heart disease +0.65. What is the predicted probability, and which feature matters
+      most?"
+    steps:
+      - Sum = −2.95 + 0.94 + 1.54 + 0.32 + 0.85 + 0.65 = **1.35** (log-odds).
+      - Probability = 1 / (1 + e^−1.35) ≈ **0.79** (79%).
+      - "Largest contribution: glucose (+1.54), then age and hypertension."
+    answer: About 79%, driven most by high glucose.
+    takeaway: Additivity lets a physician see exactly how each factor moved the risk from the base rate.
+questions:
+  - question: Why is the default 0.5 threshold wrong for the stroke model, and how would you choose a better one?
+    kind: short
+    marks: 6
+    keywords:
+      - imbalance
+      - 5%
+      - below 0.5
+      - recall
+      - false negative
+      - cost
+      - capacity
+      - validation set
+      - precision-recall
+      - referrals
+      - document
+    idealAnswer: With ~5% prevalence most stroke patients receive probabilities below 0.5, so 0.5 misses many of
+      them (low recall), and a missed stroke is far costlier than an extra referral. Choose the threshold on a
+      validation set by examining recall, precision and the number of referrals at each threshold, picking the
+      lowest threshold that keeps referrals within clinic capacity (≈0.22 here, recall ~88%); confirm it on
+      the test set and document the rationale.
+  - question: What does a SHAP value represent, and how would a physician use a SHAP explanation for one patient?
+    kind: short
+    marks: 5
+    keywords:
+      - shapley
+      - contribution
+      - feature
+      - additive
+      - base value
+      - local
+      - this patient
+      - sum
+      - prediction
+      - not causal
+      - check
+      - explain
+    idealAnswer: "A SHAP value is a feature's additive contribution to one prediction relative to the base value
+      (average model output): base value + Σ SHAP = prediction. A physician sees which factors pushed this
+      patient's risk up or down (e.g. +age, +hypertension, +glucose), checks them against their clinical
+      judgement and the record (catching data errors), and explains the referral — remembering SHAP describes
+      the model, not causation."
+  - question: You are presenting the stroke-risk system to the hospital's clinical governance board. Describe the
+      full system end to end and justify the design decisions that make it safe, explainable and maintainable
+      — data handling, metric and threshold choice, serving architecture, release process, explanations and
+      monitoring.
+    kind: long
+    marks: 15
+    keywords:
+      - pipeline
+      - leakage
+      - imbalance
+      - recall
+      - f2
+      - threshold
+      - capacity
+      - validation
+      - joblib
+      - version
+      - fastapi
+      - pydantic
+      - docker
+      - non-root
+      - canary
+      - rollback
+      - shap
+      - base value
+      - psi
+      - drift
+      - labels
+      - retrain
+      - governance
+    idealAnswer: "Data: preprocessing (median imputation, scaling, one-hot encoding) inside an sklearn Pipeline
+      fitted on training data only, with SMOTE/class weights for the ~5% positive class — no leakage. Metrics:
+      recall, precision, F2 and PR-AUC, not accuracy. Threshold: chosen on validation data to maximise recall
+      within the chronic-care clinic's referral capacity (~0.22, ~88% recall), documented and reviewed when
+      prevalence or capacity changes. Artifact: the full pipeline saved with joblib, versioned, checksummed,
+      in a registry. Serving: FastAPI with strict Pydantic validation (422 for invalid input), model loaded
+      once per worker, multi-stage non-root Docker image on CPU instances near the hospital, behind a load
+      balancer. Releases: shadow then canary with automatic rollback on error, latency or prediction
+      anomalies. Explanations: SHAP per patient (base rate + contributions) shown to physicians, plus global
+      importance audits for bias. Monitoring: PSI per feature and prediction distributions daily, recall and
+      calibration when outcomes arrive; drift or performance drops trigger retraining, validation and a new
+      canary release."
+coding:
+  - id: threshold-under-capacity
+    title: Choose the threshold the clinic can handle
+    language: python
+    level: exam
+    prompt: |
+      `scores` are validation-set predicted probabilities and `y` the true outcomes (1 = stroke).
+      The chronic-care clinic can take at most `capacity` referrals **per 1,000 patients**.
+
+      Write `choose_threshold(y, scores, capacity)` returning the **lowest** threshold from
+      `np.round(np.arange(0.05, 0.96, 0.01), 2)` whose referral rate (share of scores ≥ threshold) × 1,000
+      is ≤ `capacity` — that maximises recall within capacity. Also write `recall_at(y, scores, t)`.
+    setup: |
+      import numpy as np
+      rng = np.random.default_rng(7)
+      y = (rng.random(4000) < 0.05).astype(int)
+      logit = np.where(y == 1, rng.normal(0.616, 1.6, 4000), rng.normal(-2.92, 1.6, 4000))
+      scores = 1 / (1 + np.exp(-logit))
+    starter: |
+      import numpy as np
+
+      def recall_at(y, scores, t):
+          ...
+
+      def choose_threshold(y, scores, capacity):
+          return 0.5
+    solution: |
+      import numpy as np
+
+      def recall_at(y, scores, t):
+          y, flagged = np.asarray(y), np.asarray(scores) >= t
+          return float(flagged[y == 1].mean())
+
+      def choose_threshold(y, scores, capacity):
+          scores = np.asarray(scores)
+          for t in np.round(np.arange(0.05, 0.96, 0.01), 2):
+              if (scores >= t).mean() * 1000 <= capacity:
+                  return float(t)
+          return None
+
+      t = choose_threshold(y, scores, 200)
+      print("threshold", t, "recall", round(recall_at(y, scores, t), 3), "vs 0.5:", round(recall_at(y, scores, 0.5), 3))
+    tests:
+      - name: recall_at is correct
+        code: |
+          assert recall_at([1, 1, 0, 1], [0.9, 0.3, 0.8, 0.6], 0.5) == 2 / 3
+      - name: Referrals stay within capacity
+        code: |
+          t = choose_threshold(y, scores, 200)
+          assert t is not None and (scores >= t).mean() * 1000 <= 200
+      - name: It is the lowest such threshold
+        code: |
+          t = choose_threshold(y, scores, 200)
+          assert (scores >= round(t - 0.01, 2)).mean() * 1000 > 200, "a lower threshold would still fit — pick the lowest"
+      - name: Recall beats the default 0.5 threshold by a wide margin
+        code: |
+          t = choose_threshold(y, scores, 200)
+          assert recall_at(y, scores, t) - recall_at(y, scores, 0.5) > 0.15
+  - id: explain-a-prediction
+    title: SHAP for a logistic model, by hand
+    language: python
+    level: core
+    prompt: |
+      For a logistic model, the SHAP value of each feature (in log-odds) is exactly
+      `coef × (x − mean_of_training_feature)`, and **base value + Σ SHAP = the patient's log-odds**.
+
+      Write `explain(x)` for the model below returning `(base_logodds, contributions)` where
+      `contributions` is a dict feature → SHAP value, and `probability(base, contributions)` → the predicted
+      probability. Check that it matches `predict_proba` from the formula.
+    setup: |
+      import numpy as np
+      FEATURES = ["age", "avg_glucose_level", "bmi", "hypertension", "heart_disease"]
+      COEF = {"age": 0.055, "avg_glucose_level": 0.012, "bmi": 0.035, "hypertension": 0.85, "heart_disease": 0.65}
+      INTERCEPT = -6.9
+      MEANS = {"age": 50.0, "avg_glucose_level": 106.0, "bmi": 28.0, "hypertension": 0.1, "heart_disease": 0.05}
+
+      def predict_logodds(x):
+          return INTERCEPT + sum(COEF[f] * x[f] for f in FEATURES)
+
+      patient = {"age": 68, "avg_glucose_level": 220, "bmi": 31.5, "hypertension": 1, "heart_disease": 0}
+    starter: |
+      import math
+
+      def explain(x):
+          ...
+
+      def probability(base, contributions):
+          ...
+    solution: |
+      import math
+
+      def explain(x):
+          base = INTERCEPT + sum(COEF[f] * MEANS[f] for f in FEATURES)   # model output for the "average" patient
+          contributions = {f: COEF[f] * (x[f] - MEANS[f]) for f in FEATURES}
+          return base, contributions
+
+      def probability(base, contributions):
+          return 1 / (1 + math.exp(-(base + sum(contributions.values()))))
+
+      base, c = explain(patient)
+      for f, v in sorted(c.items(), key=lambda kv: -abs(kv[1])):
+          print(f"{f:>18}: {v:+.2f}")
+      print("risk", round(probability(base, c), 3))
+    tests:
+      - name: Contributions add up to the model's output (additivity)
+        code: |
+          base, c = explain(patient)
+          assert abs(base + sum(c.values()) - predict_logodds(patient)) < 1e-9
+      - name: The base value is the output for the average patient
+        code: |
+          base, c = explain(MEANS)
+          assert all(abs(v) < 1e-12 for v in c.values()) and abs(base - predict_logodds(MEANS)) < 1e-9
+      - name: Glucose is this patient's biggest driver
+        code: |
+          base, c = explain(patient)
+          assert max(c, key=lambda f: abs(c[f])) == "avg_glucose_level"
+      - name: probability() matches the logistic model
+        code: |
+          import math
+          base, c = explain(patient)
+          assert abs(probability(base, c) - 1 / (1 + math.exp(-predict_logodds(patient)))) < 1e-12

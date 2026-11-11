@@ -1,0 +1,249 @@
+# Course pack — see content/README.md for the schema.
+id: ds
+code: DSC3103
+title: "Data Science: Systems & Technologies"
+shortTitle: Data Science
+tagline: "Trusted data systems: cleaning, pipelines, warehouses, orchestration, Spark, streaming and serving."
+accent: "#0B7A5B"
+persona: "You are an expert Data Engineering & Data Systems professor teaching DSC3103 Data Science (Systems &
+  Technologies): data profiling/cleaning, ETL/ELT pipelines, DuckDB star schemas, Apache Airflow, PySpark,
+  event-time streaming and FastAPI/Docker model deployment, using the Uganda market-price and milk-cooperative
+  datasets."
+formulas:
+  - name: Null rate
+    expr: null_pct = (missing_count / total_rows) × 100%
+  - name: IQR & Tukey fences
+    expr: IQR = Q3 − Q1,  bounds = [Q1 − 1.5·IQR, Q3 + 1.5·IQR]
+  - name: Row conservation (sample_qtn)
+    expr: rows_in = rows_kept + rows_rejected + exact_duplicates_removed
+  - name: Idempotency law
+    expr: f(f(D)) = f(D)  (state after N runs = state after 1 run)
+  - name: Columnar scan savings
+    expr: IO_parquet ≈ IO_row × (k_selected / k_total) ÷ compression_ratio
+  - name: Star schema fact grain
+    expr: "|Fact| ≤ |dim_date| × |dim_market| × |dim_commodity|"
+  - name: Unknown dimension mapping
+    expr: farmer_key = COALESCE(dim_farmer.farmer_key, 0)  -- 0 = 'Unknown'
+  - name: Window top-N per group
+    expr: RANK() OVER (PARTITION BY centre ORDER BY total_litres DESC) <= 3
+  - name: Airflow exponential backoff
+    expr: delay(k) = base_delay × 2^(k−1),  total = base × (2^R − 1)
+  - name: Spark partition waves
+    expr: waves = ⌈num_partitions / total_executor_cores⌉
+  - name: Partial aggregate reduction
+    expr: rows_shuffled ≤ num_partitions × num_distinct_keys
+  - name: Tumbling window & watermark
+    expr: W_start = ⌊ts/S⌋·S,   Watermark W(t) = max(event_ts) − L
+  - name: Serving batch throughput
+    expr: T_N = T_startup_load + N · T_infer  vs  N · (T_load + T_infer)
+exam:
+  durationMinutes: 10
+  written:
+    - prompt: Walk me through how you would take a messy raw CSV of market prices and build a reproducible cleaning
+        pipeline. Why must raw data never be modified in place?
+      module: data-cleaning
+      keywords:
+        - immutable
+        - raw
+        - profile
+        - validate
+        - schema
+        - median
+        - impute
+        - deduplicate
+        - composite key
+        - reproducible
+        - processed
+      idealAnswer: First, keep `data/raw/` strictly read-only so any bug in cleaning can be fixed and re-run from
+        the original source. Next, profile the dataset to quantify null rates, types, duplicates, and
+        distributions. Then enforce a validation gate checking required columns, date formats, and domain
+        bounds. In cleaning, standardise strings, drop rows missing primary keys (`date`, `market`,
+        `commodity`), deduplicate on that composite key, impute missing prices using the per-commodity median
+        (which is robust to skew and outliers), and write the result atomically to `data/processed/`.
+    - prompt: What does idempotency mean in data engineering? Give a concrete example of a non-idempotent pipeline
+        stage and explain how you would fix it.
+      module: pipelines-parquet
+      keywords:
+        - idempotent
+        - same state
+        - retry
+        - backfill
+        - append
+        - duplicate
+        - upsert
+        - insert or replace
+        - atomic
+        - temp file
+        - overwrite
+      idealAnswer: "Idempotency means running a pipeline stage once or N times on the same input produces the exact
+        same stored dataset. A classic non-idempotent stage is appending rows (`mode='append'` or `INSERT
+        INTO`) without a uniqueness constraint: if Airflow retries the task or runs a backfill, every row is
+        duplicated. To fix it, enforce a primary key on `(date, market, commodity)` and use an atomic upsert
+        (`INSERT OR REPLACE`) or overwrite the target partition via an atomic temporary file swap
+        (`os.replace`)."
+    - prompt: Why do analytical pipelines store data in Apache Parquet and query it with DuckDB instead of keeping
+        everything in CSV and SQLite?
+      module: star-schemas
+      keywords:
+        - columnar
+        - parquet
+        - row-oriented
+        - csv
+        - sqlite
+        - olap
+        - oltp
+        - compression
+        - column pruning
+        - predicate pushdown
+        - vectorised
+      idealAnswer: "CSV and SQLite are row-oriented: scanning the average price per market requires reading every
+        byte of every column in every row, and CSV must re-parse text types on every read. Parquet is a binary
+        columnar format with explicit schemas, dictionary/run-length compression, and row-group min/max
+        statistics. DuckDB is an in-process OLAP engine that uses column pruning, predicate pushdown, and
+        vectorised SIMD execution over Parquet columns, cutting I/O and CPU time by an order of magnitude."
+    - prompt: In a Star Schema warehouse for Uganda market monitoring, what goes into the Fact table versus the
+        Dimension tables, and why must you define the grain first?
+      module: star-schemas
+      keywords:
+        - fact
+        - dimension
+        - grain
+        - measure
+        - price
+        - rainfall
+        - foreign key
+        - surrogate key
+        - descriptive
+        - group by
+        - fan trap
+        - double count
+      idealAnswer: The grain defines what a single fact row represents — here, one daily observation per `(date,
+        market, commodity)`. `fact_market_prices` holds numeric measures (`price_ugx`, `rainfall_mm`) and
+        surrogate foreign keys. `dim_market`, `dim_commodity`, and `dim_date` hold descriptive attributes
+        (district, category, month, quarter) for filtering and grouping. Defining the grain first ensures all
+        measures share the same level of detail, preventing join fan-outs and double-counting.
+    - prompt: In Apache Airflow, how do task dependencies protect data quality, and how should you configure retries
+        across ingestion versus validation tasks?
+      module: airflow
+      keywords:
+        - dag
+        - dependency
+        - upstream_failed
+        - block
+        - ingest
+        - transient
+        - network
+        - validate
+        - deterministic
+        - retries
+        - backoff
+      idealAnswer: Airflow enforces a Directed Acyclic Graph (`ingest >> validate >> clean >> store >> report`). If
+        `validate` detects a broken schema and raises an exception, Airflow marks downstream tasks as
+        `upstream_failed`, preventing corrupt data from reaching storage or reports. Ingestion tasks should
+        have multiple retries with backoff because external APIs and networks fail transiently, whereas
+        validation and cleaning tasks are deterministic and should fail fast so engineers fix the underlying
+        data contract.
+    - prompt: Contrast narrow and wide transformations in PySpark. Why did DuckDB outperform PySpark on our
+        10,000-row dataset, and why did `.cache()` slow Spark down in our benchmark?
+      module: pyspark
+      keywords:
+        - narrow
+        - wide
+        - shuffle
+        - exchange
+        - partition
+        - lazy
+        - action
+        - cache
+        - materialise
+        - jvm
+        - overhead
+        - duckdb
+      idealAnswer: Narrow transformations (`filter`, `withColumn`) operate within each partition in memory, whereas
+        wide transformations (`groupBy`, `join`) require a shuffle (`Exchange`) across the network and disk.
+        On 10,000 rows, DuckDB finished in ~1.4s while Spark took ~11.2s because Spark incurs JVM startup,
+        Catalyst planning, task serialisation, and shuffle overhead that dwarf the tiny compute work. Calling
+        `.cache()` slowed our 2-action script down because materialising and storing the DataFrame in memory
+        cost more than simply reading the small Parquet file from OS page cache.
+    - prompt: In a real-time market price stream, events arrive out of order over mobile networks. Explain how Event
+        Time, Tumbling Windows, and Watermarks work together.
+      module: streaming
+      keywords:
+        - event time
+        - processing time
+        - out of order
+        - tumbling window
+        - watermark
+        - allowed lateness
+        - finalise
+        - late events
+        - deduplication
+      idealAnswer: We bucket events by Event Time (`floor(event_ts / 10) * 10`) rather than Processing Time so
+        delayed packets still land in the window when the price actually occurred. A watermark `W(t) =
+        max_seen_event_ts − allowed_lateness` tracks stream progress. Whenever `W(t)` passes a window's end
+        timestamp, that window is finalised and emitted. Events arriving with `event_ts < W(t)` are too late
+        for their closed window and are routed to `late_events.jsonl`, while a `seen_ids` state store drops
+        duplicate retries.
+    - prompt: You are deploying a trained scikit-learn price model behind FastAPI in Docker. What are the three most
+        critical engineering mistakes that break production ML services, and how do you prevent them?
+      module: model-serving
+      keywords:
+        - training-serving skew
+        - shared features
+        - make_features
+        - startup
+        - per-request
+        - pydantic
+        - "422"
+        - column order
+        - docker
+        - pinned
+      idealAnswer: "First, training-serving skew: duplicating feature logic between training and API leads to silent
+        prediction drift; fix it by importing `make_features()` and `FEATURE_COLUMNS` from a single shared
+        module (`src/common/features.py`). Second, loading `model.joblib` inside the `/predict` handler
+        instead of once at startup, which adds hundreds of milliseconds of disk I/O to every request. Third,
+        missing input validation and unpinned environments: use strict Pydantic schemas (`Literal`,
+        `Field(ge=0, le=500)`) to reject bad payloads with HTTP 422, and package the service in a Dockerfile
+        with pinned `requirements.txt`."
+    - prompt: In the Milk Cooperative Practice Question (sample_qtn), why are both rows of a `record_id` collision
+        rejected rather than keeping the first one, and why must `centre` text be tidied before running
+        validation rules?
+      module: milk-validation
+      keywords:
+        - collision
+        - both
+        - ambiguous
+        - exact duplicate
+        - rejected_df
+        - strip
+        - case
+        - unknown centre
+        - rows_in
+      idealAnswer: Unlike an exact duplicate where every column matches, a `record_id` collision has two conflicting
+        records claiming the same delivery ID with different litres, prices, or farmers. Keeping the first row
+        arbitrarily guesses which record is true and corrupts payouts, so both rows must be rejected into
+        `rejected_df` for human audit. Tidying `centre` text (`strip().title()`) must happen before
+        `rule_unknown_centre` so deliveries with trailing spaces or lowercase names (`' mbarara '`) match
+        `centres.csv` instead of being falsely rejected.
+    - prompt: In Practical Test 02 (dsc3103_test_02), some `farmer_id`s in `milk_clean.parquet` are missing from
+        `farmers.csv`. How do you model this in `dim_farmer` and `fact_delivery` without losing rows or having
+        NULL keys, and how does month partitioning speed up April 2026 queries?
+      module: milk-warehouse
+      keywords:
+        - unknown
+        - farmer_key
+        - coalesce
+        - left join
+        - "20000"
+        - "null"
+        - partition
+        - month
+        - pruning
+        - explain analyze
+      idealAnswer: Add an explicit Unknown farmer row (`farmer_key = 0, farmer_id = -1, farmer_name = 'Unknown'`) to
+        `dim_farmer` and left-join `milk_clean.parquet` using `COALESCE(f.farmer_key, 0)`. This keeps all
+        20,000 fact rows, ensures zero NULL keys, and guarantees referential integrity. Partitioning
+        `fact_delivery` by `month` writes 6 separate monthly Parquet directories (`2026-03` to `2026-08`); a
+        query for April 2026 uses partition pruning to scan only 1 of the 6 files (3,201 rows instead of
+        20,000), while unhelpful predicates (like filtering only by `farmer_key` across all months) still scan
+        all 6 partitions.

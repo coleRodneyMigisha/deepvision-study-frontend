@@ -1,0 +1,402 @@
+id: pyspark
+title: Distributed Batch Processing with PySpark
+subtitle: Partitions, lazy evaluation, shuffles & caching (Lab 6 / Lab 8)
+recap: Spark splits DataFrames into partitions processed in parallel by executors; one partition is one task,
+  and stages run in waves of ceil(partitions / cores). Transformations are lazy until an action runs. Narrow
+  transformations stay inside a partition; wide ones (groupBy, join) shuffle data across the network. On small
+  data JVM and shuffle overhead dominate, so DuckDB can win and .cache() can even slow things down.
+traps:
+  - Expecting a transformation to run before an action is called.
+  - Caching a DataFrame that is only used once.
+  - Choosing Spark for data that fits comfortably on one machine.
+lesson:
+  checkpointStep: 3
+  steps:
+    - When datasets outgrow a single machine's RAM, Apache Spark distributes data across a cluster as
+      partitioned DataFrames. A Driver coordinates the execution plan while Executors process partitions in
+      parallel.
+    - "Rule of thumb: 1 partition = 1 parallel task. If your DataFrame has 8 partitions and your executor pool
+      has 8 cores, all 8 partitions are processed simultaneously."
+    - "Spark transformations (`filter`, `withColumn`, `groupBy`) are lazy: they only build a logical DAG.
+      Nothing executes until an Action (`count`, `collect`, `write`) triggers the Catalyst optimiser to
+      compile a physical plan."
+    - "Checkpoint: what is the difference between a narrow transformation and a wide transformation in Spark,
+      and why can `.cache()` sometimes make a job slower?"
+    - "Narrow transformations (`filter`, `select`, `map`) stay within each partition with zero network
+      traffic. Wide transformations (`groupBy`, `join`, `orderBy`) require a Shuffle (`Exchange`): data is
+      hashed, written to disk, and sent across the network."
+    - In Lab 8 we measured DuckDB at 1.39s vs Spark at 11.21s on 10,000 rows, and saw `.cache()` take 8.85s vs
+      3.04s uncached! On small data, JVM startup, shuffle overhead, and cache materialisation outweigh
+      distributed parallelism.
+checkpoint:
+  question: Explain the difference between narrow and wide transformations in PySpark. Why did DuckDB beat
+    PySpark on our 10,000-row market dataset, and when does `.cache()` actually pay off?
+  hint: Mention partitions, network shuffle (`Exchange`), JVM/Catalyst overhead vs single-node vectorised C++,
+    and the materialisation cost of `.cache()` across multiple actions.
+  keywords:
+    - narrow
+    - wide
+    - shuffle
+    - exchange
+    - partition
+    - network
+    - lazy
+    - action
+    - cache
+    - materialise
+    - overhead
+    - jvm
+    - duckdb
+  idealAnswer: Narrow transformations (`filter`, `select`, `withColumn`) compute each output partition from a
+    single input partition in memory without moving data. Wide transformations (`groupBy`, `join`, `distinct`)
+    require a shuffle (`Exchange`), redistributing rows across partitions via disk and network I/O. On a
+    10,000-row dataset, DuckDB (~1.4s) beats PySpark (~11.2s) because Spark pays heavy fixed overhead for JVM
+    startup, Catalyst planning, task scheduling, and shuffle serialisation. Similarly, `.cache()` has an
+    upfront materialisation cost and only pays off when a large, expensive DataFrame is reused across multiple
+    downstream actions.
+terms:
+  - term: Lazy evaluation
+    definition: Transformations build a query plan; execution only starts when an Action is called.
+  - term: Narrow transformation
+    definition: 1-to-1 partition mapping (`filter`, `select`); pipelined in memory with no shuffle.
+  - term: Wide transformation
+    definition: Many-to-many partition mapping (`groupBy`, `join`); inserts an `Exchange` shuffle barrier.
+  - term: Catalyst & Tungsten
+    definition: Spark's query optimiser (predicate pushdown, column pruning) and off-heap code generation engine.
+  - term: Partial aggregate
+    definition: Map-side `HashAggregate` that pre-combines groups inside each partition before shuffling.
+quiz:
+  - question: In `df.filter(...).withColumn(...).groupBy('market').agg(avg('price')).collect()`, which call is the
+      Action that triggers execution?
+    options:
+      - filter()
+      - withColumn()
+      - groupBy()
+      - collect()
+    answer: 3
+    explanation: filter, withColumn, and groupBy/agg are lazy transformations; collect() is the Action that
+      triggers the Spark job.
+  - question: You have 1,000,000 rows across 4 partitions and 5 distinct markets. With partial aggregation
+      (`HashAggregate` before `Exchange`), at most how many intermediate rows are sent across the shuffle
+      network?
+    options:
+      - 1,000,000
+      - "20"
+      - 4,000
+      - "5"
+    answer: 1
+    explanation: Each of the 4 partitions pre-aggregates its local rows into at most 5 market groups → 4 × 5 = 20
+      rows shuffled across the network!
+  - question: Which operation triggers execution in Spark?
+    options:
+      - filter
+      - withColumn
+      - groupBy
+      - count
+    answer: 3
+    explanation: count is an action; the others are lazy transformations.
+  - question: Which transformation causes a shuffle?
+    options:
+      - filter
+      - select
+      - groupBy
+      - withColumn
+    answer: 2
+    explanation: groupBy needs all rows of a key together, so data moves across partitions.
+  - question: What does 'Exchange' in df.explain() indicate?
+    options:
+      - A cached table
+      - A shuffle
+      - A pushed-down filter
+      - A broadcast variable
+    answer: 1
+    explanation: Exchange is Spark's physical operator for a shuffle.
+  - question: 40 partitions, 16 cores, 2 s per task. Stage time?
+    options:
+      - 4 s
+      - 5 s
+      - 6 s
+      - 80 s
+    answer: 2
+    explanation: ⌈40/16⌉ = 3 waves × 2 s = 6 s.
+  - question: Why can DuckDB beat Spark on 10,000 rows?
+    options:
+      - DuckDB is distributed
+      - Spark's fixed overheads (JVM
+      - planning
+      - scheduling
+      - shuffles) dominate small jobs
+      - Spark can't read Parquet
+      - DuckDB caches everything
+    answer: 1
+    explanation: On small data the overhead is bigger than the actual work.
+  - question: What does partial aggregation reduce?
+    options:
+      - The number of columns
+      - The number of rows shuffled
+      - The number of executors
+      - Memory used by the driver
+    answer: 1
+    explanation: Each partition pre-aggregates, so at most partitions × keys rows cross the network.
+fact:
+  title: "Single-node first: most 'Big Data' fits in laptop RAM"
+  body: A 2023 study of production cloud analytics jobs found that over 90% of queries scanned less than 10 GB
+    of data. Modern engineers use DuckDB or Polars for <50 GB and reserve Spark for true
+    multi-hundred-gigabyte distributed workloads.
+lab:
+  title: PySpark Partition Waves, Shuffle & Cache Break-Even
+  variations:
+    - title: Executor Core Waves Calculation
+      question: A PySpark stage has <b>20 partitions</b> (each taking <b>4 seconds</b>) running on a cluster with
+        <b>8 executor cores</b>. Assuming uniform partition sizes, how many seconds does the stage take to
+        complete?
+      answer: 12
+      tolerance: 0
+      hint: 20 partitions across 8 cores require ceil(20 / 8) = 3 waves of 4 seconds each.
+      explanation: Wave 1 runs 8 partitions (4s), Wave 2 runs 8 partitions (4s), Wave 3 runs the remaining 4
+        partitions (4s) → 3 waves × 4s = 12 seconds.
+    - title: Map-Side Partial HashAggregate Shuffle Reduction
+      question: A DataFrame of <b>500,000 rows</b> across <b>10 partitions</b> is grouped by `market` (<b>6 distinct
+        markets</b>). With map-side `HashAggregate` partial aggregation before the `Exchange` shuffle, what is
+        the maximum number of intermediate records sent across the network?
+      answer: 60
+      tolerance: 0
+      hint: Each of the 10 partitions outputs at most 6 partial `(market, sum, count)` records.
+      explanation: 10 partitions × 6 distinct markets = at most 60 partial aggregate rows shuffled (down from
+        500,000 raw rows!).
+    - title: Spark `.cache()` Break-Even Action Count
+      question: Reading & computing a DataFrame from disk costs <b>3.0s</b> per action. Materialising `.cache()`
+        adds <b>4.5s</b> on the first action, after which cached reads take only <b>0.5s</b> per action. What
+        is the minimum number of actions <b>N</b> where caching is strictly faster than not caching?
+      answer: 3
+      tolerance: 0
+      hint: Compare Uncached(N) = 3.0·N vs Cached(N) = (3.0 + 4.5) + 0.5·(N − 1) = 7.0 + 0.5·N.
+      explanation: "For N=2: Uncached = 6.0s, Cached = 7.5 + 0.5 = 8.0s (slower, just like Lab 8!). For N=3:
+        Uncached = 9.0s, Cached = 7.5 + 1.0 = 8.5s (faster!). So N = 3 actions is the break-even point."
+notes:
+  - heading: Driver, executors and partitions
+    body: |
+      Spark spreads a DataFrame across a cluster as **partitions** — chunks of rows. A **driver** program plans the work; **executors** run it. Each executor has some **cores**, and each core processes one partition at a time as a **task**.
+
+      So the basic arithmetic is:
+
+      - 1 partition → 1 task.
+      - Tasks run in **waves** of (total executor cores): waves = ⌈partitions ÷ cores⌉.
+      - Stage time ≈ waves × time per task.
+
+      20 partitions on 8 cores need 3 waves — and the last wave uses only 4 cores while 4 sit idle. Too few partitions leaves cores idle; far too many creates scheduling overhead. A common rule of thumb is 2–4 partitions per core.
+  - heading: Lazy evaluation, actions and Catalyst
+    body: |
+      Transformations (`filter`, `select`, `withColumn`, `groupBy`, `join`) don't execute — they add steps to a **logical plan**. Only an **action** (`count`, `collect`, `show`, `write`) triggers execution.
+
+      Laziness lets Spark's **Catalyst optimiser** rewrite your whole plan before running it: push filters down to the data source, drop unused columns, reorder joins, then the **Tungsten** engine generates efficient code. `df.explain()` shows the physical plan — look for `Exchange` (a shuffle) and `PushedFilters`.
+
+      The flip side: every action re-runs the plan from the source unless you cache. Two `count()`s on the same DataFrame read the data twice.
+  - heading: Narrow vs wide — the shuffle
+    body: |
+      - **Narrow** transformations (`filter`, `select`, `withColumn`, `map`) work inside each partition. No data moves between machines.
+      - **Wide** transformations (`groupBy`, `join`, `orderBy`, `distinct`) need rows with the same key to end up together. Spark **shuffles**: hashes each row's key, writes partition files to disk, and sends them across the network. That's the `Exchange` in the plan and usually the most expensive part of a job.
+
+      Spark reduces shuffle cost with **partial aggregation**: each partition first computes its own partial sums per key, so at most partitions × distinct keys rows are shuffled instead of every row. That's why `groupBy("commodity").avg("price")` on 10 million rows shuffles only a few thousand.
+  - heading: When Spark is the wrong tool
+    body: |
+      Spark's fixed costs — starting a JVM, planning, serialising tasks, scheduling, shuffles — are seconds, not milliseconds. On small data they dominate. In Lab 8 on 10,000 rows, **DuckDB took 1.39 s and Spark 11.21 s**.
+
+      `.cache()` also isn't free: the first action has to *materialise* the cached data in memory. It pays off only when the cached DataFrame is reused by enough later actions. In our benchmark, caching a DataFrame used by two actions made the script slower (8.85 s vs 3.04 s).
+
+      Rule of thumb: if the data fits comfortably on one machine, use a single-node engine (DuckDB, Polars, pandas). Reach for Spark when data or compute genuinely exceeds one machine.
+examples:
+  - title: Waves and idle cores
+    problem: A stage has 26 partitions, each task taking 5 s, on a cluster with 3 executors × 4 cores. How long
+      does the stage take, and how many core-slots are idle in the last wave?
+    steps:
+      - Total cores = 3 × 4 = **12**.
+      - Waves = ⌈26 / 12⌉ = **3**; stage time = 3 × 5 = **15 s**.
+      - Slots in 3 waves = 36; tasks = 26 → **10 idle slots**, all in the last wave (only 2 tasks run in it).
+      - With 24 partitions the stage would take 2 waves = 10 s.
+    answer: 15 s, with 10 idle core-slots.
+    takeaway: Partition counts that are multiples of the core count avoid a nearly empty last wave.
+  - title: Cache break-even
+    problem: Each action on an uncached DataFrame takes 3 s. Caching costs an extra 4.5 s on the first action;
+      later actions take 0.5 s. From how many actions does caching win?
+    steps:
+      - "Uncached: N × 3."
+      - "Cached: (3 + 4.5) + (N − 1) × 0.5 = 7 + 0.5N."
+      - Caching wins when 7 + 0.5N < 3N → 7 < 2.5N → N > 2.8, so **N = 3**.
+      - "Check: N = 2 → 6 s vs 8 s (cache loses); N = 3 → 9 s vs 8.5 s (cache wins)."
+    answer: From 3 actions.
+    takeaway: Cache only DataFrames that are reused several times.
+questions:
+  - question: Explain lazy evaluation in Spark and why it enables optimisation.
+    kind: short
+    marks: 5
+    keywords:
+      - lazy
+      - transformations
+      - logical plan
+      - action
+      - catalyst
+      - optimiser
+      - predicate pushdown
+      - column pruning
+      - physical plan
+    idealAnswer: Transformations only build a logical plan; nothing runs until an action such as count or write.
+      Because Spark sees the whole plan first, the Catalyst optimiser can rewrite it — pushing filters down to
+      the data source, pruning unused columns, reordering joins — before Tungsten executes an efficient
+      physical plan.
+  - question: Contrast narrow and wide transformations and explain why shuffles are expensive.
+    kind: short
+    marks: 6
+    keywords:
+      - narrow
+      - within partition
+      - filter
+      - wide
+      - groupBy
+      - join
+      - shuffle
+      - exchange
+      - hash
+      - disk
+      - network
+      - partial aggregation
+    idealAnswer: "Narrow transformations like filter or withColumn operate within each partition with no data
+      movement. Wide transformations like groupBy, join and orderBy require rows with the same key on the same
+      partition, so Spark shuffles: it hashes keys, writes shuffle files to disk and sends them over the
+      network — the Exchange operator. That costs disk I/O, serialisation and network time, which is why
+      partial aggregation and avoiding unnecessary wide operations matter."
+  - question: Your team runs a PySpark job on 10,000 rows of market data that takes 11 s, uses .cache() on a
+      DataFrame used by two actions, and shuffles twice. A teammate's DuckDB script does the same in 1.4 s.
+      Explain every reason for the difference, when Spark would be the right choice, and how you would tune
+      the Spark job if the data grew to 500 million rows.
+    kind: long
+    marks: 12
+    keywords:
+      - jvm
+      - startup
+      - catalyst
+      - planning
+      - scheduling
+      - shuffle
+      - cache
+      - materialise
+      - reuse
+      - single node
+      - duckdb
+      - distributed
+      - partitions
+      - cores
+      - waves
+      - partial aggregation
+      - broadcast join
+      - explain
+    idealAnswer: "On 10,000 rows the actual computation is trivial; Spark's fixed costs dominate — JVM start-up,
+      Catalyst planning, task serialisation and scheduling, and two shuffles writing to disk and moving data.
+      Caching made it worse because materialising the cache cost more than re-reading a small file for only
+      two actions. DuckDB is a single-process vectorised engine with almost no overhead. Spark is right when
+      data or compute exceeds one machine — hundreds of GB, many joins, or cluster-scale parallelism. At 500 M
+      rows: size partitions to ~2–4 per core so waves are full, filter and select columns early so Catalyst
+      pushes them down, rely on partial aggregation and broadcast small dimension tables to avoid shuffle
+      joins, cache only DataFrames reused by several actions, and use explain() and the Spark UI to find
+      expensive Exchanges and skewed partitions."
+coding:
+  - id: partial-aggregation
+    title: Partial aggregation, by hand
+    language: python
+    level: core
+    setup: |
+      import pandas as pd
+      full = pd.read_csv("market_clean.csv")
+      # 4 "partitions", like a DataFrame split across executors
+      partitions = [full.iloc[i::4].reset_index(drop=True) for i in range(4)]
+    files:
+      - market_clean.csv
+    prompt: |
+      Spark computes `groupBy("commodity").avg("price_ugx")` in two steps so it shuffles little data.
+      `partitions` is a list of 4 DataFrames.
+
+      1. `partial(part)` → for **one** partition, a DataFrame with columns `commodity`, `total`, `n`
+         (sum and count of `price_ugx` per commodity) — this is what each executor sends in the shuffle.
+      2. `combine(partials)` → final DataFrame with `commodity`, `avg_price`, sorted by commodity.
+      3. Print how many rows were shuffled (the total length of all partials) vs rows in `full`.
+    starter: |
+      import pandas as pd
+
+      def partial(part):
+          ...
+
+      def combine(partials):
+          ...
+
+      partials = [partial(p) for p in partitions]
+      print(combine(partials))
+    solution: |
+      import pandas as pd
+
+      def partial(part):
+          g = part.groupby("commodity")["price_ugx"].agg(["sum", "count"]).reset_index()
+          return g.rename(columns={"sum": "total", "count": "n"})
+
+      def combine(partials):
+          allp = pd.concat(partials, ignore_index=True)
+          g = allp.groupby("commodity")[["total", "n"]].sum().reset_index()
+          g["avg_price"] = g["total"] / g["n"]
+          return g[["commodity", "avg_price"]].sort_values("commodity").reset_index(drop=True)
+
+      partials = [partial(p) for p in partitions]
+      print(combine(partials))
+      print("shuffled", sum(len(p) for p in partials), "of", len(full))
+    tests:
+      - name: Each partial has commodity, total and n
+        code: |
+          p = partial(partitions[0])
+          assert {"commodity", "total", "n"} <= set(p.columns)
+          assert len(p) == partitions[0]["commodity"].nunique()
+      - name: Combined averages equal a direct groupBy
+        code: |
+          got = combine([partial(p) for p in partitions])
+          exp = full.groupby("commodity")["price_ugx"].mean().reset_index()
+          assert list(got["commodity"]) == sorted(exp["commodity"])
+          for c, v in zip(exp["commodity"], exp["price_ugx"]):
+              assert abs(float(got.loc[got.commodity == c, "avg_price"].iloc[0]) - v) < 1e-6, f"wrong average for {c}"
+      - name: Shuffled rows are bounded by partitions × keys
+        code: |
+          shuffled = sum(len(partial(p)) for p in partitions)
+          assert shuffled <= 4 * full["commodity"].nunique() < len(full)
+    hints:
+      - You can't average averages — carry the sum and the count, and divide at the end.
+  - id: spark-job
+    title: Write the PySpark job
+    language: review
+    level: core
+    prompt: |
+      Write a PySpark job that reads `data/processed/market_prices/` (Parquet), keeps 2025 rows for the
+      Central region, computes the average price per (market, commodity, month), and writes the result as
+      Parquet partitioned by month — overwriting just the months it produces.
+
+      In comments, mark each transformation as **narrow** or **wide**, say where the shuffle happens, and
+      say whether you would `.cache()` anything and why.
+    starter: |
+      from pyspark.sql import SparkSession, functions as F
+
+      spark = SparkSession.builder.appName("monthly-prices").getOrCreate()
+    solution: |
+      from pyspark.sql import SparkSession, functions as F
+
+      spark = (SparkSession.builder.appName("monthly-prices")
+               .config("spark.sql.sources.partitionOverwriteMode", "dynamic")  # overwrite only produced months
+               .getOrCreate())
+
+      df = spark.read.parquet("data/processed/market_prices/")                 # lazy: nothing runs yet
+      central = (df.filter((F.year("date") == 2025) & (F.col("region") == "Central"))  # narrow (pushed down)
+                   .withColumn("month", F.date_format("date", "yyyy-MM")))       # narrow
+      monthly = (central.groupBy("market", "commodity", "month")                 # WIDE → shuffle (Exchange),
+                        .agg(F.avg("price_ugx").alias("avg_price")))             #   with partial aggregation first
+      # No .cache(): the DataFrame is used by a single action, so caching would only add cost.
+      monthly.write.mode("overwrite").partitionBy("month").parquet("data/marts/monthly_prices/")  # action
+    rubric:
+      - Filters early (year and region) so Catalyst can push predicates down
+      - Correctly labels filter/withColumn as narrow and groupBy/agg as wide with a shuffle
+      - Derives a month column and groups by market, commodity and month
+      - Writes Parquet partitioned by month with dynamic partition overwrite (idempotent)
+      - Justifies not caching (single action) or caching only for reuse

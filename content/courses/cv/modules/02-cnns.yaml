@@ -1,0 +1,359 @@
+id: cnns
+title: Convolutional Neural Networks
+subtitle: Understand convolution, pooling & feature maps
+recap: "CNNs replace giant fully connected layers with small shared kernels: local connectivity plus parameter
+  sharing gives translation equivariance and far fewer weights. Pooling downsamples with zero learnable
+  parameters and adds a little invariance. Know the output-size formula floor((W − K + 2P)/S) + 1 and the
+  parameter count K·K·C_in·C_out + C_out."
+traps:
+  - Saying pooling has learnable weights — it has none.
+  - Mixing up equivariance (output moves with input) and invariance (output doesn't change).
+  - Forgetting the bias term (+C_out) or the input channels when counting conv parameters.
+lesson:
+  checkpointStep: 3
+  steps:
+    - Why not a plain fully connected network? Flattening a 224×224×3 image gives 150,528 inputs. Connect that
+      to just 1,000 neurons and you already have 150 million weights — slow, and it overfits.
+    - "CNNs use two smart assumptions, called inductive biases. Local connectivity: each neuron looks at a
+      small patch. Parameter sharing: the same small kernel slides across the whole image."
+    - "Sharing weights gives translation equivariance: if the cat moves 10 pixels right, its activation in the
+      feature map also moves right. The detector works anywhere."
+    - "Checkpoint: does max pooling have learnable parameters — and what is the difference between
+      equivariance and invariance?"
+    - Max pooling keeps the largest value in each window, for example 2×2 with stride 2. It halves height and
+      width, has zero learnable parameters, and gives a little invariance to small shifts.
+    - "Stack layers and features build up: early layers find edges and colours, middle layers textures and
+      patterns, deep layers object parts like eyes and wheels."
+    - "Memorise the output size formula: output = floor((W − K + 2P) / S) + 1. For W = 32, K = 3, P = 1, S = 1
+      you get 32 — a ‘same’ convolution."
+checkpoint:
+  question: Does max pooling have any learnable parameters? And what is the difference between translation
+    equivariance and translation invariance?
+  hint: "Pooling is a fixed rule. Equivariance: output shifts WITH the input. Invariance: output stays the SAME."
+  keywords:
+    - zero
+    - no parameters
+    - fixed
+    - maximum
+    - equivariant
+    - equivariance
+    - invariant
+    - invariance
+    - shift
+    - convolution
+    - pooling
+  idealAnswer: "Max pooling has zero learnable parameters: it's a fixed operation that outputs the maximum in
+    each window, used to downsample and cut computation. Convolution is translation equivariant — shift the
+    input and the feature map shifts by the same amount. Pooling adds local translation invariance — small
+    shifts inside a window don't change the output. The trade-off is lost precise position information, which
+    hurts dense tasks like segmentation."
+terms:
+  - term: Receptive field
+    definition: The region of the input that affects one output neuron; grows with depth.
+  - term: Stride
+    definition: How many pixels the kernel jumps each step. Stride 2 halves the size.
+  - term: Padding
+    definition: Zeros added around the border so edges get processed and size can be kept.
+  - term: Feature map
+    definition: "The output of one filter across the image: ‘where is this pattern?’"
+  - term: Parameters per conv
+    definition: (K·K·C_in + 1)·C_out — the +1 is the bias.
+quiz:
+  - question: "A conv layer: 3×3 kernel, 64 input channels, 128 output channels, with bias. How many parameters?"
+    options:
+      - 1,152
+      - 73,856
+      - 8,192
+      - 589,824
+    answer: 1
+    explanation: (3·3·64 + 1)·128 = 577·128 = 73,856.
+  - question: Input 64×64, kernel 5, padding 0, stride 1. Output size?
+    options:
+      - "64"
+      - "62"
+      - "60"
+      - "59"
+    answer: 2
+    explanation: (64 − 5 + 0)/1 + 1 = 60.
+  - question: W = 128, K = 5, P = 2, S = 2. Output width?
+    options:
+      - "62"
+      - "63"
+      - "64"
+      - "128"
+    answer: 2
+    explanation: ⌊(128 − 5 + 4)/2⌋ + 1 = ⌊127/2⌋ + 1 = 63 + 1 = 64.
+  - question: Parameters in a 3×3 conv from 16 to 32 channels (with bias)?
+    options:
+      - 4,608
+      - 4,640
+      - 9,248
+      - "512"
+    answer: 1
+    explanation: (9·16 + 1)·32 = 145·32 = 4,640.
+  - question: Max pooling has how many learnable parameters?
+    options:
+      - One per window
+      - One per channel
+      - Zero
+      - Same as a 2×2 conv
+    answer: 2
+    explanation: It just takes the max.
+  - question: Convolution is translation-…
+    options:
+      - invariant
+      - equivariant
+      - independent
+      - dependent on padding only
+    answer: 1
+    explanation: Shifting the input shifts the feature map.
+  - question: Two stacked 3×3 convs have the same receptive field as one…
+    options:
+      - 3×3
+      - 5×5
+      - 7×7
+      - 9×9
+    answer: 1
+    explanation: "Each adds 2 to the receptive field: 3 → 5."
+  - question: Which part of a CNN cost grows with image resolution?
+    options:
+      - Number of parameters
+      - Number of multiply-adds
+      - Number of filters
+      - Kernel size
+    answer: 1
+    explanation: Parameters are shared; compute scales with output size.
+fact:
+  title: "CNNs fought back: ConvNeXt"
+  body: In 2022, Meta's ConvNeXt modernised a plain ResNet with transformer-era tricks — 7×7 depthwise
+    convolutions, LayerNorm, GELU, fewer activations — and matched Swin Transformers on ImageNet without any
+    self-attention. ConvNeXt V2 (2023) added masked-autoencoder pretraining.
+lab:
+  title: Convolution arithmetic
+  variations:
+    - title: ResNet Stem Spatial Output
+      question: "ResNet's first layer: input <b>224×224</b>, kernel <b>7×7</b>, padding <b>3</b>, stride <b>2</b>.
+        What is the output spatial width?"
+      answer: 112
+      tolerance: 0
+      hint: Apply O = floor((W − K + 2P) / S) + 1.
+      explanation: ⌊(224 − 7 + 2·3) / 2⌋ + 1 = ⌊223/2⌋ + 1 = 111 + 1 = 112.
+    - title: Conv Layer Parameter Count
+      question: A <code>Conv2d</code> layer has <b>C_in = 32</b>, <b>C_out = 64</b>, kernel <b>3×3</b>, with bias
+        enabled. How many total learnable parameters does it have?
+      answer: 18496
+      tolerance: 0
+      hint: Each of the 64 filters has 3 × 3 × 32 weights plus 1 bias.
+      explanation: Parameters = (3 · 3 · 32 + 1) × 64 = 289 × 64 = 18,496.
+    - title: ConvNeXt 7×7 Depthwise-Style Output
+      question: An input feature map is <b>56×56</b>. We apply a <b>7×7</b> convolution with padding <b>2</b> and
+        stride <b>2</b>. What is the output height?
+      answer: 27
+      tolerance: 0
+      hint: Compute floor((56 − 7 + 4) / 2) + 1.
+      explanation: ⌊(56 − 7 + 2·2) / 2⌋ + 1 = ⌊53 / 2⌋ + 1 = 26 + 1 = 27.
+notes:
+  - heading: Why not a fully connected network?
+    body: |
+      Flatten a 224 × 224 × 3 image and you have **150,528** inputs. A single dense layer to 1,000 neurons needs **150 million** weights — slow, memory-hungry and a recipe for overfitting. Worse, it treats a pixel in the top-left corner as unrelated to its neighbour, and has to learn "cat ear" separately at every position.
+
+      Convolutional networks build in two assumptions (**inductive biases**) about images:
+
+      - **Local connectivity** — each neuron looks at a small patch (its receptive field), because nearby pixels are related.
+      - **Parameter sharing** — the same small kernel slides across the whole image, because a useful feature (an edge, an eye) is useful everywhere.
+  - heading: Convolution arithmetic
+    body: |
+      **Output size:** O = ⌊(W − K + 2P) / S⌋ + 1 for input width W, kernel K, padding P, stride S.
+
+      - "Same" convolution: K = 3, P = 1, S = 1 keeps the size (32 → 32).
+      - No padding shrinks by K − 1 (32 → 30 with K = 3).
+      - Stride 2 roughly halves it (224 → 112 with K = 3, P = 1).
+
+      **Parameters:** each of C_out filters has K × K × C_in weights plus one bias: **(K·K·C_in + 1) · C_out**. A 3 × 3 conv from 64 to 128 channels has (9·64 + 1)·128 = **73,856** parameters — independent of the image size, thanks to sharing.
+
+      **Compute (multiply-adds):** O × O × K × K × C_in × C_out — this *does* scale with image size, which is why resolution drives inference cost.
+  - heading: Equivariance, invariance and pooling
+    body: |
+      - **Equivariance** — shift the input and the output shifts the same way. Convolution is translation-*equivariant*: if the cat moves 10 px right, its feature-map activation moves right too.
+      - **Invariance** — shift the input and the output doesn't change. A classifier's final "cat" score should be (approximately) *invariant*.
+
+      **Max pooling** (e.g. 2 × 2, stride 2) keeps the largest value in each window. It halves height and width, has **zero learnable parameters**, and adds a little invariance to small shifts. Stacking conv + pooling, plus global average pooling at the end, moves the network from equivariant feature maps to an invariant prediction.
+  - heading: The feature hierarchy and receptive fields
+    body: |
+      Each layer sees a larger region of the original image — its **receptive field** grows with depth (two stacked 3 × 3 convs see 5 × 5; three see 7 × 7, with fewer parameters than one 7 × 7). So features build up:
+
+      - early layers: edges, colours, simple textures;
+      - middle layers: patterns, corners, motifs;
+      - deep layers: object parts (eyes, wheels) and whole objects.
+
+      That's why early layers transfer well between tasks (module 4) and why visualising feature maps is a useful debugging tool. Modern CNNs (ResNets) add **skip connections** so very deep stacks still train, and **batch normalisation** to stabilise activations.
+examples:
+  - title: Shapes through a small network
+    problem: Input 64 × 64 × 3 → conv 3×3, 32 filters, P=1, S=1 → max-pool 2×2 → conv 3×3, 64 filters, P=0, S=1.
+      Give each output shape and the parameters of both convs.
+    steps:
+      - "Conv1: ⌊(64 − 3 + 2)/1⌋ + 1 = **64** → 64 × 64 × 32; params (9·3 + 1)·32 = **896**."
+      - "Pool: 64 / 2 = **32** → 32 × 32 × 32; params **0**."
+      - "Conv2: ⌊(32 − 3 + 0)/1⌋ + 1 = **30** → 30 × 30 × 64; params (9·32 + 1)·64 = **18,496**."
+    answer: 64×64×32 → 32×32×32 → 30×30×64; 896 and 18,496 parameters.
+    takeaway: Pooling changes shape but has no parameters; conv parameters don't depend on image size.
+  - title: Dense vs conv parameter count
+    problem: Compare a dense layer from a flattened 32 × 32 × 3 input to 64 units with a 3×3 conv layer from 3 to
+      64 channels.
+    steps:
+      - "Dense: (32·32·3) × 64 + 64 = 3,072 × 64 + 64 = **196,672**."
+      - "Conv: (3·3·3 + 1) × 64 = 28 × 64 = **1,792**."
+      - The conv layer has ~110× fewer parameters and works at every position.
+    answer: 196,672 vs 1,792 parameters.
+    takeaway: Parameter sharing is what makes CNNs practical for images.
+questions:
+  - question: Explain the two inductive biases of CNNs and why they suit images.
+    kind: short
+    marks: 5
+    keywords:
+      - local connectivity
+      - receptive field
+      - nearby pixels
+      - parameter sharing
+      - same kernel
+      - fewer parameters
+      - translation equivariance
+    idealAnswer: "Local connectivity: each unit connects only to a small patch, reflecting that nearby pixels are
+      strongly related. Parameter sharing: the same kernel is applied at every position, because a feature
+      useful in one place is useful everywhere. Together they cut parameters enormously compared with dense
+      layers and give translation equivariance, so the network detects a feature wherever it appears."
+  - question: Does max pooling have learnable parameters? Distinguish equivariance from invariance.
+    kind: short
+    marks: 5
+    keywords:
+      - no parameters
+      - zero
+      - maximum
+      - downsample
+      - equivariance
+      - shift output
+      - invariance
+      - unchanged
+      - small shifts
+    idealAnswer: No — max pooling just takes the maximum in each window, so it has zero learnable parameters; it
+      downsamples and adds slight invariance to small shifts. Equivariance means shifting the input shifts the
+      output correspondingly (convolution feature maps); invariance means the output stays the same when the
+      input shifts (desired for the final class score).
+  - question: Design a small CNN for 32 × 32 × 3 images with 10 classes. Give each layer's output shape and
+      parameter count, the total parameter count, and explain how the design moves from equivariant features
+      to an invariant prediction.
+    kind: long
+    marks: 12
+    keywords:
+      - conv
+      - 3x3
+      - padding
+      - relu
+      - max pool
+      - output size
+      - parameters
+      - global average pooling
+      - linear
+      - softmax
+      - equivariant
+      - invariant
+      - receptive field
+    idealAnswer: "Example: conv3×3(3→32, P1) → 32×32×32, params (27+1)·32 = 896; ReLU; maxpool 2×2 → 16×16×32, 0
+      params; conv3×3(32→64, P1) → 16×16×64, (288+1)·64 = 18,496; maxpool → 8×8×64; conv3×3(64→128, P1) →
+      8×8×128, (576+1)·128 = 73,856; global average pooling → 128, 0 params; linear 128→10, 1,290. Total ≈
+      94.5 k parameters. Convolutions are translation-equivariant, so features move with the object; pooling
+      layers grow the receptive field and add local shift invariance, and global average pooling removes
+      spatial position entirely, so the final softmax over 10 classes is approximately translation-invariant."
+coding:
+  - id: conv-arithmetic
+    title: Shapes and parameter counts
+    language: python
+    level: warm-up
+    prompt: |
+      Write `conv_out(w, k, p=0, s=1)` → output width `⌊(w − k + 2p) / s⌋ + 1`, and
+      `conv_params(k, c_in, c_out, bias=True)` → `(k·k·c_in + 1)·c_out` (no `+1` without bias).
+      Then use them to print the shapes and parameters of: 64×64×3 → conv3×3(32, p=1) → maxpool 2×2 →
+      conv3×3(64, p=0).
+    starter: |
+      def conv_out(w, k, p=0, s=1):
+          ...
+
+      def conv_params(k, c_in, c_out, bias=True):
+          ...
+    solution: |
+      def conv_out(w, k, p=0, s=1):
+          return (w - k + 2 * p) // s + 1
+
+      def conv_params(k, c_in, c_out, bias=True):
+          return (k * k * c_in + (1 if bias else 0)) * c_out
+
+      w1 = conv_out(64, 3, p=1); w2 = w1 // 2; w3 = conv_out(w2, 3)
+      print(w1, w2, w3, conv_params(3, 3, 32), conv_params(3, 32, 64))
+    tests:
+      - name: Same, valid and strided convolutions
+        code: |
+          assert conv_out(32, 3, 1, 1) == 32
+          assert conv_out(32, 5) == 28
+          assert conv_out(224, 3, 1, 2) == 112
+          assert conv_out(128, 5, 2, 2) == 64
+      - name: Parameter counts
+        code: |
+          assert conv_params(3, 3, 32) == 896
+          assert conv_params(3, 64, 128) == 73856
+          assert conv_params(1, 256, 64, bias=False) == 16384
+  - id: conv2d
+    title: Implement a 2-D convolution
+    language: python
+    level: core
+    setup: |
+      import numpy as np
+      img = np.zeros((8, 8))
+      img[:, 4:] = 1.0                      # a vertical edge between columns 3 and 4
+      SOBEL_X = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=float)
+    prompt: |
+      Write `conv2d(x, k, stride=1, padding=0)` for a single-channel image and kernel (what deep-learning
+      libraries call convolution is really cross-correlation — **don't** flip the kernel). Zero-pad by
+      `padding` on every side, then slide the kernel with the given stride.
+
+      Apply it to `img` with `SOBEL_X` and see where the edge lights up.
+    starter: |
+      import numpy as np
+
+      def conv2d(x, k, stride=1, padding=0):
+          ...
+
+      print(conv2d(img, SOBEL_X))
+    solution: |
+      import numpy as np
+
+      def conv2d(x, k, stride=1, padding=0):
+          x = np.pad(x, padding)
+          kh, kw = k.shape
+          oh = (x.shape[0] - kh) // stride + 1
+          ow = (x.shape[1] - kw) // stride + 1
+          out = np.zeros((oh, ow))
+          for i in range(oh):
+              for j in range(ow):
+                  patch = x[i * stride:i * stride + kh, j * stride:j * stride + kw]
+                  out[i, j] = np.sum(patch * k)
+          return out
+
+      print(conv2d(img, SOBEL_X))
+    tests:
+      - name: Output shape follows the formula
+        code: |
+          assert conv2d(img, SOBEL_X).shape == (6, 6)
+          assert conv2d(img, SOBEL_X, padding=1).shape == (8, 8)
+          assert conv2d(img, SOBEL_X, stride=2, padding=1).shape == (4, 4)
+      - name: Sobel-x responds only at the vertical edge
+        code: |
+          out = conv2d(img, SOBEL_X)
+          assert np.allclose(out[:, 2:4], 4) and np.allclose(out[:, [0, 1, 4, 5]], 0), f"got\n{out}"
+      - name: Cross-correlation, not flipped convolution
+        code: |
+          x = np.arange(9, dtype=float).reshape(3, 3)
+          k = np.array([[1, 0, 0], [0, 0, 0], [0, 0, 0]], dtype=float)
+          assert conv2d(x, k)[0, 0] == 0.0, "the kernel's top-left weight should multiply the patch's top-left pixel"
+    hints:
+      - "`np.pad(x, padding)` adds zeros on all sides."
+      - "out[i, j] = sum(x[i*s : i*s+kh, j*s : j*s+kw] * k)"

@@ -1,0 +1,362 @@
+id: inference-optimization
+title: "Inference Performance: ONNX, Pruning & INT8 Quantization"
+subtitle: Accelerate prediction throughput, shrink model sizes, and reduce server operational costs
+recap: Inference is about single-request latency. ONNX Runtime compiles the model graph to optimised C++
+  kernels, removing Python overhead. INT8 quantisation stores 1 byte per weight instead of 4 (75% smaller) and
+  SIMD/VNNI instructions process four times more INT8 values per cycle. Combined with pruning, you get big
+  speedups for a tiny accuracy cost — always re-measure AUC after.
+traps:
+  - Saying INT8 saves 25% — it saves 75% (4× smaller).
+  - Quantising without re-validating clinical metrics.
+  - Optimising training throughput when the problem is inference latency.
+lesson:
+  checkpointStep: 3
+  steps:
+    - Training throughput focuses on processing millions of samples in parallel batches across days. Inference
+      latency, however, is about serving a single patient prediction in under 15 milliseconds.
+    - Python is dynamically typed and carries significant interpreter overhead. Frameworks like ONNX (Open
+      Neural Network Exchange) compile model compute graphs into highly optimized C++ runtimes.
+    - Standard machine learning model weights are stored as 32-bit floating point numbers (FP32).
+      Post-training quantization converts these weights into 8-bit integers (INT8).
+    - "Checkpoint: how does 8-bit integer quantization achieve a 4x reduction in model memory footprint, and
+      how does INT8 accelerate CPU vector operations?"
+    - Because INT8 uses only 1 byte per parameter instead of 4 bytes in FP32, model size immediately shrinks
+      by 75%. Furthermore, modern CPU SIMD registers (AVX-512, VNNI) process four times as many INT8
+      operations per clock cycle.
+    - Coupled with weight pruning (zeroing out redundant tree branches or tiny weights), quantization yields
+      dramatic speedups with less than 0.5% drop in clinical ROC-AUC.
+checkpoint:
+  question: Explain the mathematical principle of post-training quantization from FP32 to INT8. Why does it
+    shrink memory by 4x, and what hardware acceleration does INT8 leverage?
+  hint: Recall byte sizes (32 bits = 4 bytes vs 8 bits = 1 byte). Mention affine scaling (q = round(r/S) + Z),
+    memory bandwidth bottlenecks, and SIMD instruction sets.
+  keywords:
+    - quantization
+    - fp32
+    - int8
+    - memory
+    - 4x
+    - scale
+    - zero point
+    - simd
+    - latency
+    - bandwidth
+  idealAnswer: "Post-training quantization maps continuous 32-bit floating point values (FP32) into discrete
+    8-bit integers (INT8) via linear affine transformation: $q = \\text{round}(r / S) + Z$, where $S$ is a
+    scale factor and $Z$ is the zero-point offset. Because FP32 requires 4 bytes per parameter while INT8
+    requires only 1 byte, the model's disk and RAM memory footprint is reduced by exactly 4× (75% savings). In
+    production inference, memory bandwidth is often the primary bottleneck; transferring 4× fewer bytes from
+    RAM to CPU cache significantly speeds up execution. Additionally, modern CPUs utilize SIMD vector
+    extensions (Intel AVX-512 VNNI, ARM NEON) that execute multiple INT8 multiply-accumulate operations in a
+    single clock cycle, often yielding a 2× to 4× reduction in inference latency with negligible degradation
+    in accuracy."
+terms:
+  - term: FP32
+    definition: 32-bit single-precision floating point format; standard default for training ML models.
+  - term: INT8 Quantization
+    definition: Converting 32-bit floats to 8-bit signed/unsigned integers to reduce memory bandwidth and
+      accelerate arithmetic.
+  - term: ONNX Runtime
+    definition: A cross-platform, high-performance scoring engine for Open Neural Network Exchange models.
+  - term: Weight Pruning
+    definition: Removing redundant parameters or decision branches with near-zero weights to sparsify models.
+  - term: SIMD / VNNI
+    definition: "Single Instruction Multiple Data / Vector Neural Network Instructions: hardware-level parallelism
+      for ultra-fast integer matrix dot products."
+quiz:
+  - question: A deep learning ensemble model has a serialized file size of 240 MB in standard FP32. What will its
+      approximate size be after INT8 quantization?
+    options:
+      - 120 MB
+      - 60 MB
+      - 24 MB
+      - 480 MB
+    answer: 1
+    explanation: "INT8 uses 1 byte per weight compared to 4 bytes for FP32: 240 MB / 4 = 60 MB (a 75% reduction in size)."
+  - question: What is the primary benefit of exporting a scikit-learn or PyTorch model to ONNX format?
+    options:
+      - It makes the model run in web browsers and optimized C++ runtimes independent of Python
+      - It automatically gathers more training data
+      - It eliminates the need for unit testing
+      - It prevents model drift
+    answer: 0
+    explanation: ONNX provides an open graph format executed by native C++ inference engines (ONNX Runtime),
+      eliminating Python runtime overhead and supporting multi-platform deployment.
+  - question: How many bytes does an INT8 weight use?
+    options:
+      - "1"
+      - "2"
+      - "4"
+      - "8"
+    answer: 0
+    explanation: 8 bits = 1 byte.
+  - question: FP32 → INT8 reduces weight memory by…
+    options:
+      - 25%
+      - 50%
+      - 75%
+      - 90%
+    answer: 2
+    explanation: 4 bytes → 1 byte is a 4× (75%) reduction.
+  - question: What does ONNX Runtime mainly remove from the inference hot path?
+    options:
+      - The model weights
+      - Python interpreter overhead
+      - The input validation
+      - The GPU
+    answer: 1
+    explanation: It executes a compiled graph with optimised C++ kernels.
+  - question: Why does INT8 run faster on modern CPUs?
+    options:
+      - It's more accurate
+      - SIMD/VNNI instructions process 4× more 8-bit values per instruction and less memory is moved
+      - It uses the GPU
+      - It skips layers
+    answer: 1
+    explanation: Less memory traffic plus more operations per cycle.
+  - question: After quantising the stroke model, what must you do before deploying?
+    options:
+      - Nothing
+      - Re-evaluate ROC-AUC and recall at the clinical threshold
+      - Retrain from scratch
+      - Delete the FP32 model
+    answer: 1
+    explanation: Optimisations can change behaviour; always re-validate.
+  - question: Why do outlier weights hurt INT8 accuracy?
+    options:
+      - They are deleted
+      - They stretch the [min, max] range, making each quantisation step larger
+      - They overflow to NaN
+      - They don't
+    answer: 1
+    explanation: Error ≤ s/2 and s grows with the range.
+fact:
+  title: Inference is Memory-Bound, Not Compute-Bound
+  body: For small-batch or single-instance model inference, modern CPUs spend over 70% of time waiting for
+    weights to be fetched from DRAM into CPU cache. Shrinking weights with INT8 quantization directly cuts
+    DRAM bus traffic by 4×, creating massive real-world speedups even on budget cloud VMs.
+lab:
+  title: ONNX & INT8 Quantization Speedup Simulator
+  variations:
+    - title: INT8 Model Weight Compression
+      question: An FP32 deep neural network contains <b>24 million parameters</b> (4 bytes each = 96 MB). Quantized
+        to INT8 (1 byte per parameter), what is the new weight size in <b>MB</b>?
+      answer: 24
+      tolerance: 0
+      hint: Multiply 24 million parameters by 1 byte, or divide 96 MB by 4.
+      explanation: 96 MB / 4 = 24 MB. INT8 quantization cuts memory footprint by 75% with typically < 0.5% drop in
+        F1 score.
+    - title: ONNX Runtime Graph Fusion Speedup Factor
+      question: Baseline PyTorch Python runtime executes patient inference in <b>28.5 ms</b>. Exporting to ONNX
+        Runtime with operator fusion and ConstantFolding drops latency to <b>9.5 ms</b>. What is the speedup
+        factor (<code>Latency_base / Latency_onnx</code>)?
+      answer: 3
+      tolerance: 0.1
+      hint: Divide 28.5 ms by 9.5 ms.
+      explanation: 28.5 / 9.5 = 3.0× speedup. Graph fusion combines BatchNorm and Conv layers into a single fused
+        kernel, eliminating memory bandwidth hops.
+    - title: Quantized DRAM Bus Bandwidth Savings
+      question: At batch size 1, an FP32 model reads <b>80 MB</b> of weights from RAM per inference. Quantized to
+        INT8, it reads only <b>20 MB</b>. Across a batch of <b>50 sequential inferences</b>, how many total
+        <b>MB</b> are transferred across the memory bus for the INT8 model?
+      answer: 1000
+      tolerance: 0
+      hint: Multiply 20 MB by 50 requests.
+      explanation: 20 MB × 50 = 1,000 MB (1.0 GB) compared to 4,000 MB for FP32, reducing memory controller
+        saturation by 3 GB.
+notes:
+  - heading: Latency is a different goal from training throughput
+    body: |
+      Training is about **throughput**: process millions of samples per hour in big batches, and it's fine if a single step takes a second. Serving a patient is about **latency**: one prediction, now — typically a budget of ~10–15 ms for the model inside a ~100 ms end-to-end request.
+
+      Where inference time goes:
+
+      - **Python overhead** — interpreting each operation, creating objects.
+      - **Memory traffic** — moving weights from RAM to the CPU caches; often the real bottleneck.
+      - **Arithmetic** — the multiply-adds themselves.
+
+      Optimisation attacks each one: compiled runtimes remove Python overhead, smaller number formats cut memory traffic, and SIMD instructions do more arithmetic per cycle.
+  - heading: ONNX and ONNX Runtime
+    body: |
+      **ONNX** (Open Neural Network Exchange) is a standard file format for model computation graphs. You can export from scikit-learn (`skl2onnx`), XGBoost, PyTorch or TensorFlow into one `.onnx` file.
+
+      **ONNX Runtime** executes that graph with optimised C++ kernels: it fuses operations, plans memory up front and uses hardware-specific instructions — and no Python interpreter runs inside the hot loop. Typical result: the same model, same outputs, noticeably lower latency. A bonus: the `.onnx` file can be served from C#, Java or JavaScript, not just Python.
+
+      ```python
+      sess = onnxruntime.InferenceSession("stroke.onnx")
+      probs = sess.run(None, {"input": X.astype(np.float32)})[1]
+      ```
+  - heading: Quantisation — FP32 to INT8
+    body: |
+      Weights are normally 32-bit floats (**FP32**, 4 bytes). **Quantisation** stores them in fewer bits:
+
+      | Format | Bytes per weight | Size of a 100 M-param model |
+      |---|---|---|
+      | FP32 | 4 | 400 MB |
+      | FP16 / BF16 | 2 | 200 MB |
+      | INT8 | 1 | 100 MB |
+
+      INT8 is **4× smaller (a 75% saving)**. Speed improves too: less data to move from memory, more of the model fits in cache, and CPU vector units (AVX-512 **VNNI**) process four times as many 8-bit values per instruction as 32-bit ones.
+
+      Affine quantisation maps a float range [min, max] onto 0–255: scale s = (max − min)/255, zero-point z = round(−min/s), q = round(x/s) + z, and dequantised x̂ = (q − z)·s. The rounding error is at most s/2 — which is why outliers that stretch the range hurt accuracy.
+  - heading: Pruning — and always re-validating
+    body: |
+      **Pruning** removes weights (or whole neurons, trees, branches) that contribute little — e.g. weights near zero. Sparse models can be smaller and faster, especially with structured pruning that removes entire channels or layers the runtime can skip.
+
+      Every optimisation is **lossy or at least risky**, so the rule is: re-run the full evaluation on the optimised artifact — ROC-AUC, recall at the clinical threshold, calibration — and compare with the original. In the course example INT8 + pruning cost less than 0.5% ROC-AUC, an excellent trade for a 4× smaller, several-times-faster model. If recall at the triage threshold dropped noticeably, you'd ship the FP32 model instead.
+examples:
+  - title: Memory saved by INT8
+    problem: A 64 M-parameter model is stored in FP32. How many MB does INT8 quantisation save?
+    steps:
+      - "FP32: 64 M × 4 bytes = **256 MB**."
+      - "INT8: 64 M × 1 byte = **64 MB**."
+      - Saved = 256 − 64 = **192 MB** (75%).
+    answer: 192 MB.
+    takeaway: INT8 always saves 75% of weight memory vs FP32.
+  - title: Quantise one weight by hand
+    problem: A tensor's values span [−1.0, 1.0]. Quantise x = 0.42 to INT8 with affine quantisation and compute
+      the error.
+    steps:
+      - Scale s = (1.0 − (−1.0)) / 255 = 2/255 ≈ **0.007843**.
+      - Zero-point z = round(1.0 / 0.007843) = round(127.5) = **128**.
+      - q = round(0.42 / 0.007843) + 128 = round(53.55) + 128 = 54 + 128 = **182**.
+      - x̂ = (182 − 128) × 0.007843 = 54 × 0.007843 ≈ **0.4235**; error ≈ 0.0035 (≤ s/2 ≈ 0.0039).
+    answer: q = 182, recovered 0.4235, error ≈ 0.0035.
+    takeaway: The error is bounded by half a step — a wider range means bigger steps.
+questions:
+  - question: Explain how INT8 quantisation reduces memory and speeds up CPU inference.
+    kind: short
+    marks: 5
+    keywords:
+      - fp32
+      - 4 bytes
+      - int8
+      - 1 byte
+      - 75%
+      - memory bandwidth
+      - cache
+      - simd
+      - vnni
+      - avx-512
+      - more operations per cycle
+    idealAnswer: FP32 uses 4 bytes per weight and INT8 uses 1, so the model shrinks 4× (75%). Less data has to
+      move from RAM and more of the model fits in cache, reducing memory-bandwidth stalls, and CPU SIMD units
+      with VNNI/AVX-512 process four times as many 8-bit values per instruction as 32-bit ones, so the
+      arithmetic is faster too.
+  - question: What are ONNX and ONNX Runtime, and why do they reduce latency?
+    kind: short
+    marks: 5
+    keywords:
+      - onnx
+      - open format
+      - computation graph
+      - export
+      - onnx runtime
+      - c++
+      - kernels
+      - fusion
+      - no python overhead
+      - portable
+    idealAnswer: ONNX is an open, framework-neutral format describing a model's computation graph; models from
+      scikit-learn, XGBoost or PyTorch can be exported to it. ONNX Runtime executes the graph with optimised
+      C++ kernels, fusing operations, pre-planning memory and using hardware-specific instructions, so no
+      Python runs in the inference loop — lowering latency — and the model becomes portable across languages.
+  - question: The stroke API must answer in under 15 ms on a CPU-only server, but the current FP32 Python model
+      takes 40 ms. Describe a step-by-step optimisation plan, how you would measure each step, and the
+      acceptance criteria before deployment.
+    kind: long
+    marks: 12
+    keywords:
+      - profile
+      - baseline
+      - p50
+      - p99
+      - onnx
+      - export
+      - onnx runtime
+      - int8
+      - quantize_dynamic
+      - pruning
+      - batch
+      - warm-up
+      - roc-auc
+      - recall
+      - threshold
+      - calibration
+      - compare
+      - rollback
+    idealAnswer: "1) Baseline: measure p50/p99 latency on the target CPU with realistic single requests after
+      warm-up, and record ROC-AUC, recall at the clinical threshold and calibration. 2) Export the model to
+      ONNX and run it with ONNX Runtime; verify outputs match the original within tolerance and re-measure
+      latency. 3) Apply post-training INT8 quantisation (quantize_dynamic, or static with calibration data)
+      and re-measure size and latency. 4) If still too slow, prune low-importance weights or trees and tune
+      runtime threads. 5) Accept only if p99 < 15 ms on the target hardware and the metrics are within an
+      agreed tolerance of FP32 (e.g. ROC-AUC drop < 0.5% and no recall loss at the triage threshold). Deploy
+      via canary and keep the FP32 model as a rollback."
+coding:
+  - id: int8-quantise
+    title: Affine INT8 quantisation in NumPy
+    language: python
+    level: core
+    prompt: |
+      Implement asymmetric (affine) quantisation of a float tensor to unsigned 8-bit integers:
+
+      - `quantise(x)` → `(q, scale, zero_point)` where `scale = (max − min) / 255`,
+        `zero_point = round(−min / scale)`, `q = clip(round(x / scale) + zero_point, 0, 255)` as `uint8`.
+      - `dequantise(q, scale, zero_point)` → `(q − zero_point) · scale` as float32.
+
+      Then report the size reduction and the worst absolute error on `W`.
+    setup: |
+      import numpy as np
+      rng = np.random.default_rng(0)
+      W = rng.normal(0, 0.4, size=(256, 256)).astype(np.float32)
+    starter: |
+      import numpy as np
+
+      def quantise(x):
+          ...
+
+      def dequantise(q, scale, zero_point):
+          ...
+    solution: |
+      import numpy as np
+
+      def quantise(x):
+          lo, hi = float(x.min()), float(x.max())
+          scale = (hi - lo) / 255
+          zero_point = int(round(-lo / scale))
+          q = np.clip(np.round(x / scale) + zero_point, 0, 255).astype(np.uint8)
+          return q, scale, zero_point
+
+      def dequantise(q, scale, zero_point):
+          return ((q.astype(np.float32) - zero_point) * scale).astype(np.float32)
+
+      q, s, z = quantise(W)
+      print("bytes:", W.nbytes, "→", q.nbytes, f"({W.nbytes // q.nbytes}× smaller)")
+      print("max error:", float(np.abs(dequantise(q, s, z) - W).max()), "≤ scale/2 =", s / 2)
+    tests:
+      - name: Output is uint8 and 4× smaller than float32
+        code: |
+          import numpy as np
+          q, s, z = quantise(W)
+          assert q.dtype == np.uint8 and q.shape == W.shape
+          assert W.nbytes == 4 * q.nbytes
+      - name: Scale and zero-point follow the affine formula
+        code: |
+          q, s, z = quantise(W)
+          assert abs(s - (float(W.max()) - float(W.min())) / 255) < 1e-9
+          assert z == round(-float(W.min()) / s)
+      - name: Round-trip error is at most half a step
+        code: |
+          import numpy as np
+          q, s, z = quantise(W)
+          err = np.abs(dequantise(q, s, z) - W).max()
+          assert err <= s / 2 + 1e-6, f"max error {err} exceeds scale/2 = {s / 2}"
+      - name: The range endpoints survive the round trip
+        code: |
+          import numpy as np
+          x = np.array([-1.0, 0.0, 1.0], dtype=np.float32)
+          q, s, z = quantise(x)
+          back = dequantise(q, s, z)
+          assert np.abs(back - x).max() <= s / 2 + 1e-6, f"endpoints came back as {back.tolist()}"
+          assert 0 <= int(q.min()) <= 1 and int(q.max()) == 255, "min/max should land at (or next to) the ends of 0–255"

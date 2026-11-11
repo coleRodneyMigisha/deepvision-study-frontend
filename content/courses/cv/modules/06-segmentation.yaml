@@ -1,0 +1,350 @@
+id: segmentation
+title: Segmentation
+subtitle: Predict pixel-level regions
+recap: Segmentation labels every pixel. Semantic = class per pixel, instance = separate objects, panoptic =
+  both. U-Net's encoder learns WHAT is there but loses WHERE; the decoder upsamples and skip connections bring
+  back high-resolution detail for sharp boundaries. Evaluate with per-class IoU / mIoU or Dice = 2·overlap /
+  (|A| + |B|).
+traps:
+  - Thinking Dice and IoU are the same number — Dice = 2·IoU / (1 + IoU) is always ≥ IoU.
+  - Removing skip connections and expecting crisp edges.
+  - Reporting pixel accuracy when the background dominates the image.
+lesson:
+  checkpointStep: 3
+  steps:
+    - "Segmentation is dense prediction: instead of one label per image or one box per object, the model
+      assigns a class to every single pixel."
+    - Semantic segmentation labels classes — all sheep are ‘sheep’. Instance segmentation separates
+      individuals — sheep 1, sheep 2. Mask R-CNN does this by adding a mask head to Faster R-CNN.
+    - "Panoptic segmentation unifies both: countable ‘things’ like people and cars get instance IDs, and
+      amorphous ‘stuff’ like sky and road gets semantic labels."
+    - "Checkpoint: why are skip connections essential in U-Net, and what happens if you remove them?"
+    - "U-Net's encoder repeatedly convolves and pools: the image gets smaller and the features get more
+      semantic — it knows WHAT is there, but loses exactly WHERE."
+    - The decoder upsamples back to full size. Skip connections copy high-resolution encoder features across
+      and concatenate them with the decoder's, restoring sharp boundaries.
+    - Evaluate with IoU per class — averaged as mean IoU — or the Dice coefficient, 2 × overlap divided by the
+      total size of both masks. Dice is popular in medical imaging.
+checkpoint:
+  question: Why are skip connections indispensable in U-Net? What happens to the output mask if you remove them?
+  hint: Pooling throws away spatial detail. Where can the decoder get that detail back?
+  keywords:
+    - skip
+    - pooling
+    - downsampling
+    - spatial
+    - resolution
+    - detail
+    - boundary
+    - boundaries
+    - localisation
+    - localization
+    - encoder
+    - decoder
+    - concatenate
+    - blurry
+  idealAnswer: The U-Net encoder downsamples with pooling to capture semantic context, but that discards fine
+    spatial detail. Skip connections pass the high-resolution feature maps from each encoder level directly to
+    the matching decoder level, where they're concatenated with the upsampled features. This gives the decoder
+    both 'what' from deep layers and 'where' from shallow layers. Without them, the decoder must reconstruct
+    detail from a coarse bottleneck, so masks come out blurry with inaccurate boundaries.
+terms:
+  - term: Semantic seg.
+    definition: Class label per pixel; instances are not separated.
+  - term: Instance seg.
+    definition: Separate mask per object instance (e.g. Mask R-CNN).
+  - term: Panoptic seg.
+    definition: Things (instances) + stuff (semantic) in one output.
+  - term: Dice
+    definition: 2|A∩B| / (|A|+|B|) = 2·IoU / (1 + IoU).
+  - term: Transposed conv
+    definition: "Learnable upsampling used in decoders (alt: bilinear + conv)."
+quiz:
+  - question: Counting individual cars in a parking lot needs…
+    options:
+      - Semantic segmentation
+      - Instance segmentation
+      - Image classification
+      - Edge detection
+    answer: 1
+    explanation: Semantic segmentation merges all cars into one ‘car’ region; instance segmentation separates them.
+  - question: A mask has IoU = 0.5 with ground truth. Its Dice score is…
+    options:
+      - "0.5"
+      - "0.25"
+      - "0.67"
+      - "1.0"
+    answer: 2
+    explanation: Dice = 2·IoU/(1+IoU) = 1/1.5 ≈ 0.67. Dice is always ≥ IoU.
+  - question: Labelling 'sheep 1' and 'sheep 2' separately is…
+    options:
+      - Semantic segmentation
+      - Instance segmentation
+      - Image classification
+      - Edge detection
+    answer: 1
+    explanation: Instances separate individual objects.
+  - question: In panoptic segmentation, 'sky' and 'road' are…
+    options:
+      - Things with instance ids
+      - Stuff with semantic labels
+      - Ignored
+      - Bounding boxes
+    answer: 1
+    explanation: Amorphous regions are 'stuff'.
+  - question: What do U-Net's skip connections provide to the decoder?
+    options:
+      - More parameters only
+      - High-resolution spatial detail from the encoder
+      - The class labels
+      - Dropout
+    answer: 1
+    explanation: They restore 'where' information lost by downsampling.
+  - question: IoU = 0.5. Dice = ?
+    options:
+      - "0.5"
+      - "0.667"
+      - "0.75"
+      - "1.0"
+    answer: 1
+    explanation: 2 × 0.5 / 1.5 = 0.667.
+  - question: Why is Dice loss popular for small medical structures?
+    options:
+      - It's faster
+      - It focuses on overlap and isn't dominated by background pixels
+      - It needs no labels
+      - It predicts boxes
+    answer: 1
+    explanation: Cross-entropy is swamped by easy background pixels.
+  - question: When you random-crop a training image, what must happen to its mask?
+    options:
+      - Nothing
+      - Exactly the same crop
+      - A different random crop
+      - It is recomputed by the model
+    answer: 1
+    explanation: Image and mask must stay aligned.
+fact:
+  title: Segment Anything, now with words
+  body: SAM (2023) segmented any object from a click. SAM 2 (2024) extended this to video with a streaming
+    memory that follows the object across frames. SAM 3 (late 2025) adds concept prompts — type ‘yellow school
+    bus’ and it segments every instance.
+lab:
+  title: "Paint a mask: IoU vs Dice"
+  variations:
+    - title: IoU to Dice Conversion
+      question: A predicted segmentation mask has <b>IoU = 0.50</b> with the ground truth. What is its <b>Dice
+        coefficient</b>? (2 decimals)
+      answer: 0.67
+      tolerance: 0.01
+      hint: Use Dice = 2 · IoU / (1 + IoU).
+      explanation: Dice = 2(0.5) / (1 + 0.5) = 1.0 / 1.5 = 0.6667 ≈ 0.67.
+    - title: Pixel Count Dice Score
+      question: A predicted lesion mask has <b>120</b> pixels, the ground-truth mask has <b>180</b> pixels, and they
+        overlap on <b>90</b> pixels (TP = 90). What is the <b>Dice score</b>? (2 decimals)
+      answer: 0.6
+      tolerance: 0.01
+      hint: Dice = 2 × |P ∩ G| / (|P| + |G|).
+      explanation: Dice = 2 × 90 / (120 + 180) = 180 / 300 = 0.60.
+    - title: Dice to IoU Inverse
+      question: A medical segmentation paper reports a <b>Dice score of 0.80</b>. What is the corresponding
+        <b>IoU</b> (Jaccard index)? (2 decimals)
+      answer: 0.67
+      tolerance: 0.01
+      hint: Invert Dice = 2·IoU/(1+IoU) → IoU = Dice / (2 − Dice).
+      explanation: IoU = 0.80 / (2 − 0.80) = 0.80 / 1.20 = 0.6667 ≈ 0.67.
+notes:
+  - heading: Dense prediction
+    body: |
+      **Segmentation** assigns a label to **every pixel**. The output is a mask with the same height and width as the image.
+
+      - **Semantic segmentation** — a class per pixel; all sheep are just "sheep".
+      - **Instance segmentation** — separates individual objects: sheep 1, sheep 2. **Mask R-CNN** adds a small mask head to Faster R-CNN that predicts a mask inside each detected box.
+      - **Panoptic segmentation** — combines both: countable **things** (people, cars) get instance ids; amorphous **stuff** (sky, road, grass) gets semantic labels.
+
+      Applications range from medical imaging (tumour boundaries) to agriculture (field and crop mapping) to self-driving (drivable area).
+  - heading: Encoder–decoder and U-Net
+    body: |
+      A segmentation network has to answer two questions: *what* is in the image (needs large receptive fields and deep, semantic features) and *where* exactly (needs high resolution).
+
+      - The **encoder** repeatedly convolves and downsamples: features become more semantic, but spatial detail is lost — a 256 × 256 input may be 16 × 16 at the bottleneck.
+      - The **decoder** upsamples back to full resolution, using **transposed convolutions** ("learned upsampling") or interpolation + convolution.
+
+      **U-Net**'s key idea is the **skip connection**: copy the encoder's high-resolution feature maps across and **concatenate** them with the decoder's upsampled maps at each level. The decoder then combines "what" from deep layers with "where" from shallow ones. Remove the skips and masks come out blurry, with poor boundaries.
+  - heading: IoU and Dice for masks
+    body: |
+      With predicted mask P and ground truth G (sets of pixels):
+
+      - **IoU (Jaccard)** = |P ∩ G| / |P ∪ G| = TP / (TP + FP + FN).
+      - **Dice (F1)** = 2|P ∩ G| / (|P| + |G|) = 2TP / (2TP + FP + FN).
+
+      They are linked: **Dice = 2·IoU / (1 + IoU)**, so Dice ≥ IoU (IoU 0.5 ↔ Dice 0.667). Both punish false positives (painting outside) and false negatives (missing parts).
+
+      Report **per-class IoU** and **mean IoU (mIoU)** across classes — **pixel accuracy** is misleading when background dominates: a model that predicts "background" everywhere can get 95% pixel accuracy on small lesions.
+  - heading: Losses and class imbalance
+    body: |
+      The standard loss is **per-pixel cross-entropy**. When the object of interest is tiny (a lesion covering 2% of the image), cross-entropy is dominated by easy background pixels.
+
+      Remedies:
+
+      - **Dice loss** (1 − Dice) optimises overlap directly and is insensitive to how much background there is — popular in medical imaging.
+      - **Combined loss**: cross-entropy + Dice, for stable gradients plus good overlap.
+      - **Class weights** or **focal loss** to emphasise rare classes.
+
+      Data augmentation must transform the **image and mask identically** (same crop, flip, rotation) — otherwise labels no longer line up with pixels.
+examples:
+  - title: IoU and Dice from pixel counts
+    problem: A predicted lesion mask has TP = 1,800 pixels, FP = 400, FN = 600. Compute IoU and Dice and check the
+      identity.
+    steps:
+      - IoU = 1,800 / (1,800 + 400 + 600) = 1,800 / 2,800 ≈ **0.643**.
+      - Dice = 2 × 1,800 / (3,600 + 400 + 600) = 3,600 / 4,600 ≈ **0.783**.
+      - "Check: 2 × 0.643 / 1.643 ≈ 0.783 ✓."
+    answer: IoU ≈ 0.64, Dice ≈ 0.78.
+    takeaway: Dice is always the higher number for the same mask — state which you report.
+  - title: Why pixel accuracy lies
+    problem: In a 512 × 512 scan, the lesion covers 1% of pixels. A model predicts all background. What are its
+      pixel accuracy and lesion IoU?
+    steps:
+      - Pixel accuracy = 99% (every background pixel is right).
+      - Lesion TP = 0 → lesion IoU = 0 / (0 + 0 + FN) = **0**.
+      - mIoU over (background ≈ 0.99, lesion 0) ≈ 0.5 — exposing the failure.
+    answer: 99% pixel accuracy, 0 lesion IoU.
+    takeaway: Use per-class IoU / Dice, not pixel accuracy, for small structures.
+questions:
+  - question: Explain why skip connections are essential in U-Net and what happens without them.
+    kind: short
+    marks: 5
+    keywords:
+      - encoder
+      - downsample
+      - semantic
+      - what
+      - where
+      - lost
+      - decoder
+      - upsample
+      - skip connections
+      - concatenate
+      - high-resolution
+      - blurry
+      - boundaries
+    idealAnswer: The encoder downsamples to build semantic features (what is present) but loses spatial detail
+      (where). The decoder upsamples back to full resolution, and skip connections concatenate the encoder's
+      high-resolution feature maps with the decoder's at each level, restoring fine localisation. Without them
+      the decoder must reconstruct detail from the coarse bottleneck, producing blurry masks with poor
+      boundaries.
+  - question: Define IoU and Dice for segmentation masks and explain why pixel accuracy can be misleading.
+    kind: short
+    marks: 5
+    keywords:
+      - iou
+      - intersection
+      - union
+      - dice
+      - 2·overlap
+      - tp
+      - fp
+      - fn
+      - dice = 2iou/(1+iou)
+      - background
+      - imbalance
+      - pixel accuracy
+    idealAnswer: IoU = |P∩G|/|P∪G| = TP/(TP+FP+FN); Dice = 2|P∩G|/(|P|+|G|) = 2TP/(2TP+FP+FN), and Dice =
+      2·IoU/(1+IoU), so Dice ≥ IoU. Pixel accuracy counts all correctly labelled pixels, so when background
+      dominates (a lesion covering 1%) a model predicting only background scores 99% while finding nothing;
+      per-class IoU/Dice exposes this.
+  - question: Design a system to segment cassava fields from satellite images for district planning. Choose the
+      segmentation type and architecture, describe training (loss, augmentation, imbalance) and evaluation,
+      and explain how you'd turn masks into field areas.
+    kind: long
+    marks: 12
+    keywords:
+      - semantic segmentation
+      - u-net
+      - encoder
+      - pretrained
+      - skip connections
+      - multispectral
+      - cross-entropy
+      - dice loss
+      - class weights
+      - augmentation
+      - same transform
+      - mask
+      - miou
+      - per-class iou
+      - boundaries
+      - pixel area
+      - hectares
+    idealAnswer: "Use semantic segmentation (classes: cassava, other crops, background) — or instance segmentation
+      if individual fields must be counted — with a U-Net whose encoder is pretrained (adapted to the
+      satellite bands, e.g. RGB+NIR). Train with cross-entropy + Dice loss and class weights because cassava
+      may be a small share of pixels; augment with flips, rotations, small scale changes and brightness,
+      applied identically to image and mask; tile large images with overlap. Evaluate with per-class IoU, mIoU
+      and Dice on held-out regions (split by geography to avoid leakage) and inspect boundaries visually.
+      Convert masks to areas by counting predicted pixels per class times the ground area per pixel (e.g. 10 m
+      × 10 m = 0.01 ha), optionally polygonising masks and aggregating per district."
+coding:
+  - id: mask-metrics
+    title: IoU, Dice and mean IoU for masks
+    language: python
+    level: core
+    setup: |
+      import numpy as np
+      gt = np.zeros((6, 6), dtype=int); gt[1:4, 1:4] = 1; gt[4:, 4:] = 2      # classes 0 (background), 1, 2
+      pred = np.zeros((6, 6), dtype=int); pred[1:4, 2:5] = 1; pred[5, 5] = 2
+    prompt: |
+      Write:
+
+      - `iou(pred, gt)` and `dice(pred, gt)` for **binary** masks (booleans or 0/1). If both masks are
+        empty, return 1.0.
+      - `mean_iou(pred, gt, num_classes)` for **multi-class** label maps: average the per-class IoU over the
+        classes that appear in `gt` or `pred`.
+
+      Verify `dice == 2·iou / (1 + iou)` on any example.
+    starter: |
+      import numpy as np
+
+      def iou(pred, gt):
+          ...
+
+      def dice(pred, gt):
+          ...
+
+      def mean_iou(pred, gt, num_classes):
+          ...
+    solution: |
+      import numpy as np
+
+      def iou(pred, gt):
+          p, g = np.asarray(pred).astype(bool), np.asarray(gt).astype(bool)
+          union = (p | g).sum()
+          return float((p & g).sum() / union) if union else 1.0
+
+      def dice(pred, gt):
+          p, g = np.asarray(pred).astype(bool), np.asarray(gt).astype(bool)
+          total = p.sum() + g.sum()
+          return float(2 * (p & g).sum() / total) if total else 1.0
+
+      def mean_iou(pred, gt, num_classes):
+          scores = [iou(pred == c, gt == c) for c in range(num_classes) if (gt == c).any() or (pred == c).any()]
+          return float(np.mean(scores))
+    tests:
+      - name: Binary IoU and Dice
+        code: |
+          a, b = gt == 1, pred == 1
+          assert abs(iou(a, b) - 6 / 12) < 1e-9 and abs(dice(a, b) - 12 / 18) < 1e-9
+      - name: Dice = 2·IoU / (1 + IoU)
+        code: |
+          i, d = iou(pred == 1, gt == 1), dice(pred == 1, gt == 1)
+          assert abs(d - 2 * i / (1 + i)) < 1e-9
+      - name: Empty masks agree perfectly
+        code: |
+          z = np.zeros((3, 3), dtype=bool)
+          assert iou(z, z) == 1.0 and dice(z, z) == 1.0
+      - name: Mean IoU over the classes present
+        code: |
+          per = [iou(pred == c, gt == c) for c in range(3)]
+          assert abs(mean_iou(pred, gt, 3) - sum(per) / 3) < 1e-9
+          assert mean_iou(pred, gt, 3) < (pred == gt).mean(), "pixel accuracy flatters this prediction; mIoU shouldn't"
