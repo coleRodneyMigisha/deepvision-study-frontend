@@ -1,41 +1,43 @@
 id: milk-validation
 title: "Practice Exam (sample_qtn): Milk Validation & Collisions"
-subtitle: Master rule ordering, record_id collisions & row conservation (sample_qtn.pdf)
-recap: "In sample_qtn, tidy formatting (strip().title() on centre) before running membership rules, or valid
-  deliveries get flagged as unknown centres. Exact duplicates are double-saved records — keep one. A record_id
-  collision has the same id but different values, so both rows are quarantined in rejected_df. Always assert
-  row conservation: rows_in = kept + rejected + exact_duplicates_removed."
+subtitle: Checking rules in the right order, handling clashing record IDs, and proving no row was lost (sample_qtn.pdf)
+recap: |
+  In the practice exam, tidy the text first (strip().title() on the centre name) and only then check the rules,
+  otherwise good deliveries get rejected as "unknown centre" just because of extra spaces or capital letters.
+  An exact duplicate is the same record saved twice, so keep one copy. A record_id collision is the same ID
+  number with different details, so you can't tell which is true: reject both into rejected_df. Finally, prove
+  nothing went missing: rows in = rows kept + rows rejected + exact duplicates removed.
 traps:
-  - Running rule_unknown_centre before tidying centre text.
-  - Keeping the first row of a record_id collision.
-  - Not asserting the row-conservation invariant at the end.
+  - "Running rule_unknown_centre before tidying the centre text. \" mbarara \" doesn't match \"Mbarara\"."
+  - "Keeping the first row of a record_id collision. That's a guess, and it can pay the wrong farmer."
+  - "Not checking (asserting) at the end that every input row is accounted for."
 lesson:
   checkpointStep: 3
   steps:
-    - In the DSC3103 Practice Question (sample_qtn.pdf), farmers deliver milk to collection centres
-      (`data/raw/milk_raw.csv`) and we must validate, clean, join with `data/raw/centres.csv`, and load a Star
-      Schema without ever modifying `data/raw/`.
-    - Part (a) asks whether validation rules in `src/validate/rules.py` (`rule_valid_date`,
-      `rule_duplicate_ids`, `rule_unknown_centre`) should run BEFORE or AFTER tidying the `centre` text
-      (`strip().title()`). The answer is AFTER tidying `centre`!
-    - Why? If a clerk typed `' mbarara '` or `'MBARARA'`, running `rule_unknown_centre` before stripping
-      whitespace and normalising case falsely flags a valid delivery as an unknown centre! Tidy formatting
-      first, then check membership against `centres.csv`.
-    - "Checkpoint: why must BOTH rows of a `record_id` collision be rejected into `rejected_df` rather than
-      keeping the first row, and what is the exact row-conservation invariant?"
-    - An exact duplicate (every column identical) is just a double-saved record — we drop the extra copy and
-      keep one. But a `record_id` collision has the SAME `record_id` with DIFFERENT values (e.g., 45 L vs 120
-      L or two different farmers).
-    - "Keeping the first row of a collision is a silent guess that corrupts farmer payouts! Both rows must be
-      quarantined into `rejected_df` with `reason='record_id_collision'`, and our code must assert: `rows_in
-      == rows_kept + rows_rejected + exact_duplicates_removed`."
+    - "In the DSC3103 practice question (sample_qtn.pdf), farmers deliver milk to collection centres
+      (data/raw/milk_raw.csv). We must check (validate) and clean the deliveries, join them with the list of centres
+      (data/raw/centres.csv), and load a star schema, without ever changing data/raw/."
+    - "Part (a) asks whether the rules in src/validate/rules.py (rule_valid_date, rule_duplicate_ids,
+      rule_unknown_centre) should run BEFORE or AFTER tidying the centre text (strip().title()). The answer: AFTER
+      tidying the centre text!"
+    - "Why? If a clerk typed \" mbarara \" or \"MBARARA\", checking it before removing the spaces and fixing the capitals
+      wrongly flags a real delivery as coming from an unknown centre. Tidy the formatting first, then check it
+      against centres.csv."
+    - "Checkpoint: why must BOTH rows of a record_id collision go into rejected_df instead of keeping the first one,
+      and what is the exact row-conservation rule?"
+    - "An exact duplicate (every column the same) is just a record saved twice: drop the extra copy and keep one. But
+      a record_id collision has the SAME record_id with DIFFERENT details (e.g. 45 L vs 120 L, or two different
+      farmers)."
+    - "Keeping the first row of a collision is a silent guess that can corrupt farmers' payments! Both rows must go
+      into rejected_df with reason='record_id_collision', and our code must check: rows_in == rows_kept +
+      rows_rejected + exact_duplicates_removed."
 checkpoint:
   question: In `sample_qtn.pdf`, why must validation rules on `centre` run AFTER tidying text, why are BOTH rows
     of a `record_id` collision rejected instead of keeping one, and what makes running the pipeline twice
     safe?
-  hint: Think about `' mbarara '` vs `'Mbarara'`, what happens if two different deliveries share `record_id =
-    1042`, and the 3 pillars of idempotency (`data/raw/` immutability, deterministic cleaning, atomic
-    overwrite).
+  hint: "Compare \" mbarara \" with \"Mbarara\". What if two different deliveries share record_id = 1042: which one is
+    real? And for running twice safely, think of three things: never changing data/raw/, cleaning that always gives
+    the same result, and overwriting the output in one go."
   keywords:
     - after
     - strip
@@ -51,26 +53,31 @@ checkpoint:
     - raw
     - idempotent
     - overwrite
-  idealAnswer: Validation rules on `centre` must run AFTER stripping whitespace and standardising case
-    (`strip().title()`) so valid centres like `' mbarara '` are not falsely rejected as unknown. For a
-    `record_id` collision (same ID, different payload values), we reject BOTH rows because there is no way to
-    know which delivery is genuine — keeping one arbitrarily would corrupt financial payouts, whereas exact
-    duplicates have identical values so keeping one is safe. Running the pipeline twice is safe because
-    `data/raw/milk_raw.csv` and `centres.csv` are never modified, cleaning is deterministic, and outputs
-    overwrite `data/processed/q1_output.parquet` and DuckDB tables atomically.
+  idealAnswer: "Rules on centre must run AFTER removing extra whitespace and standardising the letter case
+    (strip().title()); otherwise valid centres like ' mbarara ' are wrongly (false) rejected as unknown. For a
+    record_id collision (the same ID with different values), we reject BOTH rows, because the conflict is
+    ambiguous: there's no way to know which delivery is real, and keeping one arbitrarily could corrupt farmers'
+    payments. An exact duplicate has identical values, so keeping one copy is safe. Running the pipeline twice is
+    safe (idempotent) because the raw files milk_raw.csv and centres.csv are immutable (never modified), the
+    cleaning always gives the same result, and the outputs overwrite data/processed/q1_output.parquet and the
+    DuckDB tables in one atomic step."
 terms:
   - term: Exact duplicate
-    definition: All columns identical (`df.duplicated(keep='first')`); drop extra copies and keep 1 row.
+    definition: Two rows identical in every column, i.e. one record saved twice. Keep one (df.duplicated(keep='first')
+      finds the extras).
   - term: record_id collision
-    definition: Same `record_id` but different column values (`duplicated(subset=['record_id'], keep=False)` after
-      dropping exact dupes); reject ALL colliding rows.
-  - term: Row conservation invariant
-    definition: "`rows_in == rows_kept + rows_rejected + exact_duplicates_removed`."
-  - term: Boundary checksum
-    definition: SHA-256 hash of `data/raw/milk_raw.csv` logged at pipeline start to prove raw input integrity.
+    definition: Two rows with the same record_id but different details. Found with duplicated(subset=['record_id'],
+      keep=False) after removing exact duplicates. Reject ALL the clashing rows.
+  - term: rejected_df
+    definition: The table of every row you didn't keep, each with a reason (e.g. invalid_date, unknown_centre).
+  - term: Row conservation rule
+    definition: "rows_in == rows_kept + rows_rejected + exact_duplicates_removed. Every input row is accounted for."
+  - term: Checksum
+    definition: A fingerprint of a file (e.g. its SHA-256 hash). Logging it at the start proves the raw input wasn't
+      changed.
   - term: Lossless reference join
-    definition: "`LEFT JOIN` (or validated inner join after rejecting unknown centres) asserting `len(joined) ==
-      len(clean_df)`."
+    definition: Joining deliveries to the centres list without losing or repeating rows; check len(joined) ==
+      len(clean_df).
 quiz:
   - question: A raw milk file has 1,000 rows. There are 15 exact duplicate rows (to be removed), 6 pairs of
       `record_id` collisions (12 colliding rows total), and 23 rows with non-positive litres or unknown
@@ -99,7 +106,7 @@ quiz:
       - centres.csv requires uppercase
       - It removes duplicates
     answer: 1
-    explanation: Normalise representation first, then judge content.
+    explanation: First fix how things are written (spaces, capitals), then judge what they say.
   - question: Two rows have the same record_id but different litres. What should clean_milk do?
     options:
       - Keep the first
@@ -115,7 +122,7 @@ quiz:
       - drop_duplicates()
       - groupby('record_id').first()
     answer: 1
-    explanation: keep=False flags every row that has a duplicate key.
+    explanation: keep=False marks every row whose record_id appears more than once, so both clashing rows are caught.
   - question: What is the row-conservation invariant?
     options:
       - rows_in = rows_out
@@ -131,7 +138,7 @@ quiz:
       - It doesn't matter
       - To save memory
     answer: 1
-    explanation: An exact duplicate is harmless and should keep one copy.
+    explanation: Otherwise two identical copies would look like a clash and both be rejected. An exact duplicate is harmless; keep one copy.
   - question: What should every row in rejected_df have?
     options:
       - A new record_id
@@ -139,7 +146,7 @@ quiz:
       - Imputed litres
       - A farmer_key
     answer: 1
-    explanation: Reasons make rejections auditable and actionable.
+    explanation: A reason (like unknown_centre) lets people check the decision and fix the cause.
 fact:
   title: Quarantine tables (`rejected_df`) in production pipelines
   body: Real cooperative and banking pipelines never silently `dropna()` bad records into a black hole. They
@@ -181,45 +188,55 @@ lab:
 notes:
   - heading: The task in sample_qtn
     body: |
-      Farmers deliver milk to collection centres. You get `data/raw/milk_raw.csv` (deliveries) and `data/raw/centres.csv` (valid centres with capacities), and must write `clean_milk(df) -> (clean_df, rejected_df)`:
+      **The idea:** you're the clerk checking a pile of milk-delivery slips. Every slip must end up in exactly one of two trays: "paid" or "rejected, with a reason".
 
-      - `clean_df` — deliveries you trust, ready for the star schema;
-      - `rejected_df` — every row you didn't keep, **with a `reason`** (`invalid_date`, `invalid_litres`, `unknown_centre`, `record_id_collision`, …).
+      Farmers deliver milk to collection centres. You get `data/raw/milk_raw.csv` (the deliveries) and `data/raw/centres.csv` (the real centres and their capacities), and you must write `clean_milk(df) -> (clean_df, rejected_df)`:
 
-      Two rules frame everything: never modify `data/raw/`, and **every input row must be accounted for**. Examiners check both the logic and that you can prove nothing was lost.
+      - `clean_df`: deliveries you trust, ready for the star schema;
+      - `rejected_df`: every row you didn't keep, **each with a `reason`** (`invalid_date`, `invalid_litres`, `unknown_centre`, `record_id_collision`, …).
+
+      Two rules frame everything: never change `data/raw/`, and **account for every input row**. Examiners check your logic *and* that you can prove nothing was lost.
   - heading: Tidy first, then validate
     body: |
-      Part (a) asks whether validation rules run before or after tidying text. Run them **after**.
+      **The idea:** before checking a name against a guest list, write it neatly. "  JOHN " and "John" are the same person.
 
-      `rule_unknown_centre` checks each delivery's centre against `centres.csv`. If a clerk typed `" mbarara "` or `"MBARARA"`, the raw string doesn't match `"Mbarara"`, so checking first rejects a perfectly valid delivery — and a farmer doesn't get paid.
+      Part (a) asks whether the rules run before or after tidying the text. Run them **after**.
 
-      So the order is: **normalise formatting** (`df["centre"] = df["centre"].str.strip().str.title()`, parse dates, coerce numbers) → **then** apply membership and domain rules. Tidying fixes *representation*; validation judges *content*. Mixing them up turns formatting noise into false rejections.
+      `rule_unknown_centre` checks each delivery's centre against `centres.csv`. If a clerk typed `" mbarara "` or `"MBARARA"`, the raw text doesn't match `"Mbarara"`, so checking first rejects a perfectly good delivery, and a farmer doesn't get paid.
+
+      So the order is: first **tidy the formatting**: `df["centre"] = df["centre"].str.strip().str.title()` (remove outer spaces, then capitalise each word), turn date text into dates, and turn number text into numbers. **Then** apply the rules about what's allowed.
+
+      Tidying fixes *how something is written*; validation judges *what it says*. Do them in the wrong order and harmless formatting differences turn into false rejections.
   - heading: Exact duplicates vs record_id collisions
     body: |
-      These look similar and are handled oppositely:
+      **The idea:** two identical photocopies of the same slip? Keep one. Two *different* slips with the same slip number? You can't know which is real, so set both aside for a person to check.
 
       | | Exact duplicate | record_id collision |
       |---|---|---|
-      | What it is | the same row saved twice — every column identical | the same `record_id` with **different** values (45 L vs 120 L, or two farmers) |
+      | What it is | the same row saved twice; every column identical | the same `record_id` with **different** details (45 L vs 120 L, or two farmers) |
       | What you know | both copies say the same thing | at most one is true, and you don't know which |
-      | Action | keep one copy (`drop_duplicates(keep="first")`), count the removed copies | reject **both** rows to `rejected_df` with `reason="record_id_collision"` |
+      | What to do | keep one copy (`drop_duplicates(keep="first")`) and count the removed copies | reject **both** rows into `rejected_df` with `reason="record_id_collision"` |
 
-      Keeping "the first" collision row is a silent guess that can pay the wrong farmer or the wrong amount. Rejecting both sends the conflict to a human. Order matters: remove exact duplicates **first**, otherwise two identical rows would look like a collision.
+      Keeping "the first" collision row is a silent guess that can pay the wrong farmer, or the wrong amount. Rejecting both sends the conflict to a person to sort out.
+
+      **Order matters:** remove exact duplicates **first**. Otherwise two identical rows would look like a collision, and you'd reject a good delivery.
 
       ```python
-      exact = df.duplicated(keep="first")
-      df = df[~exact]
-      collision = df.duplicated(subset=["record_id"], keep=False)   # marks BOTH rows
+      exact = df.duplicated(keep="first")                            # True for the extra copies
+      df = df[~exact]                                                # keep one of each
+      collision = df.duplicated(subset=["record_id"], keep=False)    # True for BOTH clashing rows
       ```
   - heading: Row conservation — proving nothing was lost
     body: |
-      The invariant you assert at the end:
+      **The idea:** at the end of the day, count the slips: the "paid" tray plus the "rejected" tray plus the photocopies you threw away must equal the pile you started with.
+
+      The rule you check (assert) at the end:
 
       **rows_in = len(clean_df) + len(rejected_df) + exact_duplicates_removed**
 
-      It catches the most common bugs: a filter that silently drops rows without recording them, a rule applied twice, or a collision handled by keeping one row. Examiners love asking for it because it turns "I think my cleaning is right" into a check that either passes or fails.
+      It catches the most common bugs: a filter that quietly drops rows without recording them, a rule applied twice, or a collision "handled" by keeping one row. Examiners love asking for it, because it turns "I think my cleaning is right" into a check that either passes or fails.
 
-      Two more habits that score marks: give every rejected row exactly one `reason` (the first rule it failed, applied in a fixed order), and log the count per reason so the operations team can see *why* data was rejected, not just how much.
+      Two more habits that earn marks: give every rejected row exactly **one** `reason` (the first rule it failed, with the rules always applied in the same order), and log how many rows were rejected for each reason, so the operations team can see *why* data was rejected, not just how much.
 examples:
   - title: Account for every row
     problem: A raw batch has 640 rows. There are 18 exact duplicate copies, 7 record_ids that collide (2 rows
