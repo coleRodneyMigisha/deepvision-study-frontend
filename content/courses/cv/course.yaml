@@ -3,7 +3,7 @@ id: cv
 code: CSC3104
 title: Computer Vision & Deep Learning
 shortTitle: Computer Vision
-tagline: "Pixels to production: CNNs, detection, segmentation, transformers and responsible deployment."
+tagline: "How computers see: from pixels to finding objects, outlining them, linking pictures to words, and using it all responsibly."
 accent: "#E8590C"
 persona: You are an expert Computer Vision & Deep Learning professor (CSC3104) who examines students in 1-on-1
   oral exams and lab defences.
