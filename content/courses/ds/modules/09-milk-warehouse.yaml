@@ -1,43 +1,45 @@
 id: milk-warehouse
 title: "Practical Test 02 (dsc3103_test_02): Milk Star Schema & Analytics"
-subtitle: Conquer unknown dimension keys, 2-stage capacity SQL & partition pruning
-recap: "In test_02, 6 farmers (408 deliveries) are missing from farmers.csv, so add an Unknown member
-  (farmer_key = 0) and COALESCE the join key — all 20,000 fact rows survive with no NULL keys. capacity_litres
-  is a DAILY limit: aggregate litres per (centre, date) in a CTE before comparing. Rank top farmers with
-  RANK() OVER (PARTITION BY centre …) excluding Unknown, and partition by month so April queries scan one
-  partition."
+subtitle: Handling unregistered farmers, daily capacity checks, rankings and faster queries
+recap: |
+  In test_02, 6 farmers (408 deliveries) aren't in farmers.csv. Instead of losing those deliveries, add an
+  "Unknown" farmer row (farmer_key = 0) and use COALESCE to point unmatched deliveries at it, so all 20,000
+  delivery rows survive with no empty (NULL) keys. capacity_litres is a limit PER DAY, so first add up the litres
+  per centre per day (in a CTE) and then compare. Rank the top farmers per centre with RANK() OVER (PARTITION BY
+  centre …), leaving out the Unknown bucket. And store the data split by month, so a query about April only reads
+  April's file.
 traps:
-  - Inner-joining dim_farmer and silently dropping 408 deliveries.
-  - Comparing single deliveries to a daily capacity.
-  - Including the Unknown farmer bucket in top-farmer rankings.
+  - "Inner-joining to dim_farmer, which silently drops the 408 deliveries from unregistered farmers."
+  - "Comparing single deliveries with a daily capacity. No single delivery is anywhere near a whole day's limit."
+  - "Including the Unknown farmer bucket in the top-farmer rankings, where it would unfairly win."
 lesson:
   checkpointStep: 3
   steps:
-    - Let's dissect `dsc3103_test_02` — the Milk Cooperative Practical Test! You were given
-      `milk_clean.parquet` (20,000 rows across 6 months, `2026-03` to `2026-08`), `centres.csv` (5 centres),
-      and `farmers.csv` (294 registered farmers).
-    - "Trap #1 in Question 2(a): `milk_clean.parquet` has 300 distinct `farmer_id`s, meaning 6 farmers (408
-      deliveries!) are NOT in `farmers.csv`. If `dim_farmer` only loads `farmers.csv`, joining `fact_delivery`
-      either drops 408 rows or leaves `farmer_key` NULL — failing Question 2(c)'s integrity checks!"
-    - "The Kimball solution: insert an explicit Unknown Member row (`farmer_key = 0, farmer_id = -1,
-      farmer_name = 'Unknown'`) into `dim_farmer` via `UNION ALL`, and use `COALESCE(f.farmer_key, 0)` when
-      building `fact_delivery`. All 20,000 rows survive with zero NULL keys!"
-    - "Checkpoint: how do you write `days_over_capacity` and `top_farmers_per_centre` in DuckDB SQL, and what
-      happens when a farmer moves to a new centre in July?"
-    - In Question 3(b), `capacity_litres` is a DAILY centre limit (e.g. Kiruhura = 950 L/day), NOT a
-      single-delivery limit! You must use a CTE to `SUM(litres)` per `(centre, date_key)` first, then count
-      days where `daily_litres > capacity_litres` (Kiruhura = 41 days, worst day = 1,203.5 L).
-    - In Question 3(c), exclude the Unknown farmer bucket (`WHERE f.farmer_key != 0`), group by `(centre,
-      farmer_key)`, and rank with `RANK() OVER (PARTITION BY centre ORDER BY SUM(litres) DESC) <= 3`. And in
-      Question 3(d), partitioning by `month` means querying April 2026 (`month='2026-04'`) reads just 1 of 6
-      files (3,201 rows instead of 20,000)!
+    - "Let's go through dsc3103_test_02, the milk cooperative practical test. You were given milk_clean.parquet
+      (20,000 deliveries over 6 months, 2026-03 to 2026-08), centres.csv (5 centres) and farmers.csv (294 registered
+      farmers)."
+    - "Trap #1 in Question 2(a): milk_clean.parquet has 300 different farmer_ids, so 6 farmers (408 deliveries!)
+      are NOT in farmers.csv. If dim_farmer only loads farmers.csv, joining fact_delivery either drops those 408
+      rows or leaves their farmer_key empty (NULL), and Question 2(c)'s integrity checks fail!"
+    - "The Kimball solution: add an explicit Unknown row (farmer_key = 0, farmer_id = -1, farmer_name = 'Unknown')
+      to dim_farmer with UNION ALL, and use COALESCE(f.farmer_key, 0) (meaning \"use the key, or 0 if there isn't
+      one\") when building fact_delivery. All 20,000 rows survive with no NULL keys!"
+    - "Checkpoint: how do you write days_over_capacity and top_farmers_per_centre in DuckDB SQL, and what happens
+      when a farmer moves to a new centre in July?"
+    - "In Question 3(b), capacity_litres is a DAILY limit for each centre (e.g. Kiruhura = 950 L per day), NOT a limit
+      per delivery! Use a CTE (a named temporary result) to SUM(litres) per (centre, date_key) first, then count the
+      days where daily_litres > capacity_litres (Kiruhura: 41 days, worst day 1,203.5 L)."
+    - "In Question 3(c), leave out the Unknown bucket (WHERE f.farmer_key != 0), group by (centre, farmer_key), and
+      rank with RANK() OVER (PARTITION BY centre ORDER BY SUM(litres) DESC) <= 3. In Question 3(d), storing the data
+      split by month means a query for April 2026 (month='2026-04') reads just 1 of 6 files (3,201 rows instead of
+      20,000)!"
 checkpoint:
   question: In `dsc3103_test_02`, how should `dim_farmer` and `fact_delivery` handle the 6 unregistered
     `farmer_id`s so all 3 integrity checks pass? Also explain why `days_over_capacity` needs a two-stage
     aggregation and what happens when a farmer moves centres in July.
-  hint: Mention the `farmer_key = 0` ('Unknown') row + `COALESCE`, summing litres per `(centre, date)` in a CTE
-    before comparing to `capacity_litres`, and how `fact_delivery` + SCD Type 2 preserve historical centre
-    assignments.
+  hint: "Think about a farmer_key = 0 'Unknown' row plus COALESCE. Then: the capacity is per day, so what must you add
+    up first, in a CTE, before comparing? And how can the warehouse remember which centre a farmer belonged to
+    before July (SCD Type 2)?"
   keywords:
     - unknown
     - coalesce
@@ -54,29 +56,38 @@ checkpoint:
     - partition
     - history
     - scd
-  idealAnswer: "To preserve all 20,000 deliveries without NULL foreign keys, `dim_farmer` includes a dedicated
-    Unknown member row (`farmer_key = 0, farmer_id = -1, farmer_name = 'Unknown'`) and `fact_delivery` maps
-    unmatched `farmer_id`s via `COALESCE(f.farmer_key, 0)`. That satisfies all three integrity checks:
-    `COUNT(*) == 20,000`, zero orphan foreign keys, and zero NULL keys. For `days_over_capacity`,
-    `capacity_litres` is a daily centre limit, so a CTE must first compute `SUM(litres)` per `(centre,
-    date_key)` before counting days where `daily_litres > capacity_litres`. When a farmer moves centres in
-    July, earlier deliveries in `fact_delivery` keep their original `centre_key` so history is untouched; to
-    also track home-centre history in `dim_farmer`, use SCD Type 2 (a new dimension row with
-    `valid_from`/`valid_to`)."
+  idealAnswer: "To keep all 20000 deliveries without empty (null) foreign keys, dim_farmer gets a special Unknown row
+    (surrogate key farmer_key = 0, farmer_id = -1, farmer_name = 'Unknown'), and fact_delivery maps unmatched
+    farmer_ids to it with COALESCE(f.farmer_key, 0). That passes all three integrity checks: COUNT(*) = 20,000, no
+    foreign keys pointing at missing rows, and no NULL keys. For days_over_capacity, capacity_litres is a daily
+    limit per centre, so a CTE must first SUM(litres) per (centre, date_key) to get daily totals, and only then
+    count the days where daily_litres > capacity_litres. Top farmers use a window function: RANK() OVER (PARTITION
+    BY centre ORDER BY SUM(litres) DESC). When a farmer moves centres in July, their earlier deliveries in
+    fact_delivery keep their original centre_key, so history is untouched; to also track each farmer's home-centre
+    history in dim_farmer, use SCD Type 2 (add a new dimension row with valid_from / valid_to dates)."
 terms:
-  - term: Unknown member row (`key = 0`)
-    definition: Default dimension record (`'Unknown'`) so unregistered business keys map cleanly without NULL FKs
-      or dropped facts.
-  - term: Pre-computed measure (`revenue_ugx`)
-    definition: Stored once in `fact_delivery` (`litres * price_ugx_per_litre`) for consistent, fast aggregations.
-  - term: Two-stage CTE aggregation
-    definition: Aggregate atomic deliveries to daily centre totals in a CTE before comparing against daily
-      `capacity_litres`.
-  - term: Window ranking (`RANK() OVER`)
-    definition: "`RANK() OVER (PARTITION BY centre ORDER BY total_litres DESC)` to pick top-N per group."
+  - term: Unknown member row (key = 0)
+    definition: A ready-made "Unknown" row in a dimension, so records whose value is missing or unregistered can
+      point to it instead of being dropped or left NULL.
+  - term: COALESCE
+    definition: An SQL function that returns the first value that isn't empty, e.g. COALESCE(farmer_key, 0) gives the
+      key, or 0 if there isn't one.
+  - term: Pre-computed measure (revenue_ugx)
+    definition: A value calculated once and stored in fact_delivery (litres × price_ugx_per_litre), so every report uses
+      the same number.
+  - term: CTE (WITH … AS)
+    definition: A named, temporary result inside one SQL query, used to do a calculation in two stages.
+  - term: Two-stage aggregation
+    definition: First add up deliveries into daily totals per centre, then compare those totals with the daily capacity.
+  - term: Window ranking (RANK() OVER)
+    definition: Numbering rows within each group, e.g. RANK() OVER (PARTITION BY centre ORDER BY total_litres DESC)
+      ranks farmers within each centre.
+  - term: Partition pruning
+    definition: When data is stored in separate folders (e.g. one per month), a filter on that column reads only the
+      matching folders.
   - term: SCD Type 2
-    definition: Slowly Changing Dimension technique that adds a new versioned dimension row when an attribute
-      changes, preserving history.
+    definition: A "slowly changing dimension" method. When something changes (a farmer's centre), add a new dated row
+      instead of overwriting, so history is kept.
 quiz:
   - question: In `dsc3103_test_02`, `milk_clean.parquet` has 20,000 rows, `farmers.csv` has 294 farmers, and 408
       deliveries come from 6 unregistered `farmer_id`s. With an Unknown row in `dim_farmer`, how many rows are
@@ -192,68 +203,80 @@ lab:
 notes:
   - heading: The test_02 data and what's hiding in it
     body: |
-      `dsc3103_test_02` gives you `milk_clean.parquet` (20,000 deliveries, March–August 2026), `centres.csv` (5 centres with a **daily** `capacity_litres`) and `farmers.csv` (294 registered farmers). You build `dim_date`, `dim_centre`, `dim_farmer` and `fact_delivery`, then answer analytics questions in DuckDB.
+      **The idea:** the hard part of this test isn't the SQL. It's three traps hidden in the data.
 
-      The traps are in the data, not the SQL syntax:
+      `dsc3103_test_02` gives you `milk_clean.parquet` (20,000 deliveries, March–August 2026), `centres.csv` (5 centres, each with a **daily** `capacity_litres`) and `farmers.csv` (294 registered farmers). You build `dim_date`, `dim_centre`, `dim_farmer` and `fact_delivery`, then answer analysis questions in DuckDB.
 
-      1. **300** distinct `farmer_id`s appear in the deliveries but only **294** are registered — 6 farmers, **408 deliveries**, have no dimension row.
-      2. `capacity_litres` is a limit **per day**, but the biggest single delivery is 46.8 L — so any row-by-row comparison finds nothing.
-      3. A farmer can move to another centre mid-season (July), which changes how "top farmers per centre" should be counted.
+      The traps:
+
+      1. **300** different `farmer_id`s appear in the deliveries, but only **294** are registered. So 6 farmers, with **408 deliveries**, have no row in the farmer table.
+      2. `capacity_litres` is a limit **per day**, but the biggest single delivery is only 46.8 L. So comparing each delivery with the capacity finds nothing.
+      3. A farmer can move to another centre partway through the season (July), which changes how "top farmers per centre" should be counted.
   - heading: Unknown members, not lost rows
     body: |
+      **The idea:** if a delivery slip names a farmer who isn't on the register, don't throw the slip away. File it under "Unknown farmer" so the milk still counts.
+
       If `dim_farmer` only contains `farmers.csv`:
 
-      - an **INNER JOIN** silently drops the 408 deliveries (2% of the litres disappear from every total);
-      - a **LEFT JOIN** keeps them with a **NULL** `farmer_key`, breaking referential integrity and making GROUP BYs show a mysterious NULL group.
+      - an **INNER JOIN** (keep only rows that match on both sides) silently drops the 408 deliveries, so about 2% of the milk disappears from every total;
+      - a **LEFT JOIN** (keep every delivery) keeps them but with an empty (**NULL**) `farmer_key`, which breaks the rule that every key points to a real row (referential integrity), and a mysterious NULL group shows up in every GROUP BY.
 
       Kimball's answer is an explicit **Unknown member**:
 
       ```sql
       CREATE TABLE dim_farmer AS
-      SELECT 0 AS farmer_key, -1 AS farmer_id, 'Unknown' AS farmer_name
+      SELECT 0 AS farmer_key, -1 AS farmer_id, 'Unknown' AS farmer_name      -- the Unknown row
       UNION ALL
       SELECT ROW_NUMBER() OVER (ORDER BY farmer_id) AS farmer_key, farmer_id, farmer_name FROM farmers;
 
       CREATE TABLE fact_delivery AS
-      SELECT d.date_key, c.centre_key, COALESCE(f.farmer_key, 0) AS farmer_key, m.litres, m.litres * m.price_ugx AS revenue_ugx
+      SELECT d.date_key, c.centre_key,
+             COALESCE(f.farmer_key, 0) AS farmer_key,                         -- unmatched → 0 (Unknown)
+             m.litres, m.litres * m.price_ugx AS revenue_ugx
       FROM milk m
       LEFT JOIN dim_farmer f USING (farmer_id)
       JOIN dim_centre c USING (centre) JOIN dim_date d ON d.date = m.date;
       ```
 
-      Result: 20,000 fact rows, zero NULL keys, and the 408 deliveries are visible as "Unknown" — which is itself a data-quality finding to report.
+      Result: 20,000 fact rows, no NULL keys, and the 408 deliveries show up as "Unknown", which is itself a data-quality problem worth reporting.
   - heading: Two-stage aggregation for capacity
     body: |
-      "How many days was each centre over capacity?" Capacity is daily, so first compute the **daily total per centre**, then compare:
+      **The idea:** a lorry can carry 950 litres a day. To know if it was overloaded, add up the whole day's milk first. Checking one 40-litre can at a time will never look overloaded.
+
+      "How many days was each centre over capacity?" The capacity is per day, so do it in two stages: first the **daily total for each centre**, then compare:
 
       ```sql
-      WITH daily AS (
+      WITH daily AS (                                           -- stage 1: daily totals
         SELECT centre_key, date_key, SUM(litres) AS daily_litres
         FROM fact_delivery GROUP BY centre_key, date_key)
-      SELECT c.centre_name, COUNT(*) AS days_over_capacity
+      SELECT c.centre_name, COUNT(*) AS days_over_capacity       -- stage 2: compare and count
       FROM daily d JOIN dim_centre c USING (centre_key)
       WHERE d.daily_litres > c.capacity_litres
       GROUP BY c.centre_name ORDER BY days_over_capacity DESC;
       ```
 
-      Kiruhura (950 L/day) was over on **41** days, Masaka 36, Mbale 32, Gulu 28, Mbarara 23. `WHERE litres > capacity_litres` on single deliveries returns **zero** — a correct query for the wrong question.
+      The `WITH daily AS (...)` part is a **CTE**: a named, temporary result used later in the same query.
+
+      Results: Kiruhura (950 L/day) was over capacity on **41** days, Masaka 36, Mbale 32, Gulu 28, Mbarara 23. Writing `WHERE litres > capacity_litres` on single deliveries returns **zero**: a correct query for the wrong question.
   - heading: Ranking, partitions and SCD2
     body: |
-      **Top 3 farmers per centre** uses a window function — and must exclude the Unknown bucket, which would otherwise win:
+      **The idea:** rank farmers within each centre, not across the whole cooperative; store data in monthly folders so you only open the month you need; and when a farmer moves, add a new dated record instead of rewriting history.
+
+      **Top 3 farmers per centre** uses a **window function**, which numbers rows within each group. Leave out the Unknown bucket, or it would win (it lumps 6 farmers together):
 
       ```sql
       SELECT * FROM (
         SELECT c.centre_name, f.farmer_name, SUM(litres) AS total,
-               RANK() OVER (PARTITION BY c.centre_name ORDER BY SUM(litres) DESC) AS rnk
+               RANK() OVER (PARTITION BY c.centre_name ORDER BY SUM(litres) DESC) AS rnk   -- rank within each centre
         FROM fact_delivery x JOIN dim_farmer f USING (farmer_key) JOIN dim_centre c USING (centre_key)
         WHERE f.farmer_key != 0 GROUP BY 1, 2) WHERE rnk <= 3;
       ```
 
-      `RANK` gives ties the same rank (and skips the next); `ROW_NUMBER` breaks ties arbitrarily.
+      `RANK` gives tied farmers the same rank (and skips the next number); `ROW_NUMBER` breaks ties arbitrarily.
 
-      **Partitioning** `fact_delivery` by `month` writes one Parquet folder per month. A query with `WHERE month = '2026-04'` reads only that folder (3,201 rows instead of 20,000) — *partition pruning*. A filter on another column, like `farmer_key = 17`, still reads all six. Check with `EXPLAIN ANALYZE`.
+      **Partitioning** `fact_delivery` by `month` writes one Parquet folder per month. A query with `WHERE month = '2026-04'` reads only that folder (3,201 rows instead of 20,000). That's **partition pruning**. A filter on a different column, like `farmer_key = 17`, still reads all six. Check with `EXPLAIN ANALYZE`.
 
-      A farmer moving centres in July is a **slowly changing dimension**: with SCD Type 2 you keep one dimension row per period (`valid_from`, `valid_to`), so June deliveries count for the old centre and August for the new one.
+      **A farmer moving centres in July** is a *slowly changing dimension*. With **SCD Type 2** you keep one farmer row per period (`valid_from`, `valid_to`), so June deliveries count for the old centre and August deliveries for the new one.
 examples:
   - title: What each join does to the fact table
     problem: milk_clean has 20,000 deliveries; 408 are from unregistered farmers. How many fact rows and NULL
