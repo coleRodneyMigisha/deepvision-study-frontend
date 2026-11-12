@@ -1,34 +1,37 @@
 id: docker
 title: Containerization, Multi-Stage Docker & Security Hardening
-subtitle: Package microservices with lightweight base images, layer caching, and rootless users
-recap: Docker packages code, runtime and libraries into immutable layered images so 'works on my laptop' works
-  everywhere. Multi-stage builds compile wheels in a heavy builder stage and copy only the results into a slim
-  base, cutting size by ~80% and removing compilers from the attack surface. Run as a non-root user and use
-  .dockerignore to keep secrets and data out of the image.
+subtitle: Packaging an app with everything it needs, keeping the package small, and making it hard to attack
+recap: |
+  Docker packs your code, the Python version and every library into a sealed, layered package (an image), so an
+  app that "works on my laptop" works the same everywhere. A multi-stage build uses a big "builder" stage with
+  compilers to prepare the libraries, then copies only the finished results into a small, clean base image. That
+  cuts the size by about 80% and leaves no compilers for an attacker to use. Run the app as a normal (non-root)
+  user, and use .dockerignore to keep secrets and data out of the image.
 traps:
-  - Shipping gcc and build tools in the production image.
-  - Running the container as root.
-  - Copying source before installing requirements, which breaks layer caching.
+  - "Shipping gcc and other build tools in the final image. They make it huge and give attackers tools."
+  - "Running the container as root (the all-powerful admin user)."
+  - "Copying your code before installing the requirements. Then every code change re-installs every library."
 lesson:
   checkpointStep: 3
   steps:
-    - A web API that works on your developer laptop often fails when deployed to cloud servers due to
-      mismatched Python versions, missing C-libraries, or differing OS packages. Docker solves this.
-    - A Docker image is a standalone, executable software package bundling code, runtime, system tools, and
-      libraries into immutable, layered container images.
-    - A naive Dockerfile starts from a bloated 1GB Ubuntu image and installs build compilers (gcc, g++) that
-      linger in the final container, creating huge attack surfaces and slow deployment times.
-    - "Checkpoint: why are multi-stage Docker builds essential for Python ML APIs, and why should containers
-      never run as root in production?"
-    - Multi-stage builds use a heavy build environment with compilers to compile Python wheels, then copy only
-      the compiled packages into a pristine, minimal python:3.11-slim base image, slashing size by 80%.
-    - Running as non-root (USER appuser) ensures that if an attacker exploits a code vulnerability or
-      malicious pickle file, they cannot break out to modify root system files or mount host drives.
+    - "A web API that works on your laptop often fails on a cloud server because of a different Python version,
+      missing system libraries, or different operating-system packages. Docker solves this."
+    - "A Docker image is a sealed, runnable package containing your code, the Python runtime, system tools and
+      libraries, built up in layers that never change once built."
+    - "A careless Dockerfile starts from a 1 GB Ubuntu image and installs compilers (gcc, g++) that stay in the final
+      container. That makes it slow to deploy and gives attackers more to work with (a bigger attack surface)."
+    - "Checkpoint: why are multi-stage Docker builds so useful for Python ML APIs, and why should containers never run
+      as root in production?"
+    - "A multi-stage build uses a heavy first stage, with compilers, to build the Python packages, then copies only
+      the finished packages into a clean, minimal python:3.11-slim image, cutting the size by about 80%."
+    - "Running as a normal user (USER appuser), not root, means that if an attacker exploits a bug or a malicious
+      pickle file, they can't change system files or reach the host computer's drives as easily."
 checkpoint:
   question: Explain the architecture of a multi-stage Docker build for a Python ML serving image, and detail two
     security best practices for production container deployment.
-  hint: Describe the 'builder' stage versus the final 'runner' stage. Mention image size reduction, compiler
-    elimination, non-root users, and .dockerignore.
+  hint: "Describe the two stages: a 'builder' stage with compilers, and a final small 'runner' stage. What gets copied
+    across, and what's left behind? For security, think about which user the app runs as, and what .dockerignore
+    keeps out."
   keywords:
     - multi-stage
     - docker
@@ -40,28 +43,35 @@ checkpoint:
     - attack surface
     - layer
     - caching
-  idealAnswer: "A multi-stage Docker build splits compilation from execution. The first stage (`FROM python:3.11
-    AS builder`) installs build tools (`gcc`, `g++`, `libpq-dev`) to compile heavy Python dependencies and
-    generate wheels. The final production stage (`FROM python:3.11-slim`) copies only the pre-compiled wheels
-    and application code, discarding compiler binaries, header files, and build cache. This shrinks image size
-    from ~1.2GB down to ~160MB, accelerating container startup and scaling. Two critical security best
-    practices are: 1) Enforcing a dedicated non-root user (`RUN useradd -m appuser && USER appuser`) to block
-    host privilege escalation if a vulnerability is exploited; and 2) Using a strict `.dockerignore` file to
-    exclude virtualenvs, test datasets, git history, and secrets."
+  idealAnswer: "A multi-stage Docker build separates building from running. The first, builder stage (FROM python:3.11
+    AS builder) installs compilers and build tools (gcc, g++, libpq-dev) to compile the heavy Python libraries into
+    ready-to-install packages (wheels). The final stage (FROM python:3.11-slim) copies in only those wheels and the
+    app code, leaving the compilers, header files and build leftovers behind. That shrinks the image from about
+    1.2 GB to about 160 MB, so containers start and scale faster, and there's a smaller attack surface. Copying
+    requirements before the code also keeps each layer's caching effective. Two key security practices: (1) run as
+    a dedicated non-root user (RUN useradd -m appuser, then USER appuser), so an attacker who exploits a bug can't
+    easily gain control of the host; and (2) use a strict .dockerignore file to keep virtual environments, test
+    data, git history and secrets out of the image."
 terms:
-  - term: Docker Image Layer
-    definition: A read-only filesystem diff created by instructions (RUN, COPY, ADD) in a Dockerfile, cached for
-      fast rebuilds.
-  - term: Multi-Stage Build
-    definition: A Docker feature allowing developers to use multiple FROM statements, copying only necessary
-      artifacts between stages.
-  - term: Base Image
-    definition: The foundational container image (e.g. python:3.11-slim) providing OS userland and runtime dependencies.
-  - term: Rootless Container
-    definition: Running the main container application process as an unprivileged user (UID >= 1000) rather than root.
+  - term: Docker image vs container
+    definition: An image is the sealed package; a container is a running copy of it.
+  - term: Dockerfile
+    definition: The recipe file listing the steps (FROM, COPY, RUN, …) to build an image.
+  - term: Image layer
+    definition: The read-only result of one Dockerfile step. Docker reuses (caches) unchanged layers to rebuild fast.
+  - term: Base image
+    definition: The starting image you build on, e.g. python:3.11-slim, which provides a minimal operating system and
+      Python.
+  - term: Multi-stage build
+    definition: A Dockerfile with several FROM stages, copying only the needed results from one stage into the next.
+  - term: Attack surface
+    definition: Everything an attacker could try to use. Fewer tools and packages in the image means a smaller attack
+      surface.
+  - term: Root vs non-root user
+    definition: Root is the all-powerful admin account. Running your app as an ordinary user limits the damage if it's
+      hacked.
   - term: .dockerignore
-    definition: Configuration file specifying files and directories to omit when sending the build context to the
-      Docker daemon.
+    definition: A file listing what to leave out of the image (e.g. .git, .env secrets, datasets, notebooks).
 quiz:
   - question: Why place 'COPY requirements.txt .' and 'RUN pip install' before 'COPY . .' in a Dockerfile?
     options:
@@ -89,7 +99,7 @@ quiz:
       - Python
       - The app code
     answer: 1
-    explanation: Only the built artifacts are copied into the runtime stage.
+    explanation: Only the finished packages are copied into the final stage; the compilers stay behind in the builder.
   - question: Why copy requirements.txt before the application code?
     options:
       - Docker requires it
@@ -97,7 +107,7 @@ quiz:
       - It makes the image smaller
       - For security
     answer: 1
-    explanation: Layer caching is invalidated from the first changed layer down.
+    explanation: A change rebuilds that layer and everything after it. Libraries change rarely, so installing them first means code edits only rebuild the last step.
   - question: Why can python:3.11-alpine make ML image builds slower?
     options:
       - It's bigger
@@ -105,7 +115,7 @@ quiz:
       - It has no pip
       - It can't run Python 3.11
     answer: 1
-    explanation: Prebuilt manylinux wheels target glibc.
+    explanation: Ready-made packages are built for the glibc library, but Alpine uses musl, so they often have to be compiled from scratch.
   - question: What does USER appuser protect against?
     options:
       - Slow startup
@@ -113,7 +123,7 @@ quiz:
       - Large images
       - Network latency
     answer: 1
-    explanation: Least privilege limits what a compromised process can do.
+    explanation: If the app is hacked, the attacker only gets an ordinary user's limited powers, not root's (the "least privilege" rule).
   - question: What belongs in .dockerignore?
     options:
       - requirements.txt
@@ -121,7 +131,7 @@ quiz:
       - The Dockerfile
       - The app code
     answer: 1
-    explanation: Keep the build context small and secrets out of the image.
+    explanation: "Things like .git, .env secrets and datasets: it keeps the build small and secrets out of the image."
   - question: Where should the GEMINI_API_KEY go?
     options:
       - Hard-coded in the Dockerfile
@@ -129,7 +139,7 @@ quiz:
       - Injected as an environment variable at runtime
       - In the image label
     answer: 2
-    explanation: Images are shareable artifacts; secrets must not be baked in.
+    explanation: In an environment variable set when the container starts. Images get copied and shared, so secrets must never be built into them.
 fact:
   title: Why Alpine Linux Can Slow Python Builds
   body: Alpine Linux uses musl libc instead of glibc. Because most scientific Python packages (NumPy, SciPy,
@@ -165,12 +175,16 @@ lab:
 notes:
   - heading: '"Works on my machine"'
     body: |
-      An API that runs on your laptop can fail on a server because of a different Python version, a missing system library (`libgomp` for XGBoost), different package versions, or environment variables you forgot existed.
+      **The idea:** instead of sending someone a recipe and hoping their kitchen has the same ingredients, send them the finished meal in a sealed box.
 
-      A **Docker image** packages *everything* the app needs — OS libraries, the Python runtime, pinned packages, your code and model — into one immutable artifact. A **container** is a running instance of that image. The same image runs identically on your laptop, in CI and in production.
+      An API that runs on your laptop can fail on a server because of a different Python version, a missing system library (XGBoost needs `libgomp`), different package versions, or settings you forgot you had.
+
+      A **Docker image** packs *everything* the app needs (system libraries, the Python runtime, exact package versions, your code and your model) into one sealed package that never changes once built. A **container** is a running copy of that image. The same image runs identically on your laptop, in automated testing and on the live server.
   - heading: Layers and caching
     body: |
-      Each Dockerfile instruction creates a **layer**. Docker caches layers and reuses them if the instruction and its inputs haven't changed. Because a change invalidates **that layer and every layer after it**, order matters:
+      **The idea:** Docker builds an image like a stack of plates, one per instruction. If you change a plate, every plate above it has to be rebuilt, so put the ones that rarely change at the bottom.
+
+      Each Dockerfile instruction creates a **layer**. Docker remembers (caches) layers and reuses them if the instruction and its inputs haven't changed. A change rebuilds **that layer and every layer after it**, so order matters:
 
       ```dockerfile
       FROM python:3.11-slim
@@ -180,36 +194,50 @@ notes:
       COPY app/ app/                              # changes often
       ```
 
-      With this order, editing your code rebuilds only the last layer (seconds). If you `COPY . .` before `pip install`, every code change reinstalls all dependencies (minutes). A `.dockerignore` keeps `.git`, `.env`, notebooks and datasets out of the build context — smaller, faster, and no leaked secrets.
+      With this order, editing your code only rebuilds the last layer (seconds). If you `COPY . .` before `pip install`, every code change re-installs all the libraries (minutes).
+
+      A `.dockerignore` file keeps `.git`, `.env` (secrets), notebooks and datasets out of the build. Smaller, faster, and no leaked passwords.
   - heading: Multi-stage builds
     body: |
-      Some packages need compilers (gcc, g++, build headers) to install. Those tools are hundreds of MB and are pure attack surface once the app is built.
+      **The idea:** build the furniture in the workshop, then deliver only the finished furniture, not the saws and drills.
 
-      A **multi-stage build** uses a heavy *builder* stage to compile, then copies only the results into a clean, minimal runtime stage:
+      Some Python packages need **compilers** (gcc, g++, header files) to install. Those tools take hundreds of MB, and once the app is built they're just extra things an attacker could use.
+
+      A **multi-stage build** uses a heavy *builder* stage to compile everything, then copies only the finished results into a clean, minimal stage:
 
       ```dockerfile
-      FROM python:3.11 AS builder
+      FROM python:3.11 AS builder                          # stage 1: the workshop
       COPY requirements.txt .
       RUN pip wheel --wheel-dir /wheels -r requirements.txt
 
-      FROM python:3.11-slim
+      FROM python:3.11-slim                                # stage 2: the delivery
       COPY --from=builder /wheels /wheels
       RUN pip install --no-cache-dir /wheels/* && rm -rf /wheels
       COPY app/ app/
       ```
 
-      Typical result: a ~1.2 GB image becomes ~150–200 MB — faster to push, pull and start, and with no compilers for an attacker to use. Base image choice matters too: `python:3.11-slim` (Debian, glibc) is the safe default; **Alpine** is tiny but uses musl, so NumPy/XGBoost wheels often must compile from source — slow builds and subtle bugs.
+      Typical result: an image of about 1.2 GB shrinks to about 150–200 MB. It's faster to upload, download and start, and has no compilers for an attacker to use.
+
+      **Choosing the base image matters too.** `python:3.11-slim` (Debian, with the standard glibc library) is the safe default. **Alpine** is tiny but uses a different library (musl), so ready-made NumPy and XGBoost packages often don't fit and must be compiled from scratch: slow builds and subtle bugs.
   - heading: Run as non-root, and other hardening
     body: |
-      By default a container's process runs as **root**. If an attacker exploits a vulnerability in your code, a dependency — or a **malicious pickle** — they get root inside the container, which makes escaping to the host or tampering with mounted volumes much easier.
+      **The idea:** don't give the app the master key to the building. If someone breaks in through it, they should only reach one room.
+
+      By default, the program inside a container runs as **root**, the all-powerful admin user. If an attacker exploits a bug in your code, in a library, or through a **malicious pickle** file, they get root inside the container. That makes it much easier to break out to the host computer or tamper with connected storage.
 
       ```dockerfile
-      RUN useradd --create-home appuser
-      USER appuser
+      RUN useradd --create-home appuser        # create an ordinary user
+      USER appuser                             # run everything after this as that user
       CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
       ```
 
-      Other hardening worth naming in an exam: pin base image versions (or digests), scan images for CVEs (Trivy, Docker Scout), keep secrets out of the image (inject them as environment variables at runtime), add a `HEALTHCHECK`, and keep the image minimal.
+      Other hardening worth naming in an exam:
+
+      - fix (pin) the base image version, or its exact digest;
+      - scan images for known security holes (CVEs) with tools like Trivy or Docker Scout;
+      - keep secrets out of the image; pass them in as environment variables when the container starts;
+      - add a `HEALTHCHECK` so the platform can tell when the app stops responding;
+      - keep the image minimal.
 examples:
   - title: How much did the multi-stage build save?
     problem: A single-stage ubuntu-based image is 1,315 MB (850 MB base, 420 MB build tools, 45 MB app). Rebuilt
