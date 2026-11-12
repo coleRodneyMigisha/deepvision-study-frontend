@@ -1,40 +1,44 @@
 id: model-serving
 title: "From Model to Data Product: FastAPI & Docker"
-subtitle: Serve ML models with zero training-serving skew (Lab 9 Part 2 / Lab 10)
-recap: A model becomes a data product when it sits behind a validated HTTP API. Save the model with its
-  metadata (version, feature columns, metrics), load it once at startup rather than per request, validate
-  inputs with strict Pydantic schemas (HTTP 422 for bad payloads), and share feature code between training and
-  serving to prevent training-serving skew. Package it with pinned dependencies in Docker.
+subtitle: Turning a trained model into a reliable web service other programs can use (Lab 9 Part 2 / Lab 10)
+recap: |
+  A model becomes a useful product when other programs can send it a request over the web (an HTTP API) and get a
+  prediction back. Save the model together with notes about it (its version, which input columns it expects, how
+  well it scored). Load it once when the service starts, not for every request. Check every incoming request
+  against strict rules with Pydantic, which rejects bad input with an HTTP 422 error. Use the exact same feature
+  code for training and for serving, or predictions go quietly wrong (training-serving skew). Package it all,
+  with fixed library versions, in a Docker container.
 traps:
-  - Loading model.joblib inside the /predict handler.
-  - Re-implementing feature logic in the API (training-serving skew).
-  - Unpinned requirements so the container differs from training.
+  - "Loading model.joblib inside the /predict function, so the model is re-read from disk for every single request."
+  - "Re-writing the feature calculations inside the API. Any small difference makes predictions quietly wrong
+    (training-serving skew)."
+  - "Not fixing (pinning) library versions, so the container runs different code from the one used in training."
 lesson:
   checkpointStep: 3
   steps:
-    - A trained scikit-learn model sitting in a Jupyter notebook is not a data product. Downstream
-      applications need a reliable HTTP API that accepts a JSON request, validates it, and returns a
-      prediction in milliseconds.
-    - In Lab 9 Part 2 (Assignment 04), we serialised our RandomForestRegressor to `models/model.joblib`
-      alongside `models/model_metadata.json` recording `model_version`, `feature_columns`, and training
-      metrics.
-    - Our FastAPI service loads the model once at module startup (`lifespan` / module import), NOT inside
-      `POST /predict`. Loading a 50 MB model from disk on every request turns a 2 ms inference into a 300 ms
-      disk bottleneck.
-    - "Checkpoint: what is training-serving skew, how did we witness it in Step 8 of our lab, and what
-      architectural pattern prevents it permanently?"
-    - Training-serving skew happens when feature logic at inference diverges from training. In Step 8,
-      changing `is_rainy` from `rainfall_mm > 5.0` to `> 10.0` for `rainfall_mm = 8.2` silently shifted the
-      beans prediction from 2,927.25 to 2,889.58 UGX with zero HTTP errors!
-    - We prevent skew by placing `make_features()` and `FEATURE_COLUMNS` in a single shared module
-      (`src/common/features.py`) imported by both `src/ml/train.py` and `src/api/main.py`, enforcing strict
-      Pydantic input schemas, and packaging the exact runtime in Docker.
+    - "A trained scikit-learn model sitting in a Jupyter notebook isn't a product. Other programs need a reliable web
+      address (an HTTP API) that accepts a request in JSON format, checks it, and returns a prediction in
+      milliseconds."
+    - "In Lab 9 Part 2 (Assignment 04), we saved our RandomForestRegressor model to models/model.joblib, alongside
+      models/model_metadata.json, which records the model_version, the feature_columns it expects, and its training
+      scores."
+    - "Our FastAPI service loads the model once when it starts, NOT inside POST /predict. Reading a 50 MB model from
+      disk for every request turns a 2 ms prediction into a 300 ms wait."
+    - "Checkpoint: what is training-serving skew, how did we see it in Step 8 of our lab, and what design prevents it
+      for good?"
+    - "Training-serving skew happens when the features are calculated differently in the live service than in
+      training. In Step 8, changing is_rainy from rainfall_mm > 5.0 to > 10.0, for rainfall_mm = 8.2, quietly moved
+      the beans prediction from 2,927.25 to 2,889.58 UGX, with no error at all!"
+    - "We prevent skew by putting make_features() and FEATURE_COLUMNS in one shared file (src/common/features.py)
+      that both src/ml/train.py and src/api/main.py import, by checking inputs strictly with Pydantic, and by packaging
+      the exact software setup in Docker."
 checkpoint:
   question: What is training-serving skew in ML systems? Explain how a subtle threshold mismatch causes silent
     prediction errors, and how shared feature modules, Pydantic schemas, and Docker work together to make a
     model service reproducible.
-  hint: Reference `src/common/features.py` (`make_features`), why silent bugs are worse than HTTP 422/500
-    errors, and why `model.joblib` must be loaded once at startup inside a pinned Docker container.
+  hint: "Think about the shared file src/common/features.py (make_features). Why is a wrong answer with no error worse
+    than an HTTP 422 or 500 error? And why load model.joblib once at startup, inside a Docker container with fixed
+    library versions?"
   keywords:
     - training-serving skew
     - skew
@@ -50,27 +54,36 @@ checkpoint:
     - container
     - pinned
     - reproducible
-  idealAnswer: Training-serving skew occurs when the feature transformations applied during live inference
-    differ from those used during model training. Because the model still receives a numeric vector of the
-    expected shape, it raises no HTTP or runtime error — instead, it silently outputs wrong predictions (such
-    as when `is_rainy` threshold drifted from 5.0 mm to 10.0 mm in our lab). We eliminate this by defining
-    `make_features()` and `FEATURE_COLUMNS` in a single shared module (`src/common/features.py`) imported by
-    both `train.py` and `main.py`, validating raw request bounds with Pydantic (returning HTTP 422 on bad
-    inputs), loading `model.joblib` once at startup, and locking the OS and Python dependencies in a
-    Dockerfile.
+  idealAnswer: "Training-serving skew is when the feature calculations used for live predictions differ from those used
+    when the model was trained. The model still receives a list of numbers of the right size, so there's no HTTP or
+    program error: it just silently gives wrong predictions (as when the is_rainy threshold changed from 5.0 mm to
+    10.0 mm in our lab). We prevent it by defining make_features() and FEATURE_COLUMNS in one shared module
+    (src/common/features.py) imported by both train.py and main.py; checking incoming requests with Pydantic
+    validation, which returns HTTP 422 for bad input; loading model.joblib once at startup; and fixing (pinning)
+    the operating system and Python library versions in a Docker container, so the service is reproducible."
 terms:
+  - term: API (HTTP endpoint)
+    definition: A web address other programs can send requests to, e.g. POST /predict, and get answers from.
+  - term: JSON
+    definition: "A common text format for sending data, like {\"market\": \"Owino\", \"rainfall_mm\": 8.2}."
   - term: Training-serving skew
-    definition: Mismatch between feature engineering or data distribution at training time vs inference time.
+    definition: When features are calculated (or data looks) differently in the live service than during training.
   - term: Pydantic schema validation
-    definition: Declarative type + range checks (`Literal`, `Field(ge=0, le=500)`) that reject bad payloads with
-      HTTP 422.
+    definition: Rules written in code (types, allowed values, ranges like Field(ge=0, le=500)) that reject bad requests
+      with HTTP 422.
+  - term: HTTP 422
+    definition: The error code meaning "your request was understood but its contents are invalid".
   - term: Startup model loading
-    definition: Deserialising `model.joblib` once into memory when the worker starts rather than per HTTP request.
-  - term: Model metadata artifact
-    definition: "`model_metadata.json` storing `model_version`, `trained_at`, `feature_columns`, and test metrics
-      (`r2`)."
+    definition: Reading model.joblib into memory once, when the service starts, instead of on every request.
+  - term: Model metadata
+    definition: "A file (model_metadata.json) recording the model_version, training date, feature_columns and test scores
+      (e.g. r2)."
+  - term: Docker container
+    definition: A sealed package containing the code, the model, and exact versions of Python and every library, so it
+      runs the same everywhere.
   - term: Docker layer caching
-    definition: Copying `requirements.txt` and running `pip install` before `COPY src/` so code edits rebuild in seconds.
+    definition: Docker reuses steps that haven't changed. Installing requirements before copying the code means a code
+      change rebuilds in seconds.
 quiz:
   - question: In a Dockerfile, why should `COPY requirements.txt .` and `RUN pip install -r requirements.txt` come
       BEFORE `COPY src/ ./src/`?
