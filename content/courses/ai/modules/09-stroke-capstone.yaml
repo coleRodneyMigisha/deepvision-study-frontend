@@ -1,37 +1,41 @@
 id: stroke-capstone
 title: "Capstone: Regional Referral Hospital Stroke Risk Pipeline & Explainable AI (XAI)"
-subtitle: Deploy the Ministry of Health stroke predictor with threshold calibration and SHAP feature attributions
-recap: "The capstone ties everything together for the Regional Referral Hospital: with ~5% prevalence the
-  default 0.5 threshold misses most strokes, so calibrate it (e.g. 0.22) to maximise recall within triage
-  capacity. Physicians need explanations, not bare probabilities: SHAP gives each feature's additive
-  contribution from the base rate to this patient's risk, turning a score into clinical action."
+subtitle: Putting it all together, choosing the right cut-off for a hospital, and explaining each prediction to doctors
+recap: |
+  The capstone brings every module together for the Regional Referral Hospital. Only about 5% of patients have
+  strokes, so the usual cut-off of 0.5 (flag the patient if the predicted risk is above 50%) misses most of them.
+  Lower the cut-off (the threshold), e.g. to 0.22, to catch as many stroke patients as possible (high recall)
+  while the clinic can still see everyone flagged. Doctors need reasons, not just a number. SHAP shows how much
+  each of the patient's details added to their risk, starting from the hospital's average, which turns a score
+  into something a doctor can act on.
 traps:
-  - Keeping the 0.5 threshold on a 5%-positive problem.
-  - Presenting a risk score with no explanation to a physician.
-  - Reading SHAP values as causal effects rather than model attributions.
+  - "Keeping the 0.5 threshold when only 5% of cases are positive. Most stroke patients score below 0.5."
+  - "Giving a doctor a risk score with no explanation. In practice, unexplained scores tend to be ignored."
+  - "Reading SHAP values as causes. They explain what the model did, not what causes a stroke."
 lesson:
   checkpointStep: 3
   steps:
-    - "We unite all eight preceding modules into our comprehensive capstone: deploying the Cerebrovascular
-      Accident Risk Predictor for a high-volume Regional Referral Hospital in Uganda."
-    - Per the Ministry of Health service integration guidelines of June 2025, high-risk patients identified at
-      hospital triage are automatically enrolled in the chronic care clinic.
-    - Because only ~5% of patients suffer strokes, the default 0.5 classification threshold is catastrophic.
-      By calibrating the decision threshold to 0.22, we maximize clinical Recall while controlling triage
-      capacity.
-    - "Checkpoint: why is a 'black-box' prediction unacceptable to a referral physician, and how do SHAP
-      values provide mathematically grounded local explanations?"
-    - Physicians will not trust or act upon an unexplained numerical probability. Explainable AI (XAI) with
-      SHAP (SHapley Additive exPlanations) calculates each feature's exact marginal contribution to the
-      patient's risk score.
-    - "An attending doctor sees immediately: 'Base hospital risk is 5%. This patient is predicted at 42% risk
-      (+18% due to Age 68, +12% due to Hypertension, +7% due to Glucose 220 mg/dL)'. Explainability turns
-      predictions into clinical action."
+    - "Now we combine all eight earlier modules into the capstone project: deploying the stroke (cerebrovascular
+      accident) risk predictor for a busy Regional Referral Hospital in Uganda."
+    - "Under the Ministry of Health service integration guidelines of June 2025, high-risk patients found at hospital
+      triage are automatically enrolled in the chronic care clinic."
+    - "Because only about 5% of patients have strokes, the default cut-off of 0.5 is a disaster: most stroke patients
+      get a predicted risk below 50%. Lowering the decision threshold to 0.22 catches far more of them (higher
+      recall) while keeping the clinic's workload manageable."
+    - "Checkpoint: why is an unexplained (\"black-box\") prediction unacceptable to a referral doctor, and how do SHAP
+      values give a mathematically grounded explanation for each patient?"
+    - "Doctors won't trust or act on an unexplained number. Explainable AI (XAI) with SHAP (SHapley Additive
+      exPlanations) works out exactly how much each of the patient's details added to, or took away from, their risk
+      score."
+    - "The doctor sees at a glance: \"Average hospital risk is 5%. This patient's predicted risk is 42% (+18 because
+      they're 68, +12 for high blood pressure, +7 for glucose of 220 mg/dL).\" Explanations turn predictions into
+      clinical action."
 checkpoint:
   question: Why must clinical classification thresholds be calibrated away from the default 0.5, and how does
     SHAP (Shapley Additive exPlanations) establish clinical trust for attending doctors?
-  hint: Contrast symmetric classification cost with asymmetric clinical cost (missing a stroke vs ordering an
-    extra test). Mention game theory, local feature attributions, and actionable medical insight.
+  hint: "0.5 assumes both mistakes cost the same. Do they? Compare missing a stroke with ordering one extra check-up.
+    Then: how could you show a doctor which of this patient's details pushed the risk up, and by how much (SHAP,
+    from game theory)?"
   keywords:
     - threshold
     - calibration
@@ -53,21 +57,27 @@ checkpoint:
     probability, the doctor sees precisely which risk factors (e.g., Age +16%, Hypertension +14%, Glucose +8%)
     drove the prediction, validating clinical plausibility and guiding immediate therapeutic intervention."
 terms:
-  - term: Threshold Calibration
-    definition: Adjusting the classification decision boundary away from 0.5 to optimize clinical utility under
-      asymmetric error costs.
+  - term: Decision threshold
+    definition: The cut-off that turns a predicted probability into a yes/no decision, e.g. refer if risk ≥ 0.22.
+  - term: Threshold calibration
+    definition: Moving the threshold away from 0.5 to match the real costs of each kind of mistake and the clinic's
+      capacity.
+  - term: Asymmetric cost
+    definition: When one mistake is much worse than the other, e.g. missing a stroke vs an unnecessary check-up.
   - term: Explainable AI (XAI)
-    definition: Methods and techniques in machine learning that make the outputs and internal reasoning of models
-      interpretable to humans.
+    definition: Methods that make a model's predictions understandable to people.
   - term: SHAP (SHapley Additive exPlanations)
-    definition: Game-theoretic approach to explain individual predictions by computing the average marginal
-      contribution of each feature across all subsets.
-  - term: Local Feature Attribution
-    definition: Quantifying how much each specific input feature value shifted the prediction for an individual
-      patient relative to the dataset average.
-  - term: Chronic Clinic Integration
-    definition: Uganda Ministry of Health June 2025 protocol integrating predictive risk triage to refer high-risk
-      cardiovascular patients into longitudinal care.
+    definition: A method from game theory that shares out a prediction fairly among the features, giving each one's
+      contribution.
+  - term: Base value
+    definition: The model's average prediction across patients (about the hospital's base rate). SHAP contributions
+      start from here.
+  - term: Local vs global explanation
+    definition: Local explains one patient's prediction; global (e.g. average size of each feature's SHAP value)
+      shows which features matter most overall.
+  - term: Chronic care clinic integration
+    definition: The Uganda Ministry of Health (June 2025) protocol that refers high-risk patients found at triage into
+      long-term care.
 quiz:
   - question: A hospital model outputs stroke probability = 0.28. If the threshold is 0.5, the patient is flagged
       negative; if threshold is 0.20, flagged positive. Why choose 0.20?
@@ -77,8 +87,8 @@ quiz:
       - 0.20 is required by Python
       - 0.20 guarantees 100% precision
     answer: 0
-    explanation: Lowering the decision threshold prioritizes sensitivity/recall, capturing life-threatening
-      conditions where missing a patient is far costlier than a false alarm.
+    explanation: A lower cut-off catches more stroke patients (higher recall). Missing a stroke is far worse than an
+      extra check-up.
   - question: What property guarantees that the sum of all SHAP values plus the baseline expected value equals the
       model's exact prediction for a patient?
     options:
@@ -87,8 +97,8 @@ quiz:
       - The Central Limit Theorem
       - Occam's Razor
     answer: 0
-    explanation: The Efficiency (Additivity) axiom from Shapley game theory proves that the sum of feature
-      attributions exactly equals the difference between the model output and the expected base rate.
+    explanation: A basic rule of Shapley values (efficiency, or additivity) guarantees the feature contributions add up
+      exactly to the gap between this prediction and the base value.
   - question: Why is the 0.5 threshold a poor default for the stroke model?
     options:
       - It's too strict on false positives
@@ -96,7 +106,7 @@ quiz:
       - Sklearn doesn't allow it
       - It's too slow
     answer: 1
-    explanation: Calibrate the threshold to the clinical costs.
+    explanation: "Set the cut-off to match the real costs: a missed stroke is much worse than an extra check."
   - question: Lowering the threshold usually…
     options:
       - Increases precision and recall
@@ -104,7 +114,7 @@ quiz:
       - Lowers both
       - Changes nothing
     answer: 1
-    explanation: More patients are flagged — more true and false positives.
+    explanation: More patients get flagged, so you catch more real cases (true positives) but also raise more false alarms (false positives).
   - question: Where should the decision threshold be chosen?
     options:
       - On the test set
@@ -112,7 +122,7 @@ quiz:
       - On a validation set (then confirmed on test)
       - In production by trial and error
     answer: 2
-    explanation: Choosing on the test set leaks information into the evaluation.
+    explanation: On the validation set. Choosing it using the test set lets test information leak in, so the final score is too optimistic.
   - question: SHAP values for one patient sum to…
     options:
       - 1
@@ -120,7 +130,7 @@ quiz:
       - The number of features
       - Zero
     answer: 1
-    explanation: prediction = base value + Σ contributions.
+    explanation: Base value + all the contributions = this patient's prediction.
   - question: "'+12 points from hypertension' in a SHAP plot means…"
     options:
       - Hypertension causes 12% more strokes
@@ -128,7 +138,7 @@ quiz:
       - 12% of patients have hypertension
       - The model is biased
     answer: 1
-    explanation: SHAP explains the model, not causality.
+    explanation: The model's prediction went up by 12 points because of hypertension. It explains the model, not what causes strokes.
   - question: How do you get global feature importance from SHAP?
     options:
       - Use one patient
@@ -136,7 +146,7 @@ quiz:
       - Sum the base values
       - You can't
     answer: 1
-    explanation: Mean |SHAP| ranks features globally.
+    explanation: Average the size (ignoring the sign) of each feature's SHAP values across many patients, then rank the features.
 fact:
   title: Uganda MOH 2025 Integrated Non-Communicable Disease Guidelines
   body: In Sub-Saharan Africa, cerebrovascular accidents occur at younger median ages (often under 55) due to
@@ -176,50 +186,63 @@ lab:
 notes:
   - heading: The end-to-end system
     body: |
-      The capstone joins every module into one service for a high-volume Ugandan Regional Referral Hospital:
+      **The idea:** every earlier module was one part of a car. The capstone is building the whole car and driving it in a real hospital.
 
-      1. **Data** — the stroke dataset with leakage-free preprocessing in an sklearn Pipeline (module 1).
-      2. **Artifact** — the whole pipeline saved with joblib, versioned and checksummed (module 2).
-      3. **API** — FastAPI + Pydantic `/predict`, model loaded once per worker (module 3).
-      4. **Infrastructure** — CPU instances in a nearby region, Spot only for retraining (module 4).
-      5. **Container** — multi-stage, non-root Docker image (module 5).
-      6. **Release** — canary with automatic rollback (module 6).
-      7. **Performance** — ONNX/INT8 if latency demands it (module 7).
-      8. **Monitoring** — PSI drift detection and delayed-label evaluation (module 8).
+      The capstone joins every module into one service for a busy Ugandan Regional Referral Hospital:
 
-      What the capstone adds: choosing the **decision threshold** for clinical use, and **explaining** each prediction to the physician.
+      1. **Data:** the stroke data, prepared without leakage in an sklearn Pipeline (module 1).
+      2. **Saved model:** the whole pipeline saved with joblib, with a version number and checksum (module 2).
+      3. **API:** FastAPI + Pydantic `/predict`, with the model loaded once per worker (module 3).
+      4. **Machines:** ordinary CPU machines in a nearby region, with cheap Spot machines only for retraining (module 4).
+      5. **Container:** a small, multi-stage Docker image running as a non-root user (module 5).
+      6. **Releases:** canary releases with automatic rollback (module 6).
+      7. **Speed:** ONNX / INT8 if predictions need to be faster (module 7).
+      8. **Monitoring:** PSI drift checks, and evaluation when the real outcomes arrive (module 8).
+
+      What the capstone adds: choosing the **decision threshold** for clinical use, and **explaining** each prediction to the doctor.
   - heading: The threshold is a clinical decision
     body: |
-      A classifier outputs a probability; a **threshold** turns it into an action (refer to the chronic-care clinic or not). The default 0.5 is arbitrary — and terrible when only ~5% of patients have strokes, because most stroke patients get probabilities well below 0.5.
+      **The idea:** a metal detector at an airport is set to be very sensitive. It beeps for belt buckles too, because missing a weapon is far worse than an extra check. A stroke model should be set the same way.
 
-      Lowering the threshold trades precision for recall:
+      A classifier gives a probability; the **threshold** turns it into an action (refer the patient to the chronic care clinic, or not). The default of 0.5 is arbitrary, and terrible when only about 5% of patients have strokes, because most stroke patients get predicted probabilities well below 0.5.
 
-      | Threshold | Recall | Strokes missed / 1,000 patients | Referrals / month |
+      Lowering the threshold catches more stroke patients (higher **recall**) but also flags more healthy ones (lower **precision**):
+
+      | Threshold | Recall | Strokes missed per 1,000 patients | Referrals per month |
       |---|---|---|---|
       | 0.50 | ~65% | ~18 | ~64 |
       | 0.22 | ~88% | ~6 | ~187 |
       | 0.15 | ~92% | ~4 | ~264 |
 
-      The right threshold balances the cost of a missed stroke against the clinic's **capacity** to see referred patients. Choose it on a **validation** set (never the test set), document why, and revisit it when prevalence or capacity changes. Per the Ministry of Health integration guidelines (June 2025), high-risk patients at triage are enrolled in the chronic care clinic — so the threshold directly sets the clinic's workload.
+      The right threshold balances the cost of a missed stroke against the clinic's **capacity** to see everyone referred. Choose it using the **validation** set (never the test set), write down why, and revisit it when the share of stroke patients or the clinic's capacity changes. Under the Ministry of Health guidelines (June 2025), high-risk patients at triage are enrolled in the chronic care clinic, so the threshold directly sets the clinic's workload.
   - heading: Why black boxes are not acceptable
     body: |
-      "This patient's stroke risk is 42%" is not enough for a referral physician. They need to know **why** — to check the model against their own judgement, catch data errors (an age typed as 670), explain the decision to the patient, and decide what to treat.
+      **The idea:** you wouldn't trust a doctor who said "take this medicine" and refused to say why. Doctors feel the same about a model.
 
-      Explainability also supports **accountability** and **fairness**: you can audit whether the model leans on features it shouldn't, and justify decisions to patients and regulators. In clinical settings an unexplained score is often simply ignored.
+      "This patient's stroke risk is 42%" isn't enough for a referral doctor. They need to know **why**, so they can:
+
+      - check the model against their own judgement;
+      - catch data errors (an age typed as 670 instead of 67);
+      - explain the decision to the patient;
+      - decide what to treat.
+
+      Explanations also support **accountability** and **fairness**: you can check whether the model relies on features it shouldn't, and justify decisions to patients and regulators. In hospitals, an unexplained score is often simply ignored.
   - heading: SHAP — local, additive explanations
     body: |
-      **SHAP** (SHapley Additive exPlanations) assigns each feature a contribution to *this* prediction, based on Shapley values from cooperative game theory. The contributions are **additive**:
+      **The idea:** after a team wins a match, how much of the win was each player's doing? SHAP answers the same question for a prediction: how much did each of the patient's details contribute?
 
-      **prediction = base value + Σ feature contributions**
+      **SHAP** (SHapley Additive exPlanations) gives each feature a share of *this* prediction, using Shapley values from cooperative game theory (the maths of sharing a reward fairly among players). The shares are **additive**: they add up exactly.
 
-      where the base value is the model's average output (≈ the hospital's base rate). For a patient: "base risk 5% → this patient 42%: +18 points from age 68, +12 from hypertension, +7 from glucose 220 mg/dL…".
+      **prediction = base value + the sum of all the feature contributions**
 
-      Key properties for exams:
+      The **base value** is the model's average prediction (about the hospital's base rate). For one patient: "base risk 5% → this patient 42%: +18 points from age 68, +12 from high blood pressure, +7 from glucose of 220 mg/dL". Check: 5 + 18 + 12 + 7 = 42.
 
-      - **Local** — explains one prediction; averaging |SHAP| across patients gives *global* importance.
-      - **Additive and consistent** — contributions sum exactly to the prediction (in the model's output space, e.g. log-odds for logistic/XGBoost models).
-      - **TreeSHAP** computes exact values efficiently for tree models like XGBoost.
-      - SHAP explains the **model**, not causality: "+12 from hypertension" means the model's prediction rose, not that hypertension causes 12 points of risk for this person.
+      Key points for exams:
+
+      - **Local:** it explains one patient's prediction. Averaging the size of each feature's SHAP values across many patients gives *global* importance (which features matter most overall).
+      - **Additive and consistent:** the contributions add up exactly to the prediction, in the model's own output units (for logistic regression and XGBoost that's log-odds, which are then turned into a probability).
+      - **TreeSHAP** computes exact values quickly for tree models like XGBoost.
+      - SHAP explains the **model**, not what causes strokes. "+12 from high blood pressure" means the model's prediction went up by 12 points because of it, not that high blood pressure causes exactly 12 points of risk for this person.
 examples:
   - title: Choosing a threshold under capacity
     problem: The clinic can take at most 200 new referrals a month from ~1,000 screened patients (5% prevalence).
