@@ -1,35 +1,40 @@
 id: star-schemas
 title: Analytical Star Schemas & DuckDB
-subtitle: Model facts, dimensions & OLAP queries for fast analytics (Lab 4)
-recap: "OLTP databases handle row-by-row writes; OLAP engines like DuckDB scan few columns over many rows. A
-  star schema has a central fact table of numeric measures and foreign keys at a declared grain, surrounded by
-  descriptive dimension tables used for filtering and grouping. Declare the grain first: mixing grains makes
-  joins fan out and double-count."
+subtitle: Organising data into tables that make questions fast and answers correct (Lab 4)
+recap: |
+  Some databases are built to save one record at a time (OLTP, like a shop's till); others are built to answer
+  big questions over millions of rows (OLAP, like DuckDB). For questions, we organise data as a star schema:
+  one central fact table full of numbers (prices, rainfall) with links to smaller dimension tables that
+  describe them (which market, which commodity, which date). First decide the grain: exactly what one row of
+  the fact table means. Mixing grains makes joins repeat rows, so totals get counted twice without any error.
 traps:
-  - Storing descriptive strings (like category names) repeatedly in the fact table.
-  - Mixing daily and monthly rows in one fact table.
-  - Joining a fact to a many-row dimension and silently multiplying SUMs (fan trap).
+  - "Repeating descriptive text (like category names) in every row of the fact table. Put it once in a dimension
+    table instead."
+  - "Mixing daily rows and monthly totals in the same fact table. Every total becomes wrong."
+  - "Joining a fact to a dimension that has duplicate rows. Each fact row gets repeated, silently multiplying sums
+    (a fan trap)."
 lesson:
   checkpointStep: 3
   steps:
-    - Transactional databases (OLTP) like PostgreSQL or SQLite are optimised for fast row-by-row inserts and
-      updates. Analytical engines (OLAP) like DuckDB are built for scanning millions of rows across a few
-      columns.
-    - In dimensional modelling (Kimball's Star Schema), we split data into a central Fact table surrounded by
-      Dimension tables. Fact rows hold numeric measurements at a clearly declared grain.
-    - In our market warehouse, fact_market_prices has a grain of one row per (date, market, commodity),
-      storing price_ugx, rainfall_mm, and foreign keys to dim_date, dim_market, and dim_commodity.
-    - "Checkpoint: what is the difference between a Fact table and a Dimension table, and why must you declare
-      the grain of a fact table before writing a single SQL query?"
-    - Dimensions store descriptive context — region, district, commodity category, calendar quarter — used for
-      filtering and grouping. Facts store quantitative measurements that you sum, average, or count.
-    - If you mix grains in a fact table (e.g., daily market prices mixed with monthly regional totals), every
-      JOIN fans out and double-counts revenue or distorts averages. Declaring the grain prevents fan-traps.
+    - "Transaction databases (OLTP) like PostgreSQL or SQLite are built for saving and changing one row at a time,
+      like a shop recording each sale. Analytical engines (OLAP) like DuckDB are built for reading millions of rows
+      but only a few columns, like working out the average price per region."
+    - "In dimensional modelling (Kimball's star schema), we put a central fact table in the middle, surrounded by
+      dimension tables, like a star. Each fact row holds numbers measured at a clearly stated level of detail: the
+      grain."
+    - "In our market warehouse, fact_market_prices has a grain of one row per (date, market, commodity). Each row
+      stores price_ugx and rainfall_mm, plus keys that point to dim_date, dim_market and dim_commodity."
+    - "Checkpoint: what's the difference between a fact table and a dimension table, and why must you decide the
+      grain of a fact table before writing any SQL?"
+    - "Dimensions store the descriptions you filter and group by (region, district, commodity category, calendar
+      quarter). Facts store the numbers you add up, average or count."
+    - "If you mix grains in a fact table (say daily market prices next to monthly regional totals), joins repeat rows
+      and totals get counted twice, or averages come out wrong. Stating the grain prevents these fan traps."
 checkpoint:
   question: Contrast Fact tables and Dimension tables in a Star Schema. Why is declaring the exact 'grain' of a
     fact table critical before designing joins and aggregations?
-  hint: What goes into facts (measurements, foreign keys) vs dimensions (descriptive attributes, surrogate
-    keys)? What goes wrong in SUM/AVG if rows represent different levels of detail?
+  hint: "What goes in facts (numbers you measure, plus keys) and what goes in dimensions (descriptions, each with its own
+    ID key)? What happens to a SUM or AVG if some rows mean \"one day\" and others mean \"one month\"?"
   keywords:
     - fact
     - dimension
@@ -45,50 +50,60 @@ checkpoint:
     - join
     - double count
     - aggregation
-  idealAnswer: Fact tables store quantitative numeric measurements (such as `price_ugx` and `rainfall_mm`) and
-    foreign keys at a specific atomic event level, making them narrow and deep. Dimension tables
-    (`dim_market`, `dim_commodity`, `dim_date`) store descriptive attributes used for `WHERE` filtering and
-    `GROUP BY` labels. Declaring the grain — exactly what one fact row represents, such as one commodity in
-    one market on one day — is critical because mixing grains causes joins to fan out, silently
-    double-counting sums and biasing averages.
+  idealAnswer: "Fact tables store numeric measurements (such as price_ugx and rainfall_mm) plus foreign keys (links to
+    the dimensions), one row per individual event, so they're narrow and very long. Dimension tables (dim_market,
+    dim_commodity, dim_date) store descriptive context, each row with its own surrogate key (an ID number), used for
+    filtering (WHERE) and as group by labels. Declaring the grain, exactly what one fact row means (one row = one
+    commodity in one market on one day), is critical because mixing grains makes joins repeat rows, silently
+    double counting sums and skewing averages in every aggregation."
 terms:
+  - term: OLTP vs OLAP
+    definition: OLTP databases save and change single records quickly (a till); OLAP engines answer big questions over
+      many rows (a report).
+  - term: Star schema
+    definition: One central fact table linked to several dimension tables around it, like the points of a star.
   - term: Grain
-    definition: The exact business definition of a single row in a fact table (e.g., 1 market × 1 commodity × 1 day).
+    definition: Exactly what one row of a fact table means, e.g. one market × one commodity × one day.
   - term: Fact table
-    definition: Central table holding numeric measures and foreign keys to dimensions.
+    definition: The central table of numbers you measure (prices, rainfall), plus keys linking to the dimensions.
   - term: Dimension table
-    definition: Lookup table holding descriptive attributes (who, what, where, when) with a surrogate primary key.
+    definition: A lookup table of descriptions (who, what, where, when), each row with its own ID key.
+  - term: Foreign key
+    definition: A column in one table that points to a row in another, e.g. market_key in the fact table points to
+      dim_market.
   - term: Surrogate key
-    definition: System-generated key (integer or MD5 hash) decoupling warehouse joins from operational strings.
+    definition: A meaningless ID number (or hash) the warehouse gives each dimension row, instead of joining on names.
+  - term: Fan trap
+    definition: A join that matches one fact row to several dimension rows, repeating it and inflating totals.
   - term: Vectorised execution
-    definition: Processing columns in CPU cache-sized batches (vectors of 1,024–2,048 values) instead of row-at-a-time.
+    definition: Processing a column in batches of about 1,000–2,000 values at a time instead of one row at a time.
+      Much faster.
 quiz:
-  - question: In our Star Schema, we cover 5 markets, 4 commodities, and 365 days with complete daily
-      observations. How many rows are in fact_market_prices?
+  - question: Our star schema covers 5 markets, 4 commodities and 365 days, with a price every day. How many rows are in
+      fact_market_prices?
     options:
       - 1,825
       - 7,300
       - 1,460
       - "374"
     answer: 1
-    explanation: Grain = market × commodity × day = 5 × 4 × 365 = 7,300 fact rows.
-  - question: Which table should store the attribute 'commodity_category = Cereals'?
+    explanation: One row per market × commodity × day = 5 × 4 × 365 = 7,300 rows.
+  - question: Which table should store "commodity_category = Cereals"?
     options:
       - fact_market_prices
       - dim_commodity
       - dim_market
       - dim_date
     answer: 1
-    explanation: Descriptive hierarchy attributes belong in the dimension table (dim_commodity), not repeated as
-      strings in the fact table.
-  - question: Which belongs in a fact table?
+    explanation: It describes the commodity, so it goes once in dim_commodity, not repeated in every fact row.
+  - question: Which of these belongs in a fact table?
     options:
       - market_district
       - commodity_category
       - price_ugx
       - month_name
     answer: 2
-    explanation: Facts hold numeric measures; the others are descriptive dimension attributes.
+    explanation: Facts hold the numbers you measure. The others describe markets, commodities or dates.
   - question: What is the grain of fact_market_prices?
     options:
       - One row per market
@@ -96,32 +111,33 @@ quiz:
       - One row per (day, market, commodity)
       - One row per price change
     answer: 2
-    explanation: One observation of one commodity in one market on one day.
-  - question: Why use a surrogate integer key instead of the market name?
+    explanation: Each row is one observation of one commodity, in one market, on one day.
+  - question: Why use an ID number (surrogate key) instead of the market's name to link tables?
     options:
       - Names are illegal in SQL
       - "Faster joins, stable when names change, and allows an Unknown member"
       - DuckDB requires it
       - It compresses the CSV
     answer: 1
-    explanation: Surrogate keys decouple the warehouse from changing operational strings.
-  - question: Joining facts to a dimension increased the row count from 7,300 to 9,100. What does this indicate?
+    explanation: Numbers join faster than text, a market can be renamed without touching millions of fact rows, and
+      key 0 can mean "Unknown".
+  - question: Joining the facts to a dimension changed the row count from 7,300 to 9,100. What does that mean?
     options:
       - Normal behaviour
-      - A fan trap — duplicate or finer-grain dimension rows
+      - A fan trap, from duplicate or more detailed dimension rows
       - The fact table was compressed
       - A missing index
     answer: 1
-    explanation: A many-to-one join should never add rows; extra rows mean a fan-out.
+    explanation: Joining facts to a dimension should never add rows. Extra rows mean some fact rows were repeated.
   - question: DuckDB is best described as…
     options:
       - A distributed OLTP database
-      - An in-process columnar OLAP engine
+      - An analytics (OLAP) engine that runs inside your program and stores data by column
       - A key-value store
       - A CSV editor
     answer: 1
-    explanation: It runs inside your process and uses columnar, vectorised execution.
-  - question: Where should 'is_weekend' live?
+    explanation: It needs no separate server, and it reads data column by column in fast batches.
+  - question: Where should "is_weekend" live?
     options:
       - fact_market_prices
       - dim_date
@@ -130,10 +146,9 @@ quiz:
     answer: 1
     explanation: It describes the date, so it belongs in the date dimension.
 fact:
-  title: "In-process OLAP: why DuckDB is the 'SQLite for Analytics'"
-  body: DuckDB runs embedded inside your Python process with zero server setup, yet uses a columnar-vectorised
-    execution engine written in C++ that can query Parquet files directly on disk faster than many distributed
-    clusters on datasets under 50 GB.
+  title: "Why DuckDB is called \"SQLite for analytics\""
+  body: DuckDB runs inside your Python program with no server to set up, yet its fast column-by-column engine can query
+    Parquet files on disk quicker than many big computer clusters, for datasets under about 50 GB.
 lab:
   title: Star Schema Grain & Fan-Trap Simulator
   variations:
@@ -165,59 +180,69 @@ lab:
 notes:
   - heading: OLTP vs OLAP
     body: |
-      Databases are built for one of two jobs.
+      **The idea:** a shop's till records one sale at a time, fast. The owner's end-of-year report reads every sale ever made. Those are two very different jobs, and databases are built for one or the other.
 
       | | OLTP (transactions) | OLAP (analytics) |
       |---|---|---|
-      | Typical query | insert/update one order, look up one customer | average price by region over 3 years |
+      | Typical job | save or change one order, look up one customer | average price by region over 3 years |
       | Rows touched | a few | millions |
-      | Columns touched | all of a row | a few |
-      | Storage | row-oriented | column-oriented |
+      | Columns touched | the whole row | just a few |
+      | Stored | row by row | column by column |
       | Examples | PostgreSQL, SQLite, MySQL | DuckDB, BigQuery, Snowflake |
 
-      DuckDB is "SQLite for analytics": it runs inside your Python process with no server, but uses a columnar, vectorised engine that processes values in CPU-cache-sized batches. On a laptop it can scan Parquet files faster than many clusters on data under ~50 GB.
+      DuckDB is "SQLite for analytics": it runs inside your Python program with no server, but stores data by column and processes it in fast batches (vectorised execution). On a laptop it can scan Parquet files faster than many computer clusters, for data under about 50 GB.
   - heading: Facts, dimensions and the grain
     body: |
-      A **star schema** puts one **fact table** in the middle and **dimension tables** around it.
+      **The idea:** keep the numbers in one big table, and the descriptions in small lookup tables, linked by ID numbers. Drawn out, it looks like a star.
 
-      - The **fact table** stores *measurements*: numbers you sum, average or count (`price_ugx`, `rainfall_mm`, `litres`), plus foreign keys to the dimensions. It is long and narrow.
-      - **Dimension tables** store *descriptions* used to filter and group: `dim_market` (market, district, region), `dim_commodity` (name, category, unit), `dim_date` (day, month, quarter, year, is_weekend). They are short and wide.
+      - The **fact table** (in the middle) stores *measurements*: numbers you add up, average or count (`price_ugx`, `rainfall_mm`, `litres`), plus **foreign keys**, columns that point to rows in the dimension tables. It has few columns and very many rows.
+      - The **dimension tables** (the points of the star) store *descriptions* used to filter and group: `dim_market` (market, district, region), `dim_commodity` (name, category, unit), `dim_date` (day, month, quarter, year, is_weekend). They have many columns and few rows.
 
-      Before writing SQL you **declare the grain**: what exactly one fact row represents. Here: *one commodity in one market on one day*. Every measure in the fact table must be true at that grain. That's what lets you compute fact-table size directly: |fact| ≤ |dates| × |markets| × |commodities|.
+      **Before writing any SQL, state the grain:** exactly what one fact row means. Here: *one commodity, in one market, on one day*. Every number in the fact table must make sense at that level. It also tells you how big the table can get:
+
+      $$|\text{fact rows}| \le |\text{dates}| \times |\text{markets}| \times |\text{commodities}|$$
+
+      So 365 days × 5 markets × 4 commodities = at most 7,300 rows.
   - heading: Surrogate keys and why not join on strings
     body: |
-      Dimensions get a **surrogate key** — a meaningless integer like `market_key = 7` — rather than joining facts on `market_name = 'Owino'`.
+      **The idea:** link tables with ID numbers, not names, the same way a school uses student numbers instead of names (two students can share a name, and names can change).
+
+      Each dimension row gets a **surrogate key**, a meaningless ID number like `market_key = 7`, and facts join on that rather than on `market_name = 'Owino'`.
 
       Why:
 
-      - Integers are smaller and faster to join and index than strings.
-      - Names change ("Owino" → "St. Balikuddembe Market"); with a surrogate key you update one dimension row, not millions of fact rows.
-      - You can represent things the source doesn't have, like an **Unknown** member (`key = 0`) for facts whose dimension value is missing — so no fact row has a NULL key.
-      - History can be tracked (SCD Type 2): one market can have several dimension rows with different validity dates.
+      - Numbers are smaller and faster to join than text.
+      - Names change ("Owino" → "St. Balikuddembe Market"). With an ID, you update one dimension row, not millions of fact rows.
+      - You can add rows the source data doesn't have, like an **Unknown** member (`key = 0`) for facts whose market is missing, so no fact row has an empty (NULL) key.
+      - You can keep history (called SCD Type 2): one market can have several dimension rows, each valid for a different period.
   - heading: The fan trap
     body: |
-      A **fan trap** happens when a join matches one fact row to *several* dimension rows. The fact row is repeated once per match, so `SUM(price_ugx)` is multiplied — with no error message.
+      **The idea:** if a market appears three times in the market table, every price for that market gets counted three times when you join them, and nothing warns you.
 
-      Typical causes:
+      A **fan trap** happens when a join matches one fact row to *several* dimension rows. The fact row is repeated once per match, so `SUM(price_ugx)` gets multiplied, with no error message.
+
+      **Tiny example:** a 4,000 UGX price for Owino joined to a market table with three Owino rows gives three copies: SUM = 3 × 4,000 = **12,000 UGX**.
+
+      Common causes:
 
       - the dimension has duplicate keys (the same `market_key` twice, e.g. loaded twice);
-      - you join to a table at a finer grain (e.g. daily facts joined to a table with one row per market *per vendor*);
-      - you mix grains in the fact table (daily rows next to monthly totals).
+      - you join to a table with more detail (e.g. daily facts joined to a table with one row per market *per vendor*);
+      - the fact table mixes grains (daily rows next to monthly totals).
 
-      Defences: enforce **unique keys** on dimensions, **declare the grain** and stick to it, and **check row counts** before and after joins — a join to a dimension must never increase the number of fact rows.
+      Defences: make dimension keys **unique**, **state the grain** and stick to it, and **compare row counts** before and after every join. Joining a dimension must never increase the number of fact rows.
 examples:
   - title: Sizing a warehouse from its grain
-    problem: The warehouse covers 12 markets and 8 commodities for 2 full years (730 days) with complete coverage.
-      How many fact rows, and how many dimension rows in total?
+    problem: The warehouse covers 12 markets and 8 commodities for 2 full years (730 days), with a price for every
+      combination every day. How many fact rows are there, and how many dimension rows in total?
     steps:
-      - Grain = (day, market, commodity), so facts = 730 × 12 × 8 = **70,080 rows**.
+      - The grain is one row per (day, market, commodity), so facts = 730 × 12 × 8 = **70,080 rows**.
       - "Dimensions: dim_date 730 + dim_market 12 + dim_commodity 8 = **750 rows**."
-      - "Ratio ≈ 93 : 1 — facts dominate, which is why fact tables are kept narrow (keys + numbers)."
+      - "Ratio ≈ 93 : 1. Facts dominate, which is why fact tables keep only keys and numbers (few columns)."
     answer: 70,080 fact rows and 750 dimension rows.
-    takeaway: The grain multiplies; dimensions add.
+    takeaway: The grain multiplies the sizes together; the dimensions just add up.
   - title: Spotting a fan trap
-    problem: SUM(price_ugx) for Owino on 2025-03-01 should be 4,000 UGX but the report shows 12,000. dim_market
-      has three rows with market_key = 3. Explain and fix.
+    problem: The total price (SUM(price_ugx)) for Owino on 2025-03-01 should be 4,000 UGX, but the report shows 12,000.
+      The market table dim_market has three rows with market_key = 3. Explain what went wrong and fix it.
     steps:
       - "The fact row joins to all three dim_market rows with key 3, so it appears three times: 3 × 4,000 =
         12,000."
@@ -240,10 +265,10 @@ questions:
       - monthly
       - double count
       - fan out
-    idealAnswer: The grain is the precise definition of what one fact row represents, e.g. one commodity in one
-      market on one day. All measures must be valid at that grain. Mixing grains — say daily prices alongside
-      monthly totals — means aggregations add incompatible rows and joins fan out, so sums are double-counted
-      and averages are biased.
+    idealAnswer: The grain is the exact definition of what one fact row represents, e.g. one commodity in one market
+      on one day. Every measurement in the table must make sense at that level. Mixing grains, say daily prices next
+      to monthly totals, means totals add rows that don't belong together and joins repeat rows (fan out), so sums are
+      counted twice and averages are skewed.
   - question: Explain why dimension tables use surrogate keys and how an Unknown member avoids NULL foreign keys.
     kind: short
     marks: 5
@@ -259,10 +284,11 @@ questions:
       - coalesce
       - "null"
       - referential integrity
-    idealAnswer: "Surrogate keys are system-generated integers: smaller and faster to join, stable when business
-      names change, and able to support history (SCD2). An Unknown member — a dimension row with key 0 — lets
-      facts whose dimension value is missing or unmatched point to a valid row (COALESCE(key, 0)) instead of
-      NULL, preserving every fact row and referential integrity."
+    idealAnswer: "Surrogate keys are ID numbers the warehouse creates itself. They're smaller and faster to join than
+      names, they don't change when a market is renamed, and they allow history to be kept (SCD Type 2). An Unknown
+      member, a dimension row with key 0, gives facts with a missing or unmatched value a real row to point to
+      (COALESCE(key, 0)) instead of an empty NULL. So no fact row is lost and every key points somewhere valid
+      (referential integrity)."
   - question: Design a star schema for the market-price data. List the fact table (grain, measures, keys) and
       three dimensions with attributes, then write a DuckDB query for the average price per region and
       commodity category in 2025, and say how you'd check it isn't affected by a fan trap.
