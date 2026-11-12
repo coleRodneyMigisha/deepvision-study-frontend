@@ -96,8 +96,7 @@ exam:
         - uptime
         - contract
         - exceptions
-      idealAnswer: FastAPI utilizes Pydantic `BaseModel` classes to define and enforce strict data contracts at the
-        network boundary. Incoming JSON payloads are parsed and validated against expected data types and
+      idealAnswer: FastAPI utilizes Pydantic `BaseModel` classes to define and enforce strict data contracts (the agreed rules for every field) at the network boundary, before any request reaches the model. Incoming JSON payloads are parsed and validated against expected data types and
         domain constraints (such as positive glucose and valid blood pressure ranges). If a payload is
         malformed, FastAPI automatically generates an HTTP 422 Unprocessable Entity error and halts execution
         before any model code is called. This protects downstream estimators from uncaught exceptions, avoids
@@ -135,8 +134,7 @@ exam:
         - compilers
         - cve
         - wheels
-      idealAnswer: A multi-stage Docker build uses separate `FROM` instructions to isolate the build environment
-        from the final execution runtime. In the builder stage, heavy tools like `gcc`, `g++`, and header
+      idealAnswer: A multi-stage Docker build uses separate `FROM` instructions to keep the build stage, with its heavy compilers, apart from the small final image that actually runs. In the builder stage, heavy tools like `gcc`, `g++`, and header
         packages compile Python wheels. The final production stage starts from a minimal `python:3.11-slim`
         image and copies only the compiled wheels and application code, omitting compilers, package managers,
         and build artifacts. This slashes image size from ~1.2 GB to ~150 MB, speeds up deployment pulls
@@ -175,8 +173,7 @@ exam:
         - simd
         - memory bandwidth
         - latency
-      idealAnswer: "Post-training quantization maps continuous 32-bit floating-point weights (FP32) into 8-bit
-        integers (INT8) through a linear affine equation: q = round(r/S) + Z, where S is the scale and Z is
+      idealAnswer: "Post-training quantization maps 32-bit decimal weights (FP32, 4 bytes each) onto 8-bit whole numbers (INT8, 1 byte each) through a linear affine equation: q = round(r/S) + Z, where S is the scale and Z is
         the zero-point offset. Because an INT8 number occupies 1 byte while FP32 requires 4 bytes, memory
         footprint is reduced by exactly 4x (75% savings). In inference, single-sample latency is typically
         memory-bandwidth bound; loading 4x fewer bytes from RAM into CPU caches eliminates bus stalls. Modern
@@ -240,7 +237,7 @@ exam:
         - waterfall
         - physician
       idealAnswer: "Doctors rightly reject 'black-box' probabilities because they cannot verify the clinical
-        reasoning or justify treatments to patients. SHAP values, grounded in cooperative game theory, provide
+        reasoning or justify treatments to patients. SHAP values, which share out a prediction among the patient's features using cooperative game theory, provide
         mathematically guaranteed local feature attributions that satisfy the efficiency axiom: the patient's
         predicted risk exactly equals the population base rate plus the sum of all individual feature effects.
         A clinician sees an intuitive breakdown—e.g., base hospital risk 5%, plus 18% from age 68, plus 12%
