@@ -160,8 +160,8 @@ quiz:
       - "256"
       - "224"
     answer: 1
-    explanation: (224/16)² = 14² = 196 patches + 1 [CLS] = 197 tokens.
-  - question: Self-attention cost grows with the number of tokens N as…
+    explanation: 224 ÷ 16 = 14 tiles across and 14 down, so 14 × 14 = 196 tiles, plus the 1 extra [CLS] token = 197.
+  - question: Self-attention compares every token with every other token. As the number of tokens N grows, the work grows like…
     options:
       - N
       - N log N
@@ -185,23 +185,23 @@ quiz:
       - To classify the image
       - To reduce tokens
     answer: 1
-    explanation: Without them, attention is order-agnostic.
-  - question: Why divide QKᵀ by √d?
+    explanation: Attention on its own ignores where tiles are. The position label tells the model where each tile sat in the picture.
+  - question: In attention, why are the query–key scores (QKᵀ) divided by √d?
     options:
       - To save memory
       - To keep scores in a range where softmax has useful gradients
       - To normalise images
       - It's optional decoration
     answer: 1
-    explanation: Large dot products saturate softmax.
+    explanation: Without it, the scores get so big that softmax puts almost 100% on one token, and the model stops getting useful learning signals.
   - question: Why do ViTs need more data than CNNs?
     options:
       - They have fewer parameters
-      - Weak inductive bias — locality must be learned from data
+      - They have no built-in assumption that nearby tiles belong together, so they must learn it from data
       - They can't use GPUs
       - They only take grayscale images
     answer: 1
-    explanation: CNNs build locality in.
+    explanation: A CNN is built to look at small neighbourhoods (locality). A ViT has to learn that from many examples.
   - question: CLIP's training objective is…
     options:
       - Pixel reconstruction
@@ -209,7 +209,7 @@ quiz:
       - Next-word prediction only
       - Bounding-box regression
     answer: 1
-    explanation: It learns a shared image–text space.
+    explanation: It learns to give each photo and its own caption similar arrows, and mismatched pairs different ones.
   - question: In 3Blue1Brown's framing of attention, which vector plays the role of "the question a token is asking"?
     options:
       - The key
@@ -704,16 +704,20 @@ notes:
       While watching, translate every word example into an image one: tokens become patches, "adjectives updating nouns" becomes "context patches updating an object patch", and the language model's next-word head becomes the [CLS] classifier, or CLIP's projection into the shared space.
 examples:
   - title: Counting tokens and attention cost
-    problem: A ViT uses 384 × 384 images with 16 × 16 patches and a [CLS] token. How many tokens, and how many
-      entries in one attention matrix? Compare with 224 × 224 images.
+    problem: A ViT cuts 384 × 384 pictures into 16 × 16 tiles and adds one [CLS] token. How many tokens does it
+      read, and how many scores are in one attention table (every token compared with every token)? Compare with
+      224 × 224 pictures.
     steps:
       - 384 / 16 = 24 → 24² = **576** patches + 1 = **577** tokens.
       - Attention matrix = 577² = **332,929** entries per head per layer.
       - "At 224: 197 tokens → 197² = 38,809 entries. 384 is ~8.6× more attention work."
     answer: 577 tokens and 332,929 attention entries.
-    takeaway: Resolution increases ViT cost quadratically.
+    takeaway: Bigger pictures cost a ViT much more than you'd guess. Less than double the width means more than
+      8× the attention work, because the table grows with the square of the token count.
   - title: CLIP zero-shot by hand
-    problem: "Cosine similarities: dog 0.30, cat 0.25, car 0.10. Logit scale 100. Compute the softmax probabilities."
+    problem: "CLIP compares a photo with three sentences. Cosine similarities (how closely the arrows point the
+      same way): dog 0.30, cat 0.25, car 0.10. CLIP multiplies them by its logit scale, 100, then uses softmax to
+      turn them into probabilities. What are the probabilities?"
     steps:
       - "Logits = 30, 25, 10. Subtract the max: 0, −5, −20."
       - "exp: 1, 0.00674, 2.06×10⁻⁹. Sum ≈ 1.00674."
@@ -721,10 +725,11 @@ examples:
       - "With scale 10 instead: logits 3, 2.5, 1 → subtract the max: 0, −0.5, −2 → exp 1, 0.607, 0.135 (sum 1.742) →
         P(dog) ≈ **57%**, P(cat) ≈ **35%**, P(car) ≈ **8%**."
     answer: About 99.3% dog at scale 100 (about 57% at scale 10).
-    takeaway: The temperature (logit scale) controls how confident the probabilities are.
+    takeaway: The same similarities can give a confident answer or a hesitant one. The multiplier (logit scale,
+      1/temperature) decides how confident the probabilities are.
   - title: Cosine similarity and why CLIP normalises
     problem: |
-      An image embedding is $u = (3, 4)$. Four candidate text embeddings are $t_1 = (4, 3)$, $t_2 = (0, 5)$, $t_3 = (-4, 3)$ and $t_4 = (40, 0)$. Rank them by **raw dot product** and by **cosine similarity**. Which ranking should CLIP use?
+      Think of each embedding as an arrow. A photo's arrow is $u = (3, 4)$. Four sentences' arrows are $t_1 = (4, 3)$, $t_2 = (0, 5)$, $t_3 = (-4, 3)$ and $t_4 = (40, 0)$. Rank the sentences by **raw dot product** (multiply pair by pair and add) and by **cosine similarity** (the same, after making every arrow length 1). Which ranking should CLIP use?
     steps:
       - "Raw dot products: $u\\cdot t_1 = 12 + 12 = 24$, $u\\cdot t_2 = 0 + 20 = 20$, $u\\cdot t_3 = -12 + 12 = 0$, $u\\cdot t_4 = 120 + 0 = 120$. Ranking: $t_4 > t_1 > t_2 > t_3$."
       - "Lengths: $\\|u\\| = 5$, $\\|t_1\\| = \\|t_2\\| = \\|t_3\\| = 5$, $\\|t_4\\| = 40$."
@@ -732,14 +737,15 @@ examples:
       - "Cosines: $\\hat u \\cdot \\hat t_1 = 0.48 + 0.48 = 0.96$; $\\hat u \\cdot \\hat t_2 = 0.8$; $\\hat u \\cdot \\hat t_3 = -0.48 + 0.48 = 0$ (perpendicular, unrelated); $\\hat u \\cdot \\hat t_4 = 0.6$. Ranking: $t_1 > t_2 > t_4 > t_3$."
       - "$t_4$ topped the raw ranking only because it is 8× longer; its *direction* is worse than $t_1$ or $t_2$. CLIP L2-normalises both embeddings so the score is purely the angle."
     answer: Cosine ranking t₁ (0.96) > t₂ (0.80) > t₄ (0.60) > t₃ (0.00); the raw dot product wrongly puts t₄ first.
-    takeaway: Normalise first, then dot — that is cosine similarity, and it measures direction (meaning), not magnitude.
+    takeaway: First make every arrow length 1, then take the dot product. That's cosine similarity, and it measures
+      direction (meaning), not length.
   - title: A 3 × 3 CLIP batch and its symmetric loss
     problem: |
-      A batch has three pairs: image 1 = dog on a beach, image 2 = cat on a sofa, image 3 = puppy on grass, each with its own caption. After L2 normalisation the cosine similarities (rows = images, columns = captions) are
+      A training batch has three photos, each with its own caption: photo 1 = dog on a beach, photo 2 = cat on a sofa, photo 3 = puppy on grass. CLIP scores every photo against every caption (rows = photos, columns = captions). The cosine similarities are
 
       $$S = \begin{pmatrix} 0.8 & 0.2 & 0.1 \\ 0.3 & 0.7 & 0.2 \\ 0.1 & 0.4 & 0.6 \end{pmatrix}$$
 
-      With temperature $\tau = 0.1$ (logit scale 10), compute the image→text loss, the text→image loss and the symmetric CLIP loss. Then repeat with $\tau = 1$.
+      The real pairs are on the diagonal (0.8, 0.7, 0.6). With temperature $\tau = 0.1$ (so every score is multiplied by 10), compute the photo→caption loss (each row picks its caption), the caption→photo loss (each column picks its photo) and their average, the CLIP loss. A small loss means the model mostly picks the right partners. Then repeat with $\tau = 1$.
     steps:
       - "Logits $= S/\\tau = 10S$: rows $(8, 2, 1)$, $(3, 7, 2)$, $(1, 4, 6)$. The positives are on the diagonal: 8, 7, 6."
       - "**Row 1** (image 1 picks a caption): subtract the max → $(0, -6, -7)$ → $e^{\\cdot} = 1, 0.00248, 0.00091$, sum $1.00339$ → $p_{11} = 0.9966$, loss $-\\ln 0.9966 = 0.0034$."
@@ -753,9 +759,10 @@ examples:
     takeaway: Each row and each column is an N-way softmax classification whose answer is the diagonal. The temperature
       turns small cosine gaps into confident probabilities, which is why CLIP learns it.
   - title: Where the negatives come from
-    problem: CLIP trains with batches of N = 32,768 pairs. (a) How many entries does the similarity matrix have, and
-      how many are negatives? (b) How many negatives does each image see per step? (c) What should the loss be at
-      initialisation, when all similarities are roughly equal?
+    problem: CLIP trains on batches of N = 32,768 photo–caption pairs. Every mismatched pair is a "negative" (a wrong
+      answer). (a) How many scores are in the batch's table, and how many are negatives? (b) How many wrong captions
+      does each photo get compared with per step? (c) Before training, when all scores are about equal, what should
+      the loss be?
     steps:
       - "(a) $N^2 = 32{,}768^2 = 1{,}073{,}741{,}824$ entries — over a billion. Positives: $N = 32{,}768$. Negatives: $N^2 - N = 1{,}073{,}709{,}056$."
       - "(b) Each image is compared with $N - 1 = 32{,}767$ wrong captions (and each caption with 32,767 wrong images)."
@@ -766,7 +773,7 @@ examples:
       model that knows nothing.
   - title: Attention by hand for one query
     problem: |
-      A head has $d_k = 2$. One patch's query is $q = (1, 0)$. The three tokens it can attend to have keys $k_1 = (2, 0)$, $k_2 = (0, 2)$, $k_3 = (1, 1)$ and values $v_1 = (1, 0)$, $v_2 = (0, 1)$, $v_3 = (1, 1)$. Compute the attention weights and the output.
+      A tiny attention head uses lists of $d_k = 2$ numbers. One tile's query (its question) is $q = (1, 0)$. Three tiles it can listen to have keys (their answers) $k_1 = (2, 0)$, $k_2 = (0, 2)$, $k_3 = (1, 1)$ and values (what they pass on) $v_1 = (1, 0)$, $v_2 = (0, 1)$, $v_3 = (1, 1)$. How much does the tile listen to each, and what does it end up collecting?
     steps:
       - "Dot products (how well each key answers the question): $q\\cdot k_1 = 2$, $q\\cdot k_2 = 0$, $q\\cdot k_3 = 1$."
       - "Scale by $1/\\sqrt{d_k} = 1/\\sqrt2$: scores $1.414, 0, 0.707$."
@@ -778,7 +785,7 @@ examples:
       added to the token through the residual connection."
   - title: Where ViT-B/16's 86 million parameters live
     problem: |
-      In the spirit of 3Blue1Brown's GPT-3 parameter tally, count the parameters of ViT-B/16 (224 px input, $D = 768$, 12 blocks, MLP size 3072, 12 heads). Ignore the classification head.
+      Parameters are the learned numbers (weights) inside a model. In the spirit of 3Blue1Brown's count for GPT-3, count them for ViT-B/16 (224 px pictures, $D = 768$ numbers per token, 12 blocks, MLP size 3072, 12 heads). Skip the final classification layer.
     steps:
       - "**Patch embedding:** $16 \\cdot 16 \\cdot 3 \\cdot 768 + 768 = 589{,}824 + 768 = 590{,}592$."
       - "**[CLS] token:** 768. **Position embeddings:** $197 \\times 768 = 151{,}296$."
@@ -791,7 +798,7 @@ examples:
       attention, hold most of the weights.
   - title: Prompt ensembling as averaging directions
     problem: |
-      For the class *dog*, two templates give normalised text embeddings $a = (0.96, 0.28)$ ("a photo of a dog.") and $b = (0.6, 0.8)$ ("a drawing of a dog."). Build the ensembled class vector.
+      Two sentence patterns for the category *dog* give length-1 arrows $a = (0.96, 0.28)$ ("a photo of a dog.") and $b = (0.6, 0.8)$ ("a drawing of a dog."). Combine them into one "dog" arrow (prompt ensembling).
     steps:
       - "Average: $(a + b)/2 = (0.78, 0.54)$."
       - "The average is shorter than 1: $\\sqrt{0.78^2 + 0.54^2} = \\sqrt{0.9} \\approx 0.949$, so renormalise: $(0.78, 0.54)/0.949 \\approx (0.822, 0.569)$."
@@ -1101,7 +1108,8 @@ coding:
       IMG = rng.normal(size=(6, 32))
       TXT = IMG + rng.normal(size=(6, 32)) * 0.3      # caption i is a noisy copy of image i
     prompt: |
-      Implement CLIP's training loss for one batch.
+      Implement CLIP's training loss for one batch: score every picture against every caption, then reward the
+      model when each picture's own caption (and each caption's own picture) gets the highest score.
 
       1. `normalize(x)` → each row of `x` divided by its L2 norm.
       2. `clip_loss(img, txt, tau=0.07)` → `(loss, logits)` where `img` and `txt` are `N × d` raw embeddings
@@ -1138,20 +1146,18 @@ coding:
           t2i = -np.diag(_log_softmax(logits, axis=0)).mean()
           return (i2t + t2i) / 2, logits
     tests:
-      - name: Matches the worked 3 × 3 example
+      - name: Logits are cosine ÷ τ and the loss matches the formula
         code: |
-          # Build unit vectors whose cosine matrix is S_EXAMPLE: txt = identity, img rows = S rows, made unit-length
-          # is not possible exactly, so test the loss head directly through logits with pre-normalised inputs.
-          import numpy as np
-          d = 3
-          L = S_EXAMPLE / 0.1
-          def ls(z, a):
-              z = z - z.max(axis=a, keepdims=True); return z - np.log(np.exp(z).sum(axis=a, keepdims=True))
-          ref = (-np.diag(ls(L, 1)).mean() - np.diag(ls(L, 0)).mean()) / 2
-          assert abs(ref - 0.041388) < 1e-4
           loss, logits = clip_loss(IMG, TXT, 0.1)
-          u = IMG / np.linalg.norm(IMG, axis=1, keepdims=True); t = TXT / np.linalg.norm(TXT, axis=1, keepdims=True)
-          assert np.allclose(logits, u @ t.T / 0.1), "logits must be cosine similarities divided by tau"
+          u = IMG / np.linalg.norm(IMG, axis=1, keepdims=True)
+          t = TXT / np.linalg.norm(TXT, axis=1, keepdims=True)
+          L = u @ t.T / 0.1
+          assert np.allclose(logits, L), "logits must be cosine similarities divided by tau"
+          def ls(z, a):
+              z = z - z.max(axis=a, keepdims=True)
+              return z - np.log(np.exp(z).sum(axis=a, keepdims=True))
+          ref = (-np.diag(ls(L, 1)).mean() - np.diag(ls(L, 0)).mean()) / 2
+          assert abs(loss - ref) < 1e-6, f"expected loss {ref:.4f}, got {loss:.4f}"
       - name: Embedding length doesn't matter
         code: |
           a, _ = clip_loss(IMG, TXT)
