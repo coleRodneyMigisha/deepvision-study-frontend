@@ -1,34 +1,38 @@
 id: canary-routing
 title: Serving Architectures, Load Balancing & Canary Traffic Routing
-subtitle: Implement zero-downtime upgrades, blue-green environments, and canary error budgets
-recap: Zero-downtime releases put a load balancer in front of healthy replicas. Blue/Green flips all traffic
-  from v1 to a verified v2 at once; Canary sends a small slice (e.g. 5%) to v2 and watches error rate, p99
-  latency and prediction anomalies, rolling back automatically when the error budget is breached. Canary
-  limits the blast radius of a bad model.
+subtitle: Updating a live model without switching the service off, and undoing a bad update in seconds
+recap: |
+  To update a model without the service going offline, put a load balancer in front of several copies (replicas)
+  of the service, so it only sends requests to healthy ones. Blue/Green switches all traffic from the old version
+  (v1) to a checked new version (v2) in one go. A canary release sends just a small slice of traffic (say 5%) to
+  v2, watches its error rate, its slowest response times (p99 latency) and whether its predictions look strange,
+  and automatically switches back if it breaks the agreed limits (the error budget). That way, a bad model only
+  affects a few users (a small blast radius).
 traps:
-  - Thinking Blue/Green limits blast radius — it switches 100% at once.
-  - Rolling out a canary without automated rollback thresholds.
-  - Watching only HTTP errors and missing silent prediction anomalies.
+  - "Thinking Blue/Green limits the damage of a bad release. It moves 100% of users at once."
+  - "Starting a canary without automatic rollback limits. Someone has to notice and react, which takes minutes."
+  - "Watching only HTTP errors. A model can answer perfectly normally and still give clinically wrong predictions."
 lesson:
   checkpointStep: 3
   steps:
-    - In mission-critical hospital systems, you cannot take an AI prediction service offline for 15 minutes
-      whenever an updated model checkpoint is released. We require zero-downtime deployment strategies.
-    - A reverse proxy and load balancer (such as Nginx, Traefik, or AWS ALB) acts as the single public entry
-      point, distributing incoming traffic across multiple healthy container replicas.
-    - In Blue/Green deployment, two identical production environments exist. Blue runs v1; we deploy v2 to
-      Green, verify health checks, and instantaneously switch router traffic from Blue to Green.
-    - "Checkpoint: how does a Canary deployment mitigate risk compared to Blue/Green, and what metrics trigger
-      an automated instant rollback?"
-    - In Canary routing, we route a small fraction (e.g. 5%) of real traffic to v2 while 95% remains on v1. We
-      monitor error rates, latency p99, and prediction anomalies.
-    - If the Canary error rate breaches an error budget threshold (e.g. >1.5% 5xx errors or 300ms p99
-      latency), the router immediately drops Canary traffic back to 0% with zero clinical disruption.
+    - "In a hospital, you can't switch the AI prediction service off for 15 minutes every time a new model is ready.
+      Updates must happen with zero downtime."
+    - "A load balancer and reverse proxy (such as Nginx, Traefik or AWS ALB) is the single public front door. It
+      shares incoming requests between several healthy copies (replicas) of the service."
+    - "In a Blue/Green deployment there are two identical live environments. Blue runs v1; we put v2 on Green, check
+      it's healthy, then switch all the traffic from Blue to Green in an instant."
+    - "Checkpoint: how does a canary deployment reduce risk compared with Blue/Green, and which measurements should
+      trigger an automatic instant rollback?"
+    - "In canary routing, a small share (e.g. 5%) of real traffic goes to v2 while 95% stays on v1. We watch the error
+      rate, the p99 latency (how slow the slowest 1% of requests are) and any strange predictions."
+    - "If the canary breaks an error-budget limit (e.g. more than 1.5% server errors, or p99 latency above 300 ms), the
+      router immediately sends the canary's traffic back to v1, so patients aren't affected."
 checkpoint:
   question: Compare Blue/Green and Canary deployment strategies for machine learning models. How do you
     configure health checks and error budgets to automate rollbacks?
-  hint: Discuss traffic percentage splits, blast radius of model regressions, liveness vs readiness probes, and
-    automated threshold alerts.
+  hint: "How much traffic does each strategy send to the new version at first? How many users does a bug reach (the
+    blast radius)? Then: how does a service tell the load balancer it's ready, and what limits should trigger an
+    automatic switch back?"
   keywords:
     - canary
     - blue green
@@ -39,29 +43,37 @@ checkpoint:
     - readiness probe
     - blast radius
     - latency
-  idealAnswer: "Blue/Green deployment maintains two identical full environments; once Green is validated, router
-    traffic flips 100% all at once. While fast, if a subtle bug or edge-case regression exists, 100% of
-    incoming users are affected immediately. In contrast, Canary deployment routes a tiny initial fraction
-    (e.g. 5% to 10%) of live traffic to the new model (v2) while 90% stays on stable v1, drastically
-    minimizing the blast radius. Health checks use readiness probes (checking if model weights are loaded in
-    memory) and liveness probes (verifying the HTTP loop responds). Automated rollbacks monitor an error
-    budget: if the Canary's HTTP 5xx rate exceeds 1% or p99 latency spikes above 250ms over a 2-minute rolling
-    window, the ingress controller shifts 100% of traffic back to v1 automatically."
+  idealAnswer: "Blue/Green deployment keeps two identical full environments. Once Green (with v2) has been checked, the
+    router flips 100% of the traffic to it in one go. It's quick, but if there's a subtle bug or a problem with
+    unusual inputs, every user is affected immediately. A canary deployment instead sends a small first share (e.g.
+    5–10%) of live traffic to the new model (v2) while the rest stays on the stable v1, which greatly shrinks the
+    blast radius (how many users a bug can reach). Health checks use a readiness probe (is the model loaded in
+    memory and ready for requests?) and a liveness probe (is the web server still responding?). Automatic rollback
+    watches an error budget: if the canary's server-error (HTTP 5xx) rate goes above 1%, or its p99 latency goes
+    above 250 ms over a 2-minute window, the router moves all traffic back to v1 automatically."
 terms:
-  - term: Canary Deployment
-    definition: Routing a small percentage of live production traffic to a new version to validate performance
-      before wide rollout.
-  - term: Blue/Green Deployment
-    definition: Maintaining two identical environments, flipping router traffic entirely from the active to the
-      standby environment.
-  - term: Blast Radius
-    definition: The scope and severity of damage or user impact if a new deployment experiences bugs or downtime.
-  - term: Readiness Probe
-    definition: A container check ensuring the application has finished initializing (e.g. loaded model weights)
-      before receiving traffic.
-  - term: Error Budget
-    definition: The maximum allowable threshold of errors or degraded latency permitted before deployment gates
-      halt and roll back.
+  - term: Zero-downtime deployment
+    definition: Releasing a new version without the service ever going offline.
+  - term: Load balancer / reverse proxy
+    definition: The front door that receives every request and passes it to one of several healthy copies of the
+      service.
+  - term: Replica
+    definition: One running copy of the service. Several replicas share the load and cover for each other.
+  - term: Blue/Green deployment
+    definition: Two identical environments; all traffic is switched from the old one to the new one at once.
+  - term: Canary deployment
+    definition: Sending a small share of real traffic to the new version first, and increasing it only if it behaves
+      well.
+  - term: Blast radius
+    definition: How many users are affected if a release goes wrong.
+  - term: Readiness vs liveness probe
+    definition: Readiness asks "is it ready for traffic (model loaded)?"; liveness asks "is it still alive, or should
+      it be restarted?".
+  - term: Error budget
+    definition: The agreed limits (e.g. at most 1.5% errors, p99 under 300 ms). Breaking them triggers an automatic
+      rollback.
+  - term: Shadow deployment
+    definition: The new version gets a copy of real traffic, but its answers are thrown away. Zero risk to users.
 quiz:
   - question: An ingress router directs 10% of traffic to a new model v2. Within 5 minutes, v2 has an error rate
       of 8% while v1 has 0.05%. What should happen?
@@ -90,7 +102,7 @@ quiz:
       - Zero
       - One replica
     answer: 1
-    explanation: All traffic moves to the new version at once.
+    explanation: Blue/Green moves all the traffic to the new version at once, so a bug reaches everyone.
   - question: In a canary release, what share of traffic usually goes to v2 first?
     options:
       - 100%
@@ -98,7 +110,7 @@ quiz:
       - A small slice like 5%
       - 0%
     answer: 2
-    explanation: Start small to limit impact.
+    explanation: A small slice (like 5%), so a bad version only affects a few users.
   - question: Which signal should NOT be the only canary health check?
     options:
       - HTTP 5xx rate
@@ -106,7 +118,7 @@ quiz:
       - Prediction distribution
       - Process is "running"
     answer: 3
-    explanation: A running process can still return wrong or slow answers.
+    explanation: Knowing the process is running proves little. It can still give wrong or slow answers.
   - question: What does a shadow deployment do with v2's responses?
     options:
       - Returns them to users
@@ -114,7 +126,7 @@ quiz:
       - Averages them with v1
       - Caches them
     answer: 1
-    explanation: Shadow traffic carries zero user risk.
+    explanation: They are thrown away (only compared and logged), so users are never affected.
   - question: 10% of 200 QPS to a canary with a 3% error rate for 10 minutes. Errors?
     options:
       - "60"
@@ -122,7 +134,7 @@ quiz:
       - "600"
       - 3,600
     answer: 1
-    explanation: 20 QPS × 600 s × 0.03 = 360.
+    explanation: 10% of 200 is 20 requests per second. 20 × 600 seconds × 0.03 = 360 errors.
   - question: What is a readiness probe for?
     options:
       - Rolling back
@@ -130,7 +142,7 @@ quiz:
       - Measuring drift
       - Scaling to zero
     answer: 1
-    explanation: Only ready instances (model loaded) get requests.
+    explanation: It tells the load balancer when a copy is ready (model loaded), so requests only go to ready copies.
 fact:
   title: Shadow Deployments (Dark Traffic)
   body: "In ultra-high stakes domains like medical diagnosis or autonomous driving, companies use Shadow
@@ -168,35 +180,45 @@ lab:
 notes:
   - heading: Zero-downtime as a requirement
     body: |
-      A hospital triage service can't go offline for 15 minutes every time a new model is released. Releases must be **zero-downtime**, and a bad model must be undone in seconds, not after a bug report.
+      **The idea:** a hospital can't close the emergency room to repaint it. Changes have to happen while it stays open.
 
-      The building block is a **load balancer / reverse proxy** (Nginx, Traefik, an AWS ALB) in front of several **replicas** of the service. It sends each request to a healthy replica and can split traffic between versions. Replicas report readiness with a **readiness probe** (`/health`), so traffic only goes to instances that have loaded the model.
+      A hospital triage service can't go offline for 15 minutes every time a new model is released. Releases must be **zero-downtime**, and a bad model must be undone in seconds, not after someone reports a problem.
+
+      The building block is a **load balancer / reverse proxy** (Nginx, Traefik, an AWS ALB) in front of several **replicas** (running copies) of the service. It sends each request to a healthy replica, and can split traffic between versions. Each replica reports whether it's ready through a **readiness probe** (a `/health` address the load balancer checks), so traffic only goes to copies that have finished loading the model.
   - heading: Blue/Green deployment
     body: |
-      Run two identical environments. **Blue** serves all traffic with v1. Deploy v2 to **Green**, run health checks and smoke tests against it, then switch the router so 100% of traffic goes to Green. Keep Blue running so you can switch back instantly.
+      **The idea:** set up a complete second stage behind the curtain, check it, then swap the whole audience over to it at once.
 
-      - ✓ Simple and instant; rollback is just switching back.
-      - ✗ Every user hits v2 at the same moment, so the **blast radius** of a bug is 100%. Problems that only appear under real traffic — rare inputs, load — affect everyone before you notice.
-      - ✗ Needs double the capacity during the switch.
+      Run two identical environments. **Blue** serves all traffic with v1. Put v2 on **Green**, run health checks and quick tests against it, then switch the router so 100% of traffic goes to Green. Keep Blue running, so you can switch back instantly.
+
+      - ✓ Simple and instant; rolling back is just switching back.
+      - ✗ Every user meets v2 at the same moment, so the **blast radius** of a bug is 100%. Problems that only show up with real traffic (rare inputs, heavy load) hit everyone before you notice.
+      - ✗ You need double the machines during the switch.
   - heading: Canary releases
     body: |
-      Named after canaries in coal mines: expose a **small slice** of real traffic to v2 first — say **5%** — while 95% stays on v1. Watch it closely. If it's healthy, increase step by step (5 → 25 → 50 → 100%). If not, send its traffic back to 0%.
+      **The idea:** miners used to carry a canary into the mine. If the air was bad, the bird reacted first, and the miners got out. A canary release lets a few users test the new version first.
+
+      Send a **small slice** of real traffic to v2 first, say **5%**, while 95% stays on v1. Watch it closely. If it's healthy, increase step by step (5 → 25 → 50 → 100%). If not, send its traffic back to 0%.
 
       What to watch, compared with v1 over the same period:
 
-      - **Error rate** (HTTP 5xx) and timeouts.
-      - **Latency**, especially p99.
-      - **Prediction behaviour** — distribution of predicted risk, share of high-risk flags. A model can be "healthy" by HTTP standards and still clinically wrong.
+      - **Error rate:** server errors (HTTP 5xx) and timeouts.
+      - **Latency**, especially **p99**: how slow the slowest 1% of requests are.
+      - **Prediction behaviour:** the spread of predicted risk, and the share of high-risk flags. A model can look perfectly "healthy" by web standards and still be clinically wrong.
 
-      The thresholds form an **error budget**: e.g. roll back automatically if the canary's 5xx rate exceeds 1.5% or p99 exceeds 300 ms. Automating this is the point — a human might take minutes; a router takes seconds.
+      These limits make up the **error budget**, e.g. roll back automatically if the canary's server-error rate goes above 1.5% or its p99 goes above 300 ms. **Automating this is the whole point:** a person might take minutes to react; a router takes seconds.
+
+      **Tiny example:** 10% of 200 requests per second is 20 per second. At a 3% error rate for 10 minutes (600 s), that's 20 × 600 × 0.03 = **360 failed requests**. With automatic rollback after the first minute, it would be about 36.
   - heading: Shadow, A/B and choosing a strategy
     body: |
+      **The idea:** before letting a new doctor treat patients, have them shadow an experienced one and compare their decisions, without the patients being affected.
+
       Two more patterns worth knowing:
 
-      - **Shadow (mirrored) deployment** — v2 receives a *copy* of live traffic but its answers are discarded. Zero user risk; good for comparing predictions with v1 before any exposure.
-      - **A/B testing** — split traffic to measure which version produces better *outcomes* (not just fewer errors), usually for longer, with statistical tests.
+      - **Shadow (mirrored) deployment:** v2 receives a *copy* of the live traffic, but its answers are thrown away. Zero risk to users, and a good way to compare its predictions with v1's before anyone relies on them.
+      - **A/B testing:** split the traffic to measure which version leads to better *results* (not just fewer errors). It usually runs longer and uses statistical tests.
 
-      For clinical models a sensible path is shadow → canary with automated rollback → full rollout, with the old version kept warm until the new one has a track record.
+      For hospital models, a sensible path is: **shadow → canary with automatic rollback → full rollout**, keeping the old version running and ready until the new one has a track record.
 examples:
   - title: Errors during a canary
     problem: A gateway sends 5% of 240 QPS to v2. Over 15 minutes v2 has a 2.5% error rate. How many failed
