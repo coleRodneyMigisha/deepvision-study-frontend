@@ -1,35 +1,38 @@
 id: inference-optimization
 title: "Inference Performance: ONNX, Pruning & INT8 Quantization"
-subtitle: Accelerate prediction throughput, shrink model sizes, and reduce server operational costs
-recap: Inference is about single-request latency. ONNX Runtime compiles the model graph to optimised C++
-  kernels, removing Python overhead. INT8 quantisation stores 1 byte per weight instead of 4 (75% smaller) and
-  SIMD/VNNI instructions process four times more INT8 values per cycle. Combined with pruning, you get big
-  speedups for a tiny accuracy cost — always re-measure AUC after.
+subtitle: Making each prediction faster and the model smaller, so the service is quick and cheap to run
+recap: |
+  Inference means making predictions for real requests, and what matters is how long one prediction takes
+  (latency). ONNX Runtime runs the model as fast compiled C++ code, without Python's overhead. INT8 quantisation
+  stores each weight in 1 byte instead of 4, making the model 75% smaller, and modern processors can work on four
+  times as many 8-bit numbers at once. Together with pruning (removing weights that barely matter), you get big
+  speed-ups for a tiny loss of accuracy. But always measure the accuracy (AUC) again afterwards.
 traps:
-  - Saying INT8 saves 25% — it saves 75% (4× smaller).
-  - Quantising without re-validating clinical metrics.
-  - Optimising training throughput when the problem is inference latency.
+  - "Saying INT8 saves 25%. It saves 75%: 4 bytes → 1 byte is 4× smaller."
+  - "Quantising without re-checking the clinical results (ROC-AUC, recall)."
+  - "Speeding up training when the real problem is how long each live prediction takes."
 lesson:
   checkpointStep: 3
   steps:
-    - Training throughput focuses on processing millions of samples in parallel batches across days. Inference
-      latency, however, is about serving a single patient prediction in under 15 milliseconds.
-    - Python is dynamically typed and carries significant interpreter overhead. Frameworks like ONNX (Open
-      Neural Network Exchange) compile model compute graphs into highly optimized C++ runtimes.
-    - Standard machine learning model weights are stored as 32-bit floating point numbers (FP32).
-      Post-training quantization converts these weights into 8-bit integers (INT8).
-    - "Checkpoint: how does 8-bit integer quantization achieve a 4x reduction in model memory footprint, and
-      how does INT8 accelerate CPU vector operations?"
-    - Because INT8 uses only 1 byte per parameter instead of 4 bytes in FP32, model size immediately shrinks
-      by 75%. Furthermore, modern CPU SIMD registers (AVX-512, VNNI) process four times as many INT8
-      operations per clock cycle.
-    - Coupled with weight pruning (zeroing out redundant tree branches or tiny weights), quantization yields
-      dramatic speedups with less than 0.5% drop in clinical ROC-AUC.
+    - "Training is about getting through millions of examples in big batches over days. Serving is different: it's
+      about answering one patient's prediction in under 15 milliseconds (low latency)."
+    - "Python is flexible but slow at running each little step. Tools like ONNX (Open Neural Network Exchange) turn
+      the model's calculations into a graph that a highly optimised C++ engine can run directly."
+    - "Model weights are normally stored as 32-bit decimal numbers (FP32). Post-training quantisation converts them
+      into 8-bit whole numbers (INT8)."
+    - "Checkpoint: how does 8-bit quantisation make the model 4× smaller, and why does INT8 make the processor's
+      calculations faster?"
+    - "INT8 uses 1 byte per weight instead of FP32's 4 bytes, so the model shrinks by 75% straight away. And modern
+      processors' SIMD instructions (AVX-512, VNNI), which do the same operation on many numbers at once, handle four
+      times as many 8-bit numbers per step."
+    - "Combined with pruning (removing near-zero weights or useless tree branches), quantisation gives big speed-ups
+      with less than a 0.5% drop in clinical ROC-AUC."
 checkpoint:
   question: Explain the mathematical principle of post-training quantization from FP32 to INT8. Why does it
     shrink memory by 4x, and what hardware acceleration does INT8 leverage?
-  hint: Recall byte sizes (32 bits = 4 bytes vs 8 bits = 1 byte). Mention affine scaling (q = round(r/S) + Z),
-    memory bandwidth bottlenecks, and SIMD instruction sets.
+  hint: "32 bits = 4 bytes, 8 bits = 1 byte. Think about how a range of decimal numbers is squeezed onto the whole
+    numbers 0–255 (a scale and a zero point: q = round(r/S) + Z), how much data has to travel from memory, and what
+    SIMD instructions do."
   keywords:
     - quantization
     - fp32
@@ -41,28 +44,34 @@ checkpoint:
     - simd
     - latency
     - bandwidth
-  idealAnswer: "Post-training quantization maps continuous 32-bit floating point values (FP32) into discrete
-    8-bit integers (INT8) via linear affine transformation: $q = \\text{round}(r / S) + Z$, where $S$ is a
-    scale factor and $Z$ is the zero-point offset. Because FP32 requires 4 bytes per parameter while INT8
-    requires only 1 byte, the model's disk and RAM memory footprint is reduced by exactly 4× (75% savings). In
-    production inference, memory bandwidth is often the primary bottleneck; transferring 4× fewer bytes from
-    RAM to CPU cache significantly speeds up execution. Additionally, modern CPUs utilize SIMD vector
-    extensions (Intel AVX-512 VNNI, ARM NEON) that execute multiple INT8 multiply-accumulate operations in a
-    single clock cycle, often yielding a 2× to 4× reduction in inference latency with negligible degradation
-    in accuracy."
+  idealAnswer: "Post-training quantization maps 32-bit decimal numbers (FP32) onto 8-bit whole numbers (INT8) with a
+    straight-line (affine) formula: $q = \\text{round}(r / S) + Z$, where $S$ is the scale (the step size) and $Z$ is
+    the zero point (the integer that stands for 0.0). FP32 needs 4 bytes per weight and INT8 only 1, so the model's
+    memory on disk and in RAM shrinks by exactly 4× (a 75% saving). In live serving, memory bandwidth (how fast data
+    moves from RAM to the processor) is often the real bottleneck, so moving 4× fewer bytes makes predictions
+    noticeably faster. On top of that, modern processors have SIMD instructions (Intel AVX-512 VNNI, ARM NEON) that do
+    many INT8 multiply-and-add operations in a single step, often cutting latency by 2–4× with very little loss of
+    accuracy."
 terms:
+  - term: Inference
+    definition: Using a trained model to make predictions for new inputs.
+  - term: Latency vs throughput
+    definition: Latency is how long one prediction takes; throughput is how many predictions per second.
   - term: FP32
-    definition: 32-bit single-precision floating point format; standard default for training ML models.
-  - term: INT8 Quantization
-    definition: Converting 32-bit floats to 8-bit signed/unsigned integers to reduce memory bandwidth and
-      accelerate arithmetic.
-  - term: ONNX Runtime
-    definition: A cross-platform, high-performance scoring engine for Open Neural Network Exchange models.
-  - term: Weight Pruning
-    definition: Removing redundant parameters or decision branches with near-zero weights to sparsify models.
+    definition: A 32-bit (4-byte) decimal number format, the normal default for training models.
+  - term: INT8 quantisation
+    definition: Storing weights as 8-bit (1-byte) whole numbers instead of 32-bit decimals, to save memory and speed up
+      calculations.
+  - term: Scale and zero point
+    definition: "The two numbers that map decimals to integers: q = round(x / scale) + zero_point."
+  - term: ONNX / ONNX Runtime
+    definition: ONNX is a standard file format for a model's calculations; ONNX Runtime is a fast C++ engine that runs
+      it.
+  - term: Weight pruning
+    definition: Removing weights, or whole neurons, trees or branches, that contribute almost nothing.
   - term: SIMD / VNNI
-    definition: "Single Instruction Multiple Data / Vector Neural Network Instructions: hardware-level parallelism
-      for ultra-fast integer matrix dot products."
+    definition: "Single Instruction, Multiple Data: processor instructions that do the same calculation on many numbers
+      at once. VNNI is Intel's version built for neural-network maths."
 quiz:
   - question: A deep learning ensemble model has a serialized file size of 240 MB in standard FP32. What will its
       approximate size be after INT8 quantization?
@@ -80,8 +89,8 @@ quiz:
       - It eliminates the need for unit testing
       - It prevents model drift
     answer: 0
-    explanation: ONNX provides an open graph format executed by native C++ inference engines (ONNX Runtime),
-      eliminating Python runtime overhead and supporting multi-platform deployment.
+    explanation: ONNX is a standard file format that a fast C++ engine (ONNX Runtime) can run directly, without Python's
+      overhead, and from many programming languages.
   - question: How many bytes does an INT8 weight use?
     options:
       - "1"
@@ -89,7 +98,7 @@ quiz:
       - "4"
       - "8"
     answer: 0
-    explanation: 8 bits = 1 byte.
+    explanation: 8 bits make 1 byte, so an INT8 weight takes 1 byte.
   - question: FP32 → INT8 reduces weight memory by…
     options:
       - 25%
@@ -97,7 +106,7 @@ quiz:
       - 75%
       - 90%
     answer: 2
-    explanation: 4 bytes → 1 byte is a 4× (75%) reduction.
+    explanation: Going from 4 bytes to 1 byte per weight is 4× smaller, a 75% saving.
   - question: What does ONNX Runtime mainly remove from the inference hot path?
     options:
       - The model weights
@@ -105,7 +114,7 @@ quiz:
       - The input validation
       - The GPU
     answer: 1
-    explanation: It executes a compiled graph with optimised C++ kernels.
+    explanation: Python's overhead. It runs the model as a ready-made graph with fast C++ code.
   - question: Why does INT8 run faster on modern CPUs?
     options:
       - It's more accurate
@@ -113,7 +122,7 @@ quiz:
       - It uses the GPU
       - It skips layers
     answer: 1
-    explanation: Less memory traffic plus more operations per cycle.
+    explanation: There is less data to move from memory, and the processor can work on more 8-bit numbers in each step.
   - question: After quantising the stroke model, what must you do before deploying?
     options:
       - Nothing
@@ -121,7 +130,7 @@ quiz:
       - Retrain from scratch
       - Delete the FP32 model
     answer: 1
-    explanation: Optimisations can change behaviour; always re-validate.
+    explanation: Re-check the clinical results (ROC-AUC, recall at the threshold). Optimisations can change the model's behaviour.
   - question: Why do outlier weights hurt INT8 accuracy?
     options:
       - They are deleted
@@ -129,7 +138,7 @@ quiz:
       - They overflow to NaN
       - They don't
     answer: 1
-    explanation: Error ≤ s/2 and s grows with the range.
+    explanation: Outliers stretch the range, which makes the step size s bigger, and the rounding error (up to s/2) bigger for every weight.
 fact:
   title: Inference is Memory-Bound, Not Compute-Bound
   body: For small-batch or single-instance model inference, modern CPUs spend over 70% of time waiting for
@@ -167,43 +176,61 @@ lab:
 notes:
   - heading: Latency is a different goal from training throughput
     body: |
-      Training is about **throughput**: process millions of samples per hour in big batches, and it's fine if a single step takes a second. Serving a patient is about **latency**: one prediction, now — typically a budget of ~10–15 ms for the model inside a ~100 ms end-to-end request.
+      **The idea:** a bus moves lots of people efficiently but slowly; a motorbike taxi gets one person there fast. Training is the bus (throughput); serving a patient is the motorbike (latency).
 
-      Where inference time goes:
+      Training is about **throughput**: get through millions of examples per hour in big batches; it's fine if one step takes a second. Serving a patient is about **latency**: one prediction, right now. Typically the model gets about 10–15 ms inside a request that should finish in about 100 ms overall.
 
-      - **Python overhead** — interpreting each operation, creating objects.
-      - **Memory traffic** — moving weights from RAM to the CPU caches; often the real bottleneck.
-      - **Arithmetic** — the multiply-adds themselves.
+      Where the time goes when making a prediction:
 
-      Optimisation attacks each one: compiled runtimes remove Python overhead, smaller number formats cut memory traffic, and SIMD instructions do more arithmetic per cycle.
+      - **Python overhead:** Python interpreting each small step and creating objects.
+      - **Memory traffic:** moving the weights from RAM to the processor's fast caches. Often this is the real bottleneck.
+      - **Arithmetic:** the multiplications and additions themselves.
+
+      Each optimisation attacks one of these: compiled runtimes remove the Python overhead, smaller number formats cut the memory traffic, and SIMD instructions do more arithmetic per step.
   - heading: ONNX and ONNX Runtime
     body: |
-      **ONNX** (Open Neural Network Exchange) is a standard file format for model computation graphs. You can export from scikit-learn (`skl2onnx`), XGBoost, PyTorch or TensorFlow into one `.onnx` file.
+      **The idea:** instead of a translator reading your recipe aloud step by step (Python), hand the kitchen a pre-printed, optimised instruction card (ONNX) that it can follow at full speed.
 
-      **ONNX Runtime** executes that graph with optimised C++ kernels: it fuses operations, plans memory up front and uses hardware-specific instructions — and no Python interpreter runs inside the hot loop. Typical result: the same model, same outputs, noticeably lower latency. A bonus: the `.onnx` file can be served from C#, Java or JavaScript, not just Python.
+      **ONNX** (Open Neural Network Exchange) is a standard file format describing a model's calculations as a graph. You can export from scikit-learn (with `skl2onnx`), XGBoost, PyTorch or TensorFlow into one `.onnx` file.
+
+      **ONNX Runtime** runs that graph with optimised C++ code: it merges steps together, plans memory in advance and uses the processor's special instructions, with no Python running in the busy inner loop. Typical result: the same model and the same outputs, but noticeably faster. Bonus: the `.onnx` file can be served from C#, Java or JavaScript, not just Python.
 
       ```python
-      sess = onnxruntime.InferenceSession("stroke.onnx")
-      probs = sess.run(None, {"input": X.astype(np.float32)})[1]
+      sess = onnxruntime.InferenceSession("stroke.onnx")                  # load once
+      probs = sess.run(None, {"input": X.astype(np.float32)})[1]          # predict
       ```
   - heading: Quantisation — FP32 to INT8
     body: |
-      Weights are normally 32-bit floats (**FP32**, 4 bytes). **Quantisation** stores them in fewer bits:
+      **The idea:** instead of writing every price as 2,347.861529, round it to a whole number on a fixed scale. You lose a tiny bit of precision, and save a lot of space.
 
-      | Format | Bytes per weight | Size of a 100 M-param model |
+      Weights are normally 32-bit decimal numbers (**FP32**, 4 bytes each). **Quantisation** stores them with fewer bits:
+
+      | Format | Bytes per weight | Size of a 100-million-weight model |
       |---|---|---|
       | FP32 | 4 | 400 MB |
       | FP16 / BF16 | 2 | 200 MB |
       | INT8 | 1 | 100 MB |
 
-      INT8 is **4× smaller (a 75% saving)**. Speed improves too: less data to move from memory, more of the model fits in cache, and CPU vector units (AVX-512 **VNNI**) process four times as many 8-bit values per instruction as 32-bit ones.
+      INT8 is **4× smaller (a 75% saving)**. It's faster too: less data to move from memory, more of the model fits in the processor's cache, and the processor's vector units (AVX-512 **VNNI**) handle four times as many 8-bit numbers per instruction as 32-bit ones.
 
-      Affine quantisation maps a float range [min, max] onto 0–255: scale s = (max − min)/255, zero-point z = round(−min/s), q = round(x/s) + z, and dequantised x̂ = (q − z)·s. The rounding error is at most s/2 — which is why outliers that stretch the range hurt accuracy.
+      **How the mapping works (affine quantisation):** squeeze the range [min, max] of the weights onto the integers 0–255.
+
+      - Step size (scale): s = (max − min) / 255
+      - The integer that stands for 0.0 (zero point): z = round(−min / s)
+      - Store each weight as q = round(x / s) + z, and turn it back with x̂ = (q − z) · s
+
+      **Tiny example:** weights from −1.0 to 1.55 give s = 2.55 / 255 = 0.01 and z = 100, so the weight 0.50 is stored as 50 + 100 = **150**.
+
+      The rounding error is at most s / 2. A few extreme weights (outliers) stretch the range, which makes s bigger and every weight less precise; that's why outliers hurt accuracy.
   - heading: Pruning — and always re-validating
     body: |
-      **Pruning** removes weights (or whole neurons, trees, branches) that contribute little — e.g. weights near zero. Sparse models can be smaller and faster, especially with structured pruning that removes entire channels or layers the runtime can skip.
+      **The idea:** trim the branches of a tree that bear no fruit. The tree is lighter and works just as well, but check the harvest afterwards to be sure.
 
-      Every optimisation is **lossy or at least risky**, so the rule is: re-run the full evaluation on the optimised artifact — ROC-AUC, recall at the clinical threshold, calibration — and compare with the original. In the course example INT8 + pruning cost less than 0.5% ROC-AUC, an excellent trade for a 4× smaller, several-times-faster model. If recall at the triage threshold dropped noticeably, you'd ship the FP32 model instead.
+      **Pruning** removes weights (or whole neurons, trees or branches) that contribute very little, e.g. weights close to zero. The model can become smaller and faster, especially with *structured* pruning, which removes whole channels or layers that the runtime can then skip entirely.
+
+      Every optimisation can change the model's behaviour, so the rule is: **run the full evaluation again on the optimised model** (ROC-AUC, recall at the clinical threshold, calibration) and compare it with the original.
+
+      In the course example, INT8 + pruning cost less than 0.5% ROC-AUC: an excellent trade for a model that's 4× smaller and several times faster. But if recall at the triage threshold had dropped noticeably, you'd ship the original FP32 model instead.
 examples:
   - title: Memory saved by INT8
     problem: A 64 M-parameter model is stored in FP32. How many MB does INT8 quantisation save?

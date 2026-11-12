@@ -1,34 +1,38 @@
 id: drift-psi
 title: Observability, Covariate Drift & Population Stability Index (PSI)
-subtitle: Detect data distribution changes and performance degradation before models fail patients
-recap: "ML fails silently: HTTP 200, wrong answers. Data drift is a change in P(X); concept drift is a change
-  in P(Y|X). PSI bins a feature and sums (A − E)·ln(A/E) across bins: < 0.1 stable, 0.1–0.25 monitor, ≥ 0.25
-  retrain and recalibrate. Monitor inputs and outputs continuously, not just uptime."
+subtitle: Noticing when real-world data stops looking like the training data, before the model lets patients down
+recap: |
+  ML models fail silently: the service keeps answering normally (HTTP 200), but the answers get worse. Data drift
+  means the kind of inputs changes (P(X), e.g. older patients); concept drift means what the inputs mean for the
+  outcome changes (P(Y|X), e.g. a new treatment lowers stroke risk). PSI (Population Stability Index) splits a
+  feature into bins and adds up (A − E)·ln(A/E) over the bins, comparing the share of live data (A) with the share
+  of training data (E) in each. Below 0.1: stable; 0.1–0.25: keep an eye on it; 0.25 or more: retrain and
+  recalibrate. Watch inputs and outputs all the time, not just whether the service is up.
 traps:
-  - Using log base 10 instead of the natural log in PSI.
-  - Treating a PSI of 0.18 as 'retrain now' — it's the monitor band.
-  - Confusing data drift with concept drift.
+  - "Using log base 10 in PSI. It uses the natural log (ln)."
+  - "Treating a PSI of 0.18 as \"retrain now\". That's the keep-an-eye-on-it band (0.1–0.25)."
+  - "Mixing up data drift (the inputs change) with concept drift (what the inputs mean changes)."
 lesson:
   checkpointStep: 3
   steps:
-    - "Software systems fail visibly with stack traces and crash logs. Machine learning models fail silently:
-      the API continues returning HTTP 200 with clean JSON, but predictions quietly lose real-world validity."
-    - We distinguish between Data Drift (covariate shift, where the input distribution P(X) changes over time)
-      and Concept Drift (where the relationship P(Y given X) between features and target changes).
-    - For instance, if our Uganda hospital opens a pediatric or geriatric wing, the patient age and BMI
-      distributions shift dramatically from the training population.
-    - "Checkpoint: how does the Population Stability Index (PSI) quantify covariate drift, and what
-      mathematical threshold dictates when to trigger automated retraining?"
-    - "PSI divides a continuous feature into reference bins (typically 10 quantiles) and compares the expected
-      training proportion E to actual production proportion A: sum of (A minus E) times ln(A over E)."
-    - A PSI below 0.1 indicates stability. PSI between 0.1 and 0.25 flags moderate drift for monitoring. A PSI
-      of 0.25 or greater indicates significant drift requiring an automated retraining and recalibration
-      pipeline.
+    - "Normal software fails loudly, with error messages and crash logs. ML models fail silently: the API keeps
+      answering HTTP 200 with tidy JSON, but the predictions quietly stop matching the real world."
+    - "We separate data drift (also called covariate shift: the kind of inputs changes over time, P(X)) from concept
+      drift (the link between the inputs and the outcome changes, P(Y given X))."
+    - "For example, if our Uganda hospital opens a children's or elderly ward, the patients' ages and BMIs become very
+      different from the training patients."
+    - "Checkpoint: how does the Population Stability Index (PSI) measure data drift, and what threshold should trigger
+      automatic retraining?"
+    - "PSI splits a number column into bins using the training data (usually 10 bins with 10% of patients each), then
+      compares the training share E with the live share A in each bin: add up (A minus E) times ln(A over E)."
+    - "A PSI below 0.1 means stable. Between 0.1 and 0.25 means a moderate change worth watching. 0.25 or more means a
+      big change that should trigger automatic retraining and recalibration."
 checkpoint:
   question: Define Data Drift versus Concept Drift with clinical examples, and explain how the Population
     Stability Index (PSI) is calculated and interpreted.
-  hint: "P(X) vs P(Y|X). State the PSI formula: sum of (Actual - Expected) * ln(Actual / Expected), and the
-    standard thresholds (<0.1, 0.1-0.25, >0.25)."
+  hint: "Data drift: the kind of patients changes, P(X). Concept drift: what the same patient details mean for stroke
+    risk changes, P(Y|X). Then give the PSI formula, the sum of (Actual − Expected) × ln(Actual / Expected), and its
+    thresholds (below 0.1, 0.1–0.25, 0.25 and above)."
   keywords:
     - data drift
     - concept drift
@@ -50,20 +54,28 @@ checkpoint:
     significant change; 0.1 ≤ PSI < 0.25 indicates moderate drift; and PSI ≥ 0.25 indicates severe drift,
     automatically alerting engineering and triggering retraining pipelines."
 terms:
-  - term: Data Drift (Covariate Shift)
-    definition: Change in the marginal distribution of input features P(X) between training and production inference.
-  - term: Concept Drift
-    definition: Change in the conditional distribution P(Y|X); the relationship between inputs and ground-truth
-      targets fundamentally changes.
+  - term: Observability / monitoring
+    definition: Continuously measuring how a live system behaves, including its inputs and predictions, not just
+      whether it's running.
+  - term: Data drift (covariate shift)
+    definition: The live inputs start to look different from the training inputs, P(X) changes (e.g. older patients).
+  - term: Concept drift
+    definition: The link between the inputs and the outcome changes, P(Y|X) (e.g. a new treatment changes who has
+      strokes).
+  - term: Ground-truth labels
+    definition: The real outcomes (did the patient actually have a stroke?), which often arrive weeks later.
   - term: Population Stability Index (PSI)
-    definition: A symmetric metric derived from Kullback-Leibler divergence measuring the shift between two
-      probability distributions.
-  - term: Kolmogorov-Smirnov (KS) Test
-    definition: A non-parametric statistical hypothesis test comparing continuous cumulative distributions to
-      detect significant divergence.
-  - term: Automated Retraining Trigger
-    definition: A monitored workflow (e.g. in Airflow) that automatically initiates model training when drift or
-      performance metrics breach thresholds.
+    definition: A number measuring how much a feature's live distribution has shifted from its training
+      distribution. 0 means no change; 0.25 or more means a big change.
+  - term: Bins / quantiles
+    definition: Ranges a number column is split into. Quantile bins are chosen so each holds the same share of the
+      training data.
+  - term: Kolmogorov–Smirnov (KS) test
+    definition: A statistical test that compares two sets of numbers to check whether they come from the same
+      distribution.
+  - term: Automated retraining trigger
+    definition: A scheduled check (e.g. in Airflow) that starts retraining automatically when drift or performance
+      limits are broken.
 quiz:
   - question: In a production monitoring dashboard, the PSI for patient glucose distribution over the last 30 days
       is measured at 0.32. What action should be taken?
@@ -74,8 +86,8 @@ quiz:
       - Delete the model file
       - Scale up container replicas
     answer: 1
-    explanation: A PSI value of 0.25 or greater indicates substantial distribution drift, demanding root-cause
-      investigation and pipeline retraining.
+    explanation: A PSI of 0.25 or more means the live data has shifted a lot from the training data. Find out why, and
+      retrain.
   - question: During COVID-19, patient symptoms and travel patterns changed radically, altering how ML models
       predicted respiratory risk. What type of drift is this?
     options:
@@ -84,8 +96,8 @@ quiz:
       - RAM drift
       - Compiler drift
     answer: 0
-    explanation: Sudden systemic shifts change both input feature patterns (covariate shift) and the disease
-      dynamics/relationships (concept drift).
+    explanation: A big sudden change can alter both the kind of patients arriving (data drift) and how the disease
+      behaves (concept drift).
   - question: Data drift (covariate shift) is a change in…
     options:
       - P(Y | X)
@@ -93,7 +105,7 @@ quiz:
       - The model weights
       - The API latency
     answer: 1
-    explanation: The input distribution changes.
+    explanation: The inputs start to look different from the training data, while their meaning may stay the same.
   - question: What does PSI = 0.18 suggest?
     options:
       - Stable
@@ -101,7 +113,7 @@ quiz:
       - Retrain immediately
       - The PSI is invalid
     answer: 1
-    explanation: 0.10–0.25 is the monitor band.
+    explanation: "0.10–0.25 is the \"keep an eye on it\" band: investigate, but no automatic retraining yet."
   - question: Which log is used in PSI?
     options:
       - Base 10
@@ -109,7 +121,7 @@ quiz:
       - Natural log
       - No log
     answer: 2
-    explanation: PSI = Σ (A − E) ln(A/E).
+    explanation: "The natural log (ln): PSI = Σ (A − E) × ln(A / E)."
   - question: Why do ML models 'fail silently'?
     options:
       - They log nothing
@@ -117,7 +129,7 @@ quiz:
       - They crash quietly
       - They stop accepting requests
     answer: 1
-    explanation: Nothing looks broken at the HTTP level.
+    explanation: The service still answers quickly and without errors, so nothing looks broken, even when the predictions are wrong.
   - question: Detecting concept drift requires…
     options:
       - Only input features
@@ -125,7 +137,7 @@ quiz:
       - The Docker image
       - A GPU
     answer: 1
-    explanation: P(Y|X) can only be measured with outcomes.
+    explanation: The real outcomes (labels). You can only see that the link between inputs and outcomes changed once you know the outcomes.
   - question: E = 0.10, A = 0.10 in a bin. Its PSI contribution is…
     options:
       - "0"
@@ -133,7 +145,7 @@ quiz:
       - "1"
       - Undefined
     answer: 0
-    explanation: A − E = 0, so the term is 0.
+    explanation: The share didn't change, so A − E = 0 and the term is 0.
 fact:
   title: Evidently AI & Prometheus in Production
   body: Modern MLOps stacks export statistical drift metrics (PSI, Wasserstein distance, KS p-values) from
@@ -173,45 +185,59 @@ lab:
 notes:
   - heading: Models fail silently
     body: |
-      Ordinary software fails loudly: exceptions, stack traces, 500 errors. ML models usually fail **silently**: the API keeps returning HTTP 200 with well-formed JSON, latency is fine, dashboards are green — and the predictions are steadily getting worse because the world has changed since training.
+      **The idea:** a broken watch that has stopped is obvious. A watch that runs ten minutes slow looks perfectly fine, and that's the dangerous one. ML models fail like the slow watch.
+
+      Ordinary software fails loudly: error messages, crash logs, 500 errors. ML models usually fail **silently**. The API keeps answering HTTP 200 with neat JSON, it's fast, the dashboards are green, and the predictions are steadily getting worse, because the world has changed since training.
 
       So ML monitoring has two layers:
 
-      - **Service health** — uptime, latency, error rates (same as any API).
-      - **Model health** — are the *inputs* still like the training data? Are the *outputs* behaving as expected? When labels arrive later (did the patient have a stroke?), is accuracy holding?
+      - **Service health:** is it up, how fast is it, how many errors? (The same as for any API.)
+      - **Model health:** do the *inputs* still look like the training data? Do the *outputs* behave as expected? And when the real outcomes arrive later (did the patient have a stroke?), is accuracy holding up?
   - heading: Data drift vs concept drift
     body: |
-      - **Data drift (covariate shift)** — the distribution of inputs **P(X)** changes. The hospital opens a geriatric wing; patient ages shift up. The relationship between features and stroke may be unchanged, but the model now sees regions of feature space it rarely saw in training.
-      - **Concept drift** — the relationship **P(Y | X)** changes. A new treatment lowers stroke risk for hypertensive patients; the same inputs now mean something different.
+      **The idea:** data drift is a new kind of customer walking into the shop. Concept drift is the same customers wanting different things than before.
 
-      Data drift can be detected immediately from inputs alone. Concept drift needs **ground-truth labels**, which arrive with a delay, so you monitor proxies (prediction distribution, rate of high-risk flags) and evaluate properly when labels come in.
+      - **Data drift (covariate shift):** the inputs change, **P(X)**. The hospital opens an elderly ward and patient ages shift upwards. The link between the features and stroke may be the same, but the model is now seeing kinds of patients it rarely saw in training.
+      - **Concept drift:** the relationship changes, **P(Y | X)**. A new treatment lowers stroke risk for people with high blood pressure, so the same patient details now mean something different.
+
+      Data drift can be spotted straight away from the inputs alone. Concept drift needs the **real outcomes (ground-truth labels)**, which arrive later. Until then, watch stand-ins (the spread of predicted risk, the share of high-risk flags), and evaluate properly when the outcomes come in.
   - heading: Population Stability Index (PSI)
     body: |
-      PSI compares a feature's production distribution with its training (reference) distribution:
+      **The idea:** sort the training patients into age groups and note what share falls in each. Do the same for this week's patients. If the shares have moved a lot, the population has changed.
 
-      1. Split the reference data into bins — usually **10 quantile bins**, so each holds **E = 10%** of training rows.
-      2. Count the share **A** of production rows that fall in each of those same bins.
-      3. **PSI = Σ (A − E) · ln(A / E)** over all bins (natural log).
+      PSI compares a feature's live distribution with its training (reference) distribution:
 
-      Each term is ≥ 0 and grows when a bin gains or loses share, so PSI is 0 when the distributions match. Industry rule of thumb:
+      1. Split the training data into bins, usually **10 quantile bins**, so each holds **E = 10%** of the training patients.
+      2. Work out the share **A** of live patients that falls in each of those same bins.
+      3. **PSI = Σ (A − E) · ln(A / E)**, added up over all bins, using the natural log (ln).
+
+      Every term is zero or positive, and it grows when a bin gains or loses share, so PSI is 0 when the two distributions match.
+
+      **Tiny example** with just 2 bins: training shares E = 0.5 and 0.5; live shares A = 0.7 and 0.3.
+
+      - Bin 1: (0.7 − 0.5) × ln(0.7 / 0.5) = 0.2 × 0.336 = 0.067
+      - Bin 2: (0.3 − 0.5) × ln(0.3 / 0.5) = −0.2 × −0.511 = 0.102
+      - PSI = 0.067 + 0.102 = **0.17**: a moderate shift, so watch it.
 
       | PSI | Meaning | Action |
       |---|---|---|
-      | < 0.10 | stable | none |
-      | 0.10 – 0.25 | moderate shift | investigate, monitor closely |
-      | ≥ 0.25 | significant shift | retrain and recalibrate |
+      | below 0.10 | stable | none |
+      | 0.10 – 0.25 | moderate shift | investigate, watch closely |
+      | 0.25 or more | big shift | retrain and recalibrate |
 
-      Practical details: use a small floor (e.g. 0.0001) so empty bins don't give ln(0); compute PSI per feature on a rolling window large enough to be stable.
+      Practical details: use a tiny minimum share (e.g. 0.0001) so an empty bin doesn't give ln(0); and work out PSI per feature over a time window large enough to give stable numbers.
   - heading: From detection to retraining
     body: |
-      A monitoring pipeline for the stroke model:
+      **The idea:** a smoke detector is only useful if someone acts when it beeps. Monitoring needs a plan for what happens next.
 
-      1. **Log** every request's features and prediction (with privacy controls).
-      2. Each day, compute **PSI per feature** against the training reference, plus the distribution of predicted risk; the **KS test** is a common alternative for continuous features.
-      3. **Alert** in the 0.10–0.25 band; **trigger retraining** at ≥ 0.25 or when evaluation on newly labelled cases shows recall dropping.
-      4. Retrain on recent data, **re-validate** (recall at the clinical threshold, calibration), and release via **canary** — never auto-deploy a retrained model straight to 100%.
+      A monitoring plan for the stroke model:
 
-      PSI says *that* something changed, not *whether it matters*. A big shift in an unimportant feature may not hurt; a small shift in the most important one might. Pair drift metrics with feature importance and, when labels arrive, real performance.
+      1. **Log** every request's inputs and prediction (with privacy protections).
+      2. Every day, work out the **PSI for each feature** compared with the training data, plus the spread of predicted risk. The **KS test** is a common alternative for number columns.
+      3. **Alert** people when PSI is in the 0.10–0.25 band. **Trigger retraining** at 0.25 or more, or when checks on newly labelled cases show recall dropping.
+      4. Retrain on recent data, **check it again** (recall at the clinical threshold, calibration), and release it through a **canary**. Never send a retrained model straight to 100% of users automatically.
+
+      PSI tells you *that* something changed, not *whether it matters*. A big shift in an unimportant feature may not hurt at all; a small shift in the most important one might. Combine drift numbers with how important each feature is, and, once the outcomes arrive, with real performance.
 examples:
   - title: PSI for one bin
     problem: In the age bin 60–70, the training share is E = 0.10 and this month's share is A = 0.22. What does

@@ -1,36 +1,42 @@
 id: data-preparation
 title: Data Preparation, Preprocessing Leaks & Clinical Imbalance
-subtitle: Turn messy clinical hospital registries into leak-free deployable pipelines
-recap: "Leakage is the cardinal sin: fit scalers, imputers and SMOTE on the training split only, ideally
-  inside an sklearn Pipeline/ColumnTransformer, or test information inflates your metrics. With ~4.9% stroke
-  prevalence, a model that always predicts 'no stroke' scores 95% accuracy and misses every patient — judge
-  clinical models by recall, precision and PR-AUC."
+subtitle: Preparing hospital data for a model without accidentally cheating, when sick patients are rare
+recap: |
+  The worst mistake in preparing data is leakage: letting information from the test data sneak into training,
+  which makes the model look better than it really is. So split the data first, then fit every preparation step
+  (scalers, gap-fillers, SMOTE) on the training part only, ideally inside an sklearn Pipeline. In the stroke
+  data only about 4.9% of patients had a stroke, so a model that always says "no stroke" scores 95% accuracy
+  while missing every single stroke patient. Judge medical models by recall (how many sick patients you catch),
+  precision, and PR-AUC instead.
 traps:
-  - Calling fit_transform on the full dataset before train_test_split.
-  - Applying SMOTE to the test set.
-  - Celebrating 95% accuracy on a 5%-positive problem.
+  - "Calling fit_transform on the whole dataset before train_test_split. The test patients' numbers leak into
+    training."
+  - "Applying SMOTE (making extra synthetic patients) to the test set. Tests must use only real patients."
+  - "Celebrating 95% accuracy when only 5% of cases are positive. Always saying \"no\" gets that score."
 lesson:
   checkpointStep: 3
   steps:
-    - A trained machine learning model is only as dependable as the data engineering feeding it. In the Uganda
-      Regional Referral Hospital stroke dataset, we face missing BMI values, string encodings, and extreme
-      class imbalance.
-    - "The cardinal sin of ML deployment is data leakage: computing scalers (StandardScaler) or imputation
-      statistics over the entire dataset before splitting into train and test sets."
-    - When you fit a scaler on all rows, test set distribution metrics leak into training weights, giving
-      falsely inflated validation accuracy that collapses the moment new patients arrive at triage.
-    - "Checkpoint: why does evaluating an imbalanced hospital dataset with raw accuracy fail, and why must
-      SMOTE or scaling only be applied to the training split?"
-    - In stroke risk triage, only ~4.9% of patients experience a cerebrovascular accident. A trivial model
-      predicting 'No Stroke' achieves 95.1% accuracy while killing every high-risk patient by missing 100% of
-      cases.
-    - To protect production validity, bundle transformers into an sklearn Pipeline or ColumnTransformer. Fit
-      strictly on X_train, and apply SMOTE synthetic oversampling only to training instances.
+    - "A model is only as reliable as the data prepared for it. In the Uganda Regional Referral Hospital stroke
+      dataset we face missing BMI values, text categories that need converting to numbers, and very few stroke
+      cases compared with healthy patients (class imbalance)."
+    - "The worst mistake in deploying ML is data leakage: for example, working out a scaler's average and spread
+      (StandardScaler), or the values to fill gaps with, from the whole dataset before splitting it into training
+      and test sets."
+    - "If you fit a scaler on all rows, information about the test patients leaks into training. The test score
+      looks better than it should, and the model disappoints the moment real new patients arrive."
+    - "Checkpoint: why does plain accuracy fail on an imbalanced hospital dataset, and why must SMOTE and scaling be
+      fitted on the training split only?"
+    - "In stroke screening, only about 4.9% of patients have a stroke. A useless model that always says \"no stroke\"
+      gets 95.1% accuracy, while missing 100% of the stroke patients."
+    - "To keep it honest, bundle the preparation steps into an sklearn Pipeline or ColumnTransformer, fit it only on
+      X_train (the training data), and apply SMOTE (creating extra synthetic stroke examples) only to the training
+      data."
 checkpoint:
   question: Why is accuracy a dangerous metric for clinical triage with 5% positive cases, and why must data
     scalers and SMOTE oversampling never touch the test set?
-  hint: Consider what a dummy classifier achieves by guessing 0 for everyone. Contrast accuracy with Recall/F2
-    score, and explain why fitting transformations on the full dataset corrupts out-of-sample evaluation.
+  hint: "What score does a lazy model get by saying \"no stroke\" to everyone? Compare that with its recall (or F2
+    score). Then: if the scaler learns its average from all patients, including test patients, is the test still a
+    fair exam?"
   keywords:
     - accuracy
     - imbalance
@@ -43,27 +49,38 @@ checkpoint:
     - fit_transform
     - smote
     - generalization
-  idealAnswer: "With a 5% positive stroke prevalence, a naive model that predicts negative for every patient
-    achieves 95.1% accuracy but has zero clinical utility because Recall is 0%. In medical triage, False
-    Negatives can be fatal, so we prioritize Recall and PR-AUC over raw accuracy. Scalers and SMOTE must only
-    touch the training split: fitting scalers on the full dataset leaks test distribution parameters (mean and
-    variance) into the model, and applying SMOTE across test data creates synthetic evaluation targets,
-    destroying the statistical independence required for valid real-world generalization."
+  idealAnswer: "With only 5% of patients having a stroke (class imbalance), a lazy model that says 'no stroke' for
+    everyone gets 95.1% accuracy but is useless, because its recall is 0%: it catches none of the stroke patients.
+    In medical screening a false negative (a missed stroke) can be fatal, so we focus on recall and PR-AUC rather
+    than accuracy. Scalers and SMOTE must only be fitted on the training split. Using fit_transform on the full
+    dataset before you split leaks the test patients' average and spread into training (data leakage), and
+    applying SMOTE to the test data adds made-up patients to the exam. Either way the test score no longer shows
+    how well the model works on real new patients (generalization)."
 terms:
-  - term: Data Leakage
-    definition: Accidentally sharing information from outside the training dataset (e.g. test set statistics) when
-      building a model.
-  - term: Class Imbalance
-    definition: Severe disparity in outcome classes (e.g. 95% non-stroke vs 5% stroke in clinical screening).
+  - term: Data leakage
+    definition: Information from outside the training data (e.g. the test set's averages) accidentally used while
+      building the model, making scores look too good.
+  - term: Train / test split
+    definition: Keeping some data aside (the test set) that the model never learns from, to check it fairly at the end.
+  - term: Class imbalance
+    definition: When one outcome is much rarer than the other, e.g. 95% no stroke vs 5% stroke.
+  - term: Scaling (StandardScaler)
+    definition: Rescaling a column so it has average 0 and spread 1. The average and spread must come from the
+      training data only.
+  - term: Imputation
+    definition: Filling in missing values, e.g. blank BMI with the median BMI (from the training data).
+  - term: One-hot encoding
+    definition: Turning a text category (e.g. smoking_status) into several 0/1 columns, one per category.
   - term: SMOTE
-    definition: "Synthetic Minority Over-sampling Technique: creates synthetic interpolated examples between
-      k-nearest minority neighbors."
-  - term: ColumnTransformer
-    definition: An scikit-learn estimator that executes distinct preprocessing pipelines (numeric scalers,
-      categorical encoders) on specific column subsets.
-  - term: Recall (Sensitivity)
-    definition: True Positives divided by (True Positives + False Negatives); measures the proportion of actual
-      clinical stroke cases caught.
+    definition: "Synthetic Minority Over-sampling Technique: creates made-up examples of the rare class by blending
+      real ones that are similar."
+  - term: Pipeline / ColumnTransformer
+    definition: sklearn tools that bundle the preparation steps and the model together, applying the right steps to
+      each group of columns, so they're always fitted on training data only.
+  - term: Recall (sensitivity)
+    definition: TP ÷ (TP + FN). The share of real stroke patients the model catches.
+  - term: Precision
+    definition: TP ÷ (TP + FP). Of the patients the model flags, the share who really had a stroke.
 quiz:
   - question: In a hospital cohort of 2,000 patients, 100 experience a stroke. A baseline model predicts 'No
       Stroke' for all 2,000. What is its accuracy and recall?
@@ -82,8 +99,8 @@ quiz:
       - Stripping whitespace from strings
       - Writing raw data to read-only storage
     answer: 0
-    explanation: Fitting StandardScaler computes global mean and standard deviation across both splits, leaking
-      future test distribution characteristics into training features.
+    explanation: Fitting StandardScaler on everything works out the average and spread from training AND test patients,
+      so information about the test set leaks into training.
   - question: What is wrong with calling StandardScaler().fit_transform(X) before train_test_split?
     options:
       - Nothing
@@ -91,7 +108,7 @@ quiz:
       - It's slower
       - It removes missing values
     answer: 1
-    explanation: Fit transformations on the training split only.
+    explanation: The scaler learns from the test patients too. Fit every preparation step on the training split only.
   - question: Recall measures…
     options:
       - Correct predictions overall
@@ -107,7 +124,7 @@ quiz:
       - Training data only (inside the pipeline's fit)
       - After deployment
     answer: 2
-    explanation: Oversampling the test set would make evaluation meaningless.
+    explanation: Only the training data. Adding made-up patients to the test set would make the test meaningless.
   - question: Why OneHotEncoder(handle_unknown='ignore')?
     options:
       - Faster training
@@ -115,7 +132,7 @@ quiz:
       - It removes outliers
       - It scales numbers
     answer: 1
-    explanation: Production data can contain categories absent from training.
+    explanation: Real patients may have a category never seen in training. Without it, the service would crash.
   - question: For rare positives, which curve is more informative?
     options:
       - ROC curve
@@ -123,7 +140,7 @@ quiz:
       - Learning curve
       - Loss curve
     answer: 1
-    explanation: PR curves focus on the positive class and aren't flattered by many true negatives.
+    explanation: The precision–recall curve focuses on the rare positive cases, so lots of easy "no stroke" patients can't make it look good.
   - question: XGBoost's scale_pos_weight for ~5% positives is roughly…
     options:
       - "0.05"
@@ -131,7 +148,7 @@ quiz:
       - "19"
       - "100"
     answer: 2
-    explanation: negatives / positives ≈ 95 / 5 = 19.
+    explanation: "It tells XGBoost how much more to count each positive: negatives ÷ positives ≈ 95 ÷ 5 = 19."
 fact:
   title: "The Silent Killer of Production ML: Train-Serve Skew"
   body: Google's landmark paper on ML technical debt notes that differences between training data pipelines and
@@ -167,57 +184,65 @@ lab:
 notes:
   - heading: The stroke dataset and why it is hard
     body: |
-      The capstone uses a stroke-risk dataset from a Ugandan Regional Referral Hospital: age, gender, hypertension, heart disease, average glucose level, BMI, smoking status, work type, residence — and whether the patient had a stroke. Three properties make it a good teacher:
+      **The idea:** real hospital data has gaps, words instead of numbers, and very few of the patients you most need to find. Each problem has a standard fix, but applying it carelessly can make your model look far better than it is.
 
-      - **Missing values** — BMI is blank for a few percent of patients.
-      - **Categorical strings** — `work_type`, `smoking_status` need encoding before most models can use them.
-      - **Extreme class imbalance** — only about **4.9%** of patients had a stroke.
+      The capstone uses stroke data from a Ugandan Regional Referral Hospital: age, gender, high blood pressure (hypertension), heart disease, average glucose level, BMI, smoking status, type of work, where the patient lives, and whether they had a stroke. Three things make it a good teacher:
 
-      Each of these has a correct, standard treatment. The danger is applying it in a way that quietly leaks information or optimises the wrong metric.
+      - **Missing values:** BMI is blank for a few percent of patients.
+      - **Text categories:** `work_type` and `smoking_status` are words, and most models need numbers, so they must be *encoded*.
+      - **Very few positives (extreme class imbalance):** only about **4.9%** of patients had a stroke.
   - heading: The accuracy paradox
     body: |
-      With 4.9% positives, a "model" that always answers *no stroke* is right for 95.1% of patients. Its **accuracy is 95.1%** — and its **recall is 0%**: every stroke patient is sent home.
+      **The idea:** a smoke alarm that never goes off is "right" on every normal day, and useless in a fire.
 
-      For clinical triage the costs are lopsided: a false negative (missed stroke) can be fatal; a false positive (an extra clinic visit) costs time. So we judge models by:
+      With 4.9% of patients having a stroke, a "model" that always answers *no stroke* is right for 95.1% of patients. Its **accuracy is 95.1%**, and its **recall is 0%**: every stroke patient is sent home.
 
-      - **Recall / sensitivity** = TP / (TP + FN) — what share of stroke patients we catch.
-      - **Precision** = TP / (TP + FP) — what share of flagged patients actually have the condition.
-      - **F2 score** — a harmonic mean that weights recall more than precision.
-      - **PR-AUC** — area under the precision–recall curve, more informative than ROC-AUC when positives are rare.
+      In screening, the two kinds of mistake cost very different amounts. A false negative (a missed stroke) can be fatal; a false positive (an extra check-up) costs some time. So we judge models by:
 
-      Always look at the confusion matrix, not one number.
+      - **Recall (sensitivity)** = TP / (TP + FN): what share of stroke patients we catch.
+      - **Precision** = TP / (TP + FP): of the patients we flag, what share really had a stroke.
+      - **F2 score:** one number combining both, but counting recall more than precision.
+      - **PR-AUC:** the area under the precision–recall curve. When positives are rare, it's more honest than ROC-AUC.
+
+      Always look at the confusion matrix (the four counts TP, FP, FN, TN), not just one number.
   - heading: Data leakage
     body: |
-      **Leakage** is any way information from the test set (or the future) reaches training. The classic version:
+      **The idea:** if a student sees the exam questions while revising, their exam score says nothing about what they really know. Leakage is the model "seeing the exam".
+
+      **Leakage** is any way information from the test set (or from the future) reaches training. The classic version:
 
       ```python
-      X_scaled = StandardScaler().fit_transform(X)       # ✗ statistics from ALL rows
+      X_scaled = StandardScaler().fit_transform(X)        # ✗ average and spread worked out from ALL rows
       X_train, X_test, ... = train_test_split(X_scaled, y)
       ```
 
-      The scaler's mean and standard deviation now include test patients, so the test score is optimistic. The same applies to imputing with a mean computed on all rows, selecting features using all rows, or oversampling before splitting.
+      The scaler's average and spread now include the test patients, so the test score is too optimistic. The same goes for filling gaps with an average from all rows, choosing features using all rows, or oversampling before splitting.
 
-      The fix is to **split first**, then fit every learned transformation on the training split only. The cleanest way is an sklearn `Pipeline`: `pipeline.fit(X_train, y_train)` fits the imputer, scaler, encoder and model on training data, and `pipeline.predict(X_test)` only *applies* them.
+      **The fix: split first**, then fit every step that learns something from data on the **training split only**. The cleanest way is an sklearn **Pipeline**: `pipeline.fit(X_train, y_train)` fits the gap-filler, scaler, encoder and model on training data, and `pipeline.predict(X_test)` only *applies* them to the test data.
   - heading: Pipelines, ColumnTransformer and SMOTE
     body: |
+      **The idea:** put every preparation step and the model into one sealed box. Train the box on training data; then the exact same box is used for testing and in the real hospital.
+
       ```python
       prep = ColumnTransformer([
+          # number columns: fill gaps with the median, then rescale
           ("num", Pipeline([("impute", SimpleImputer(strategy="median")), ("scale", StandardScaler())]),
            ["age", "avg_glucose_level", "bmi"]),
+          # text columns: turn each category into its own 0/1 column
           ("cat", OneHotEncoder(handle_unknown="ignore"), ["work_type", "smoking_status", "gender"]),
       ])
       model = ImbPipeline([("prep", prep), ("smote", SMOTE()), ("clf", XGBClassifier())])
       ```
 
-      - `ColumnTransformer` applies the right preprocessing to each column group.
-      - `handle_unknown="ignore"` stops the API crashing on a category it never saw.
-      - **SMOTE** creates synthetic minority examples by interpolating between real stroke patients. Inside an `imblearn` pipeline it runs **only during `fit`**, so test data is never oversampled. Alternatives: `class_weight="balanced"` or XGBoost's `scale_pos_weight` (≈ negatives / positives ≈ 18).
+      - **ColumnTransformer** applies the right preparation to each group of columns.
+      - `handle_unknown="ignore"` stops the live service crashing when it meets a category it never saw in training.
+      - **SMOTE** creates extra, made-up stroke examples by blending similar real stroke patients, so the model sees enough of them. Inside an `imblearn` pipeline it runs **only while fitting**, so test data is never oversampled. Alternatives: `class_weight="balanced"`, or XGBoost's `scale_pos_weight` ≈ negatives ÷ positives ≈ 95 ÷ 5 = **19**.
 
-      The whole pipeline is what you save and deploy — that's what makes the preprocessing identical in production.
+      The whole pipeline is what you save and deploy. That's what guarantees the preparation is identical in the real hospital.
 examples:
   - title: The trivial model's scorecard
-    problem: 3,000 patients, 5% stroke prevalence. Compute accuracy, recall and precision for a model that always
-      predicts 'no stroke'.
+    problem: There are 3,000 patients, and 5% of them had a stroke. Work out the accuracy, recall and precision of a model
+      that always says "no stroke".
     steps:
       - Positives = 3,000 × 0.05 = **150**; negatives = **2,850**.
       - TP = 0, FN = 150, TN = 2,850, FP = 0.
@@ -226,7 +251,8 @@ examples:
     answer: 95% accuracy, 0% recall.
     takeaway: On imbalanced data, report recall/precision (or F2, PR-AUC) — never accuracy alone.
   - title: Computing F2
-    problem: A model has precision 0.32 and recall 0.86. Compute F1 and F2 and explain why F2 suits triage.
+    problem: A model has precision 0.32 (32% of flagged patients really had a stroke) and recall 0.86 (it catches 86% of
+      stroke patients). Work out F1 and F2, and explain why F2 suits stroke screening.
     steps:
       - F1 = 2PR / (P + R) = 2 × 0.32 × 0.86 / 1.18 = **0.466**.
       - F2 = 5PR / (4P + R) = 5 × 0.32 × 0.86 / (1.28 + 0.86) = 1.376 / 2.14 = **0.643**.

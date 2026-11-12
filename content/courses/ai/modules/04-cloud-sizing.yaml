@@ -1,38 +1,41 @@
 id: cloud-sizing
 title: Cloud Computing Concepts, Service Models & Hardware Sizing
-subtitle: Understand NIST cloud characteristics, IaaS/PaaS/SaaS/MLaaS, and GPU/CPU cost modeling
-recap: "Cloud gives elastic, on-demand compute. Know NIST's five characteristics and the service models: IaaS
-  (VMs), PaaS (managed platforms like Render), SaaS, MLaaS (SageMaker, Vertex AI). Tabular models run cheaply
-  on CPUs; large neural nets need GPUs that should scale to zero when idle. Spot/preemptible VMs are 70–90%
-  cheaper but can be reclaimed, so use them for checkpointed training and batch jobs."
+subtitle: Renting computers over the internet, choosing how much to manage yourself, and keeping costs down
+recap: |
+  The cloud lets you rent computing power over the internet, as much as you need, when you need it. Learn NIST's
+  five defining features, and the service models, from most to least work for you: IaaS (rent a bare virtual
+  computer), PaaS (a managed platform like Render runs your app), SaaS (a finished app) and MLaaS (ready-made ML
+  platforms like SageMaker). Simple table-data models run cheaply on ordinary processors (CPUs); big neural
+  networks need graphics processors (GPUs), which should switch off when idle. Spot machines are 70–90% cheaper
+  but can be taken back at short notice, so use them for training that saves its progress, and for batch jobs.
 traps:
-  - Serving a small XGBoost model on an always-on GPU.
-  - Running latency-critical serving on Spot instances without fallback.
-  - Confusing PaaS with IaaS — who manages the OS?
+  - "Serving a small XGBoost model on an always-on GPU. A cheap CPU is fast enough, and the GPU bills every hour."
+  - "Running a live service that must always answer on Spot machines with no backup. They can disappear with two
+    minutes' warning."
+  - "Mixing up PaaS and IaaS. Ask: who looks after the operating system?"
 lesson:
   checkpointStep: 3
   steps:
-    - Running model deployment on a personal laptop or physical on-premise server is fraught with power cuts,
-      network drops, and fixed compute limitations. Cloud computing provides elastic, on-demand compute
-      infrastructure.
-    - "The NIST standard defines five essential characteristics of cloud computing: on-demand self-service,
-      broad network access, resource pooling, rapid elasticity, and measured service."
-    - We categorize services into IaaS (raw virtual machines like EC2/Compute Engine), PaaS (managed platforms
-      like App Engine or Render), SaaS (end-user apps), and MLaaS (specialized AI platforms like SageMaker and
-      Vertex AI).
-    - "Checkpoint: what is the cost and latency difference between CPU and GPU inference, and how do
-      Spot/Preemptible instances save up to 80% on training costs?"
-    - Tabular models like Random Forests and XGBoost run fast and cheaply on modern CPUs (20ms latency at
-      pennies per month). Massive deep neural nets require GPUs, whose high hourly cost demands auto-scaling
-      to zero when idle.
-    - Spot instances utilize spare cloud data center capacity at a 70% to 90% discount. They can be reclaimed
-      with a 2-minute warning, making them ideal for checkpointed model training and fault-tolerant batch
-      scoring.
+    - "Running a model on a personal laptop or one server in the building means suffering power cuts, network drops
+      and fixed limits. Cloud computing rents you computers over the internet that can grow or shrink on demand."
+    - "The US standards body NIST defines five essential features of cloud computing: on-demand self-service, broad
+      network access, resource pooling, rapid elasticity and measured service."
+    - "We group services into IaaS (renting bare virtual machines, like EC2 or Compute Engine), PaaS (managed
+      platforms like App Engine or Render), SaaS (finished apps for end users) and MLaaS (ready-made AI platforms
+      like SageMaker and Vertex AI)."
+    - "Checkpoint: how do CPUs and GPUs differ in cost and speed for making predictions, and how do Spot
+      (preemptible) machines save up to 80% on training?"
+    - "Table-data models like random forests and XGBoost run fast and cheaply on ordinary processors (CPUs): about 20
+      ms per prediction, for pennies a month. Huge neural networks need graphics processors (GPUs), which cost a lot
+      per hour, so they should scale down to zero when nobody is using them."
+    - "Spot machines are spare data-centre capacity sold at 70–90% off. The provider can take them back with a
+      2-minute warning, so they suit training that saves checkpoints and batch jobs that can be restarted."
 checkpoint:
   question: Differentiate IaaS, PaaS, and MLaaS in the context of deploying an ML model, and explain how Spot
     instances reduce cloud costs while managing termination risk.
-  hint: Think about who manages the OS and runtime versus the model artifact. Explain the trade-off between
-    price discount and preemptible termination warnings.
+  hint: "For each model, ask who looks after the operating system and software versus the model itself. For Spot:
+    what do you gain (a big discount) and what do you risk (being shut down at short notice)? How can a job survive
+    that?"
   keywords:
     - iaas
     - paas
@@ -44,28 +47,37 @@ checkpoint:
     - elasticity
     - checkpoint
     - gpu
-  idealAnswer: "IaaS (Infrastructure as a Service) provides raw VMs where you manage the OS, CUDA drivers,
-    Docker, and networking. PaaS (Platform as a Service, e.g. Render) abstracts the VM: you provide
-    code/Docker and the platform manages uptime and SSL. MLaaS (Machine Learning as a Service, e.g. AWS
-    SageMaker) provides managed model endpoints, auto-scaling, model registries, and drift monitoring. Spot
-    (Preemptible) instances offer surplus cloud capacity at a 70–90% discount. To mitigate termination risk,
-    workloads must be stateless or save model checkpoints frequently to durable object storage (S3/GCS),
-    allowing jobs to resume automatically when new capacity is provisioned."
+  idealAnswer: "IaaS (Infrastructure as a Service) gives you bare virtual machines in the cloud: you look after the
+    operating system, GPU drivers (CUDA), Docker and networking. PaaS (Platform as a Service, e.g. Render) hides
+    the machine: you provide the code or Docker container, and the platform keeps it running and handles security
+    certificates. MLaaS (Machine Learning as a Service, e.g. AWS SageMaker) provides managed prediction endpoints,
+    automatic scaling (elasticity), model registries and monitoring for data drift. Spot (preemptible) machines are
+    spare cloud capacity at a 70–90% discount, which cuts cost a lot, for GPU training too. Because they can be
+    shut down at short notice, the work must either keep no important state on the machine or save a checkpoint of
+    the model often to durable storage (S3/GCS), so the job can resume automatically on a new machine."
 terms:
-  - term: NIST Cloud Characteristics
-    definition: "The 5 foundational pillars: On-demand self-service, Broad network access, Resource pooling, Rapid
-      elasticity, Measured service."
+  - term: Cloud computing
+    definition: Renting computers, storage and networks over the internet, paying for what you use.
+  - term: NIST's five cloud characteristics
+    definition: "On-demand self-service (set it up yourself), broad network access (reach it over the internet),
+      resource pooling (shared hardware), rapid elasticity (grow or shrink quickly) and measured service (pay by use)."
+  - term: Virtual machine (VM)
+    definition: A computer simulated in software on a provider's real hardware; you rent it by the hour.
   - term: IaaS
-    definition: "Infrastructure as a Service: rent virtual machines, raw storage, and virtual networks."
+    definition: "Infrastructure as a Service: rent bare virtual machines, storage and networks; you manage the software."
   - term: PaaS
-    definition: "Platform as a Service: deploy containerized web services without managing underlying operating
-      system updates."
+    definition: "Platform as a Service: hand over your app or container and the platform runs it; you don't manage the
+      operating system."
   - term: MLaaS
-    definition: "Machine Learning as a Service: end-to-end cloud platforms dedicated to ML training, registries,
-      and autoscaling inference."
-  - term: Spot / Preemptible VM
-    definition: Discounted cloud instances that the provider may terminate with short notice when capacity is
-      needed elsewhere.
+    definition: "Machine Learning as a Service: complete cloud platforms for training, storing and serving models."
+  - term: CPU vs GPU
+    definition: A CPU is a general-purpose processor; a GPU does huge numbers of simple calculations at once, ideal
+      for big neural networks.
+  - term: Spot / preemptible VM
+    definition: A heavily discounted virtual machine that the provider can take back at short notice when it needs the
+      capacity.
+  - term: Checkpoint
+    definition: A saved copy of training progress, so a job can carry on from there instead of starting again.
 quiz:
   - question: Which cloud service model requires you to configure the Linux kernel, install Nvidia GPU drivers,
       and manage Docker security updates yourself?
@@ -93,7 +105,7 @@ quiz:
       - Guaranteed zero downtime
       - Resource pooling
     answer: 2
-    explanation: The five are self-service, network access, pooling, elasticity, measured service.
+    explanation: The five are on-demand self-service, broad network access, resource pooling, rapid elasticity and measured service.
   - question: Render running your Docker container is an example of…
     options:
       - IaaS
@@ -101,7 +113,7 @@ quiz:
       - SaaS
       - On-prem
     answer: 1
-    explanation: You manage the app; the platform manages OS, runtime and scaling.
+    explanation: PaaS. You manage the app; the platform looks after the operating system, software and scaling.
   - question: Why are Spot VMs unsuitable for a 24/7 triage API?
     options:
       - They are slower
@@ -109,7 +121,7 @@ quiz:
       - They have no GPUs
       - They can't run Docker
     answer: 1
-    explanation: Interruptions are acceptable for checkpointed training, not for live clinical serving.
+    explanation: They can be taken back at short notice. That's fine for training that saves checkpoints, not for a live hospital service.
   - question: The best hardware for serving an XGBoost stroke model is usually…
     options:
       - An A100 GPU
@@ -117,7 +129,7 @@ quiz:
       - A TPU pod
       - A Spot GPU
     answer: 1
-    explanation: Tabular models are cheap and fast on CPUs.
+    explanation: Models for table data do little arithmetic, so an ordinary CPU is fast and cheap.
   - question: On-demand $1.50/h, 80% Spot discount, 10 h job. Spot cost?
     options:
       - $1.20
@@ -133,7 +145,7 @@ quiz:
       - Switch to Spot
       - Reboot
     answer: 1
-    explanation: Idle GPUs are expensive; scale to zero when idle.
+    explanation: An idle GPU still costs money every hour, so scale it down to zero when there's no traffic.
 fact:
   title: Latency Realities in East Africa
   body: A client in Kampala making API calls to an EU-West (Ireland) data center incurs a minimum physical
@@ -171,41 +183,49 @@ lab:
 notes:
   - heading: Why the cloud for ML
     body: |
-      A model served from a laptop or a single on-prem server inherits all its weaknesses: power cuts, a flaky uplink, no room to grow, and a long wait to buy new hardware. Cloud computing rents compute, storage and networking on demand, billed by usage.
+      **The idea:** instead of buying a generator for your house, you plug into the national grid and pay for what you use. The cloud is the same idea for computers.
 
-      The **NIST definition** has five essential characteristics — learn them by name:
+      A model served from a laptop, or one server in the building, inherits all its weaknesses: power cuts, a shaky internet connection, no room to grow, and months of waiting to buy new hardware. **Cloud computing** rents computing power, storage and networking whenever you need them, and bills you by use.
 
-      1. **On-demand self-service** — provision resources yourself, no human in the loop.
-      2. **Broad network access** — available over the network from standard clients.
-      3. **Resource pooling** — the provider serves many tenants from shared hardware.
-      4. **Rapid elasticity** — scale out and in quickly, even automatically.
-      5. **Measured service** — usage is metered and billed.
+      The **NIST definition** (from the US standards body) lists five essential features. Learn them by name:
+
+      1. **On-demand self-service:** you set up machines yourself, without phoning anyone.
+      2. **Broad network access:** you reach them over the internet from ordinary devices.
+      3. **Resource pooling:** the provider serves many customers from shared hardware.
+      4. **Rapid elasticity:** you can scale up and down quickly, even automatically.
+      5. **Measured service:** usage is metered, and you pay for what you use.
   - heading: Service models — who manages what
     body: |
-      | Model | You manage | Provider manages | ML example |
-      |---|---|---|---|
-      | **IaaS** | OS, runtime, app, data | hardware, virtualisation | an EC2 / Compute Engine VM you install Python on |
-      | **PaaS** | app and data | OS, runtime, scaling | Render, App Engine, Cloud Run running your FastAPI container |
-      | **SaaS** | just your usage | everything | a hosted analytics tool |
-      | **MLaaS** | data, model choices | training/serving infrastructure | SageMaker, Vertex AI |
+      **The idea:** think of food. IaaS is renting a kitchen (you cook everything). PaaS is a restaurant kitchen with staff, and you just bring your recipe. SaaS is ordering a ready meal.
 
-      Moving down the table you give up control for convenience. Our StudyRoom backend is a PaaS deployment (Render); the hospital might choose IaaS in a nearby region for data-residency reasons.
+      | Model | You manage | The provider manages | ML example |
+      |---|---|---|---|
+      | **IaaS** | operating system, software, app, data | the hardware and virtual machines | an EC2 / Compute Engine machine you install Python on |
+      | **PaaS** | your app and data | operating system, software, scaling | Render, App Engine or Cloud Run running your FastAPI container |
+      | **SaaS** | just how you use it | everything | a hosted analytics tool |
+      | **MLaaS** | your data and model choices | the training and serving machinery | SageMaker, Vertex AI |
+
+      Going down the table, you give up control in exchange for convenience. Our StudyRoom backend is a PaaS deployment (Render). A hospital might choose IaaS in a nearby region so patient data stays in the country or region (data residency).
   - heading: CPU, GPU and right-sizing
     body: |
-      Match hardware to the model, not to the hype:
+      **The idea:** don't hire a lorry to deliver a letter. Match the machine to the job.
 
-      - **Tabular models** (logistic regression, RandomForest, XGBoost) do little arithmetic per prediction. A small CPU instance serves them in ~10–25 ms for pennies.
-      - **Large neural networks** (vision transformers, LLMs) do billions of multiply-adds; GPUs do these in parallel and are worth their price — but only when busy. An idle GPU still bills by the hour, so GPU services should **auto-scale to zero** when quiet.
+      - **Table-data models** (logistic regression, random forest, XGBoost) do little arithmetic per prediction. A small, ordinary processor (**CPU**) serves them in about 10–25 ms, for pennies.
+      - **Large neural networks** (vision transformers, large language models) do billions of multiplications per prediction. Graphics processors (**GPUs**) do these all at once and are worth their price, but only while busy. An idle GPU still bills by the hour, so GPU services should **scale down to zero** when nobody is using them.
 
-      Latency has two parts: **compute** (how long the model takes) and **network** (distance to the users). For a Ugandan hospital, a server in Johannesburg adds ~40 ms per round trip; one in Ireland ~135 ms. Often the region matters more than the instance size.
+      **Delay (latency) has two parts:** the **computing time** (how long the model takes) and the **network time** (how far away the users are). For a hospital in Uganda, a server in Johannesburg adds about 40 ms per round trip; one in Ireland, about 135 ms. The region you pick often matters more than the size of the machine.
   - heading: Spot and preemptible instances
     body: |
-      Providers sell spare capacity as **Spot** (AWS), **Preemptible/Spot** (Google) VMs at **70–90% off** — with a catch: they can be reclaimed with about **two minutes' notice**.
+      **The idea:** a standby airline ticket is much cheaper, but you can be bumped off the flight. Fine for a flexible trip; not for getting to your own wedding.
 
-      - Great for **training and batch scoring**: save checkpoints regularly, and if the VM disappears, resume from the last checkpoint on a new one.
-      - Wrong for **real-time clinical serving**: a reclaimed instance means triage stops answering. Serve on on-demand (or reserved) instances, possibly with Spot capacity *added* behind a load balancer only for overflow.
+      Cloud providers sell their spare capacity as **Spot** machines (AWS) or **Preemptible/Spot** machines (Google) at **70–90% off**. The catch: they can be taken back with about **two minutes' notice**.
 
-      Cost arithmetic: spot rate = on-demand × (1 − discount); job cost = rate × hours.
+      - **Great for training and batch scoring:** save checkpoints regularly, and if the machine disappears, carry on from the last checkpoint on a new one.
+      - **Wrong for live hospital serving:** if the machine is taken back, triage stops answering. Serve on normal on-demand (or reserved) machines, and only *add* Spot machines behind a load balancer for extra busy periods.
+
+      **Cost arithmetic:** Spot price per hour = normal price × (1 − discount); job cost = price per hour × hours.
+
+      **Tiny example:** a normal price of 2.40 per hour with a 75% discount gives 2.40 × 0.25 = **0.60 per hour**. A 10-hour job then costs **6.00** instead of 24.00.
 examples:
   - title: Spot retraining bill
     problem: Nightly retraining runs 3 hours on a GPU that costs $2.80/h on-demand, with a 72% Spot discount. What

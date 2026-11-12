@@ -1,40 +1,44 @@
 id: data-cleaning
 title: Data Profiling, Validation & Cleaning
-subtitle: Turn messy field CSVs into a trusted analytical dataset (Lab 2)
-recap: "Raw data is untrusted and immutable: never edit data/raw/, always write deterministic outputs to
-  data/processed/. Profile first (types, null rates, duplicates, quantiles), then validate the data contract,
-  then clean: standardise strings, drop rows missing the composite key, deduplicate on (date, market,
-  commodity), and impute prices with the per-commodity median because prices are skewed and differ by
-  commodity."
+subtitle: Turning messy spreadsheets from the field into data you can trust (Lab 2)
+recap: |
+  Data collected in the real world is messy: missing prices, typos, the same row sent twice. Never edit the
+  original (raw) file; keep it untouched in data/raw/ and write your cleaned version to data/processed/, so you
+  can always start again. Work in three steps: profile (measure what's wrong without changing anything),
+  validate (check the data follows agreed rules), then clean (fix it in a repeatable way). Fill missing prices
+  with the median price of the same commodity, because prices differ a lot between commodities and a few huge
+  typos would drag an average way off.
 traps:
-  - Imputing with the global mean — outliers and different commodities distort it.
-  - Overwriting the raw CSV so a cleaning bug can never be undone.
-  - Deduplicating on all columns instead of the business key.
+  - "Filling missing prices with the overall average (global mean). Different commodities and a few extreme typos
+    make it wrong for everything."
+  - "Overwriting the original CSV. If your cleaning code has a bug, the original data is gone for good."
+  - "Removing duplicates by comparing every column. Use the columns that identify one observation (the business
+    key: date, market, commodity)."
 lesson:
   checkpointStep: 3
   steps:
-    - Every real-world data system begins with untrusted raw data. In our Uganda market monitoring pipeline,
-      field enumerators submit daily CSVs with missing prices, negative quantities, and duplicate
-      market-commodity-date rows.
-    - "Rule number one of data engineering: raw data is immutable. Never overwrite
-      data/raw/market_prices_dirty.csv. Instead, profile it first, validate its contract, and write cleaned
-      outputs to data/processed/."
-    - "Data profiling measures shape, data types, null rates, cardinality, and quantiles before touching a
-      single value. Validation then checks hard invariants: required columns, parseable ISO dates, and
-      non-negative prices."
-    - "Checkpoint: why should you impute missing prices using the per-commodity median rather than the global
-      mean, and why must raw data remain read-only?"
-    - Agricultural prices are heavily right-skewed and differ wildly by commodity — beans at 3,800 UGX/kg vs
-      maize at 1,800 UGX/kg. A global mean distorts both and is pulled up by extreme outliers; group-wise
-      median is robust.
-    - During cleaning, we standardise strings, drop rows missing primary keys (date, market, commodity),
-      deduplicate on the composite business key, and cap or filter impossible domain values like negative
-      rainfall or prices.
+    - "Every real data system starts with data you can't fully trust. In our Uganda market-price project, field
+      workers (enumerators) send daily CSV files (spreadsheet-like text files) with missing prices, negative
+      quantities, and the same market-commodity-date row sent twice."
+    - "Rule number one of data engineering: never change the raw data. Don't overwrite
+      data/raw/market_prices_dirty.csv. Instead, first measure it (profile), then check its rules (validate), and
+      save the cleaned version separately in data/processed/."
+    - "Profiling measures the data before you touch any value: its size, the type of each column, how many values
+      are missing, how many different values there are, and its spread. Validation then checks firm rules:
+      required columns exist, dates are real dates, and prices aren't negative."
+    - "Checkpoint: why fill missing prices with the median price of the same commodity rather than the average of
+      the whole dataset, and why must the raw data never be changed?"
+    - "Market prices are lopsided (a few very high values) and differ hugely by commodity: beans at about 3,800
+      UGX/kg, maize at about 1,800 UGX/kg. One overall average fits neither and gets pulled up by extreme typos.
+      The middle value (median) of each commodity is much more reliable."
+    - "While cleaning, we tidy text (spaces, capital letters), drop rows missing their identifying columns (date,
+      market, commodity), remove duplicates of those columns, and deal with impossible values such as negative
+      rainfall or prices."
 checkpoint:
   question: Why should missing market prices be imputed using the per-commodity median rather than the overall
     dataset mean, and why is raw data kept strictly immutable?
-  hint: Think about price skew/outliers across different commodities (beans vs maize), and what happens if a bug
-    is discovered in your cleaning script two weeks later.
+  hint: "Think about how different bean and maize prices are, and what one huge typo does to an average. Then: what
+    happens if you find a bug in your cleaning script two weeks later, and you've overwritten the original file?"
   keywords:
     - median
     - skew
@@ -48,96 +52,111 @@ checkpoint:
     - re-run
     - bug
     - audit
-  idealAnswer: "Market prices are skewed, contain extreme outliers, and vary across commodities (e.g., beans vs
-    maize). Using a global mean mixes incompatible distributions and is sensitive to outliers, whereas the
-    per-commodity median is robust and preserves each commodity's typical price level. Raw data must remain
-    immutable so the pipeline is reproducible and auditable: if cleaning logic changes or has a bug, we can
-    re-run from the untouched source CSV without permanent data loss."
+  idealAnswer: "Market prices are lopsided (skewed), contain extreme values (outliers), and differ between commodities
+    (beans vs maize). An overall mean mixes these different price levels and is dragged by outliers. The median of
+    each commodity group is robust (one extreme value can't move it much) and keeps each commodity's typical price.
+    Raw data must stay immutable (never changed) so the pipeline is reproducible and auditable: if the cleaning
+    logic changes or has a bug, we can re-run everything from the untouched source CSV without losing anything."
 terms:
+  - term: Raw data
+    definition: The original data exactly as it arrived. Kept read-only in data/raw/.
   - term: Data profiling
-    definition: Inspecting row counts, types, null rates, uniqueness and distributions before cleaning.
+    definition: Measuring the data before changing it. Row count, column types, how many values are missing, how many
+      different values, and the spread.
   - term: Data contract
-    definition: Formal schema + domain rules (e.g. price_ugx > 0, rainfall_mm in [0, 500]) that data must pass.
+    definition: The agreed rules data must follow, e.g. these columns must exist, price_ugx > 0, rainfall_mm between 0
+      and 500.
+  - term: Validation
+    definition: Checking the data against its contract, and stopping or rejecting rows that break the rules.
+  - term: Imputation
+    definition: Filling in a missing value with a best guess, e.g. the median price of the same commodity.
+  - term: Mean vs median
+    definition: The mean is the ordinary average. The median is the middle value when sorted; one extreme value
+      barely moves it.
   - term: Composite business key
-    definition: "Columns that uniquely identify an observation: (date, market, commodity)."
+    definition: "The set of columns that together identify one observation: (date, market, commodity)."
+  - term: Quartiles and IQR
+    definition: Q1 is the value a quarter of the way up the sorted data, Q3 three-quarters of the way. IQR = Q3 − Q1,
+      the spread of the middle half.
   - term: IQR outlier rule
-    definition: Flag values outside [Q1 − 1.5·IQR, Q3 + 1.5·IQR], where IQR = Q3 − Q1.
-  - term: Immutability of raw
-    definition: Never mutate data/raw/; always write deterministic outputs to data/processed/.
+    definition: Flag values below Q1 − 1.5·IQR or above Q3 + 1.5·IQR (Tukey's fences) as suspicious.
+  - term: Immutability of raw data
+    definition: Never changing data/raw/; always writing the cleaned results to data/processed/ instead.
 quiz:
-  - question: A dataset has Q1 = 2,000 UGX and Q3 = 3,200 UGX. What is the upper Tukey 1.5×IQR fence?
+  - question: A dataset has Q1 = 2,000 UGX and Q3 = 3,200 UGX. Where is the upper Tukey fence (Q3 + 1.5 × IQR)?
     options:
       - 4,400 UGX
       - 5,000 UGX
       - 3,800 UGX
       - 6,200 UGX
     answer: 1
-    explanation: IQR = 3,200 − 2,000 = 1,200. Upper fence = Q3 + 1.5×1,200 = 3,200 + 1,800 = 5,000 UGX.
-  - question: 10,000 raw rows have 4% missing primary keys, and 5% of the remaining valid rows are duplicates. How
-      many clean rows remain?
+    explanation: The middle-half spread IQR = 3,200 − 2,000 = 1,200. Upper fence = 3,200 + 1.5 × 1,200 = 3,200 + 1,800
+      = 5,000 UGX. Prices above it are flagged.
+  - question: 10,000 raw rows; 4% are missing their identifying columns, and 5% of the remaining rows are duplicates. How
+      many clean rows are left?
     options:
       - 9,100
       - 9,120
       - 9,500
       - 9,000
     answer: 1
-    explanation: "After dropping 4% missing keys: 10,000 × 0.96 = 9,600. After dropping 5% duplicates: 9,600 ×
-      0.95 = 9,120 rows."
-  - question: Which step should come first in a cleaning pipeline?
+    explanation: "Drop the 4% first: 10,000 × 0.96 = 9,600. Then drop 5% of those: 9,600 × 0.95 = 9,120."
+  - question: Which step should come first when cleaning data?
     options:
-      - Impute missing prices
-      - Profile the dataset
+      - Fill in missing prices
+      - Profile (measure) the dataset
       - Drop duplicates
       - Write to data/processed/
     answer: 1
-    explanation: Profiling first tells you what is wrong and how much, without changing anything.
-  - question: Three rows have market values "Owino", "owino " and "OWINO". What happens if you group by market
-      before cleaning?
+    explanation: Profiling tells you what is wrong and how much, without changing anything.
+  - question: Three rows say "Owino", "owino " and "OWINO". What happens if you group by market before tidying the text?
     options:
       - They merge automatically
       - Owino is counted as three different markets
       - The query fails
       - Only the first row is kept
     answer: 1
-    explanation: Strings must be standardised (strip + consistent case) before grouping or joining.
-  - question: What is the business key for the market-price dataset?
+    explanation: To a computer, different spaces or capital letters make different text. Tidy the text first (remove
+      spaces, use the same capitals).
+  - question: Which columns identify one observation (the business key) in the market-price data?
     options:
       - (date)
       - (market, commodity)
       - (date, market, commodity)
       - (price_ugx)
     answer: 2
-    explanation: One observation is one commodity in one market on one day; duplicates are defined on that key.
-  - question: Why add a price_imputed flag column?
+    explanation: One observation is one commodity, in one market, on one day. Duplicates are rows that repeat that
+      combination.
+  - question: Why add a price_imputed column (True/False)?
     options:
       - It makes the file smaller
-      - So analysts can tell real observations from filled ones
+      - So analysts can tell real prices from filled-in guesses
       - Pandas requires it
       - It speeds up groupby
     answer: 1
-    explanation: Imputed values are estimates; keeping that visible prevents them being treated as measurements.
-  - question: A validation rule says rainfall_mm must be in [0, 500]. A row has 812. What should validation do?
+    explanation: Filled-in values are estimates. Marking them stops people treating them as real measurements.
+  - question: The contract says rainfall_mm must be between 0 and 500. A row says 812. What should validation do?
     options:
-      - Silently set it to 500
-      - Flag or reject the row according to the contract
+      - Quietly change it to 500
+      - Flag or reject the row as the contract says
       - Ignore it
-      - Replace it with the mean
+      - Replace it with the average
     answer: 1
-    explanation: Validation enforces the contract; any fix (capping) is a documented cleaning decision, not a
-      silent change.
-  - question: Q1 = 1,600 and Q3 = 2,400. What is the lower Tukey fence?
+    explanation: Validation enforces the rules. Any fix, such as capping at 500, is a separate cleaning decision that
+      you write down, never a silent change.
+  - question: Q1 = 1,600 and Q3 = 2,400. Where is the lower Tukey fence?
     options:
       - "400"
       - "800"
       - 1,200
       - "0"
     answer: 0
-    explanation: IQR = 800; lower fence = 1,600 − 1.5 × 800 = 400.
+    explanation: IQR = 2,400 − 1,600 = 800. Lower fence = 1,600 − 1.5 × 800 = 400.
 fact:
-  title: Garbage In, Garbage Out costs billions
-  body: Gartner estimates poor data quality costs organisations an average of $12.9 million per year. In
-    production ML systems, fixing a schema or unit mismatch in ingestion almost always beats tuning model
-    hyperparameters.
+  title: Garbage in, garbage out costs billions
+  body: The research firm Gartner estimates bad data costs organisations an average of $12.9 million a year. In real
+    machine-learning systems, fixing a wrong column type or unit when the data comes in almost always helps more
+    than fine-tuning the model.
 lab:
   title: Data Profiler, Tukey Outlier Gate & Median Imputer
   variations:
@@ -168,56 +187,65 @@ lab:
 notes:
   - heading: Why raw data can't be trusted
     body: |
-      Field data is produced by people and devices under pressure: enumerators typing prices on a phone at a busy market, sensors dropping packets, spreadsheets merged by hand. Every one of those steps introduces a characteristic kind of error, and a data engineer's first job is to **name them** before fixing anything:
+      **The idea:** data is typed by tired people on phones at busy markets, sent by sensors that drop signal, and merged by hand. Each of those steps causes its own kind of mistake. Before fixing anything, **name the mistake.**
 
-      | Error type | Example in the market-price data | What it breaks |
+      | Kind of error | Example in the market-price data | What it breaks |
       |---|---|---|
       | Missing values | `price_ugx` is blank | averages, model training |
-      | Invalid domain | `price_ugx = -1500`, `rainfall_mm = 900` | every aggregate that touches it |
-      | Inconsistent format | `"owino "`, `"OWINO"`, `"Owino"` | joins and group-bys silently split one market into three |
-      | Duplicates | the same (date, market, commodity) row submitted twice | sums and counts are inflated |
-      | Unparseable values | `date = "bad-date"` | time-series logic crashes or drops rows |
+      | Impossible values | `price_ugx = -1500`, `rainfall_mm = 900` | every total or average that includes them |
+      | Inconsistent text | `"owino "`, `"OWINO"`, `"Owino"` | grouping and joining quietly split one market into three |
+      | Duplicates | the same (date, market, commodity) row sent twice | totals and counts come out too big |
+      | Unreadable values | `date = "bad-date"` | time calculations crash or drop rows |
 
-      The point of the table is that each error type has a *different* fix. Treating them all as "dirty data, drop it" throws away information and hides the real problem from whoever produced the data.
+      Each kind needs a *different* fix. Treating them all as "dirty, delete it" throws away useful information and hides the real problem from whoever collected the data.
   - heading: Profile → validate → clean, in that order
     body: |
-      **Profiling** measures the data without changing it: row count, column types, null rate per column, number of distinct values (cardinality), min/max and quantiles. A profile turns "the data looks messy" into numbers like *4.2% of prices are missing and 38 rows are negative* — numbers you can put in a report and check again next week.
+      **The idea:** a doctor examines you before treating you. Do the same with data: measure, check, then fix.
 
-      **Validation** checks hard rules — the *data contract*: required columns exist, `date` parses as ISO-8601, `price_ugx > 0`, `rainfall_mm` is between 0 and 500, and `(date, market, commodity)` is unique. Validation answers "may this data enter the pipeline?" A failed contract should stop the pipeline loudly rather than let bad rows leak downstream.
+      **1. Profiling: measure without changing anything.** Count the rows; check each column's type (number, text, date); count missing values per column; count how many different values each column has (its *cardinality*); find the smallest, largest and middle values (*quantiles*). A profile turns "the data looks messy" into facts like *4.2% of prices are missing and 38 rows are negative*, which you can report and check again next week.
 
-      **Cleaning** applies deterministic, documented fixes: standardise strings (`strip().title()`), parse dates, drop rows missing any part of the business key, de-duplicate on that key, cap or reject impossible values, and impute the rest.
+      **2. Validation: check the rules (the data contract).** The required columns exist; `date` is a real date in the standard YYYY-MM-DD format (ISO-8601); `price_ugx > 0`; `rainfall_mm` is between 0 and 500; and no (date, market, commodity) combination appears twice. Validation answers "is this data allowed into the pipeline?" If the contract fails, the pipeline should stop loudly rather than let bad rows slip through.
 
-      Doing these in order matters. If you clean before profiling, you can't say how dirty the data was. If you validate before standardising strings, `" owino"` fails a membership check it should pass.
+      **3. Cleaning: apply repeatable, written-down fixes.** Tidy text (`strip().title()` removes extra spaces and fixes capitals), turn date text into real dates, drop rows missing any part of the business key, remove duplicates of that key, cap or reject impossible values, and fill in (impute) the rest.
+
+      **Order matters.** Clean before profiling and you can't say how dirty the data was. Validate before tidying text and `" owino"` fails a check it should pass.
   - heading: Why the per-commodity median
     body: |
-      Imputation replaces a missing value with a best guess. The question is which guess.
+      **The idea:** to guess a missing maize price, look at other maize prices, and use the middle one, not the average.
 
-      - The **global mean** mixes every commodity together. Beans (~3,800 UGX/kg) and maize (~1,800 UGX/kg) average to a price that is wrong for *both*.
-      - The mean is also **sensitive to outliers**. One typo of 97,000 instead of 9,700 drags it far from the typical value.
-      - The **median** is the middle value of the sorted data, so a single extreme value can't move it much — it is *robust*. Computing it **per commodity** (`groupby("commodity")`) keeps each commodity's own price level.
+      **Imputation** means filling a missing value with a best guess. Which guess?
+
+      - The **overall average (global mean)** mixes every commodity together. Beans (about 3,800 UGX/kg) and maize (about 1,800 UGX/kg) average to a price that's wrong for *both*.
+      - An average is also **pulled by extreme values (outliers)**. One typo of 97,000 instead of 9,700 drags it far from a normal price.
+      - The **median** is the middle value once the prices are sorted, so one extreme value can hardly move it. It's *robust*. Working it out **per commodity** (`groupby("commodity")`) keeps each commodity's own price level.
+
+      **Tiny example:** maize prices 1,800, 1,900, 2,000, 2,100 and a typo of 9,700. The mean is 17,500 / 5 = 3,500 (higher than every real price!). The median is the middle value, 2,000.
 
       ```python
+      # for each commodity, fill missing prices with that commodity's median
       df["price_ugx"] = df.groupby("commodity")["price_ugx"].transform(lambda s: s.fillna(s.median()))
       ```
 
-      Imputation is still a guess. Good pipelines add a flag column (e.g. `price_imputed = True`) so analysts and models can tell real observations from filled ones.
+      A filled-in value is still a guess. Good pipelines add a flag column (e.g. `price_imputed = True`) so analysts and models can tell real prices from estimates.
   - heading: Raw data is immutable
     body: |
-      The rule is simple: **never modify `data/raw/`**. Read from it; write cleaned outputs to `data/processed/`.
+      **The idea:** keep the original receipt. You can always redo the sums, but you can't get the receipt back once it's thrown away.
 
-      Why it matters in practice:
+      The rule: **never change anything in `data/raw/`**. Read from it; write cleaned results to `data/processed/`.
 
-      1. **Reproducibility.** Anyone can rerun the pipeline from the same inputs and get the same outputs.
-      2. **Recoverability.** Two weeks later you discover the cleaning script dropped valid rows. If you overwrote the raw file, that data is gone. If you didn't, you fix the script and rerun.
-      3. **Auditability.** You can always show exactly what came in and what each step did to it.
+      Why it matters:
 
-      In exams, pair this with the IQR rule: values outside **[Q1 − 1.5·IQR, Q3 + 1.5·IQR]** (IQR = Q3 − Q1) are *flagged* as outliers. Whether you drop, cap or keep them is a decision you justify — not something the formula decides for you.
+      1. **Reproducibility:** anyone can rerun the pipeline from the same inputs and get the same outputs.
+      2. **Recovery:** two weeks later you find the cleaning script dropped good rows. If you overwrote the raw file, that data is gone. If you didn't, you fix the script and run it again.
+      3. **Auditability:** you can always show exactly what came in, and what each step did to it.
+
+      **The outlier rule (Tukey's fences).** Sort the values. **Q1** is the value a quarter of the way up, **Q3** three-quarters of the way up, and **IQR = Q3 − Q1** is the spread of the middle half. Values outside **[Q1 − 1.5·IQR, Q3 + 1.5·IQR]** are *flagged* as outliers. Whether you then drop, cap or keep them is a decision you explain; the formula only raises a flag.
 examples:
   - title: Tukey fences on beans prices
-    problem: Beans prices in one week have Q1 = 3,200 UGX and Q3 = 4,000 UGX. A row shows 6,900 UGX. Is it an
-      outlier by the 1.5×IQR rule?
+    problem: In one week, beans prices have Q1 = 3,200 UGX (a quarter of prices are below this) and Q3 = 4,000 UGX
+      (three-quarters are below this). One row shows 6,900 UGX. Is it an outlier by the 1.5×IQR rule?
     steps:
-      - IQR = Q3 − Q1 = 4,000 − 3,200 = **800 UGX**.
+      - The spread of the middle half, IQR = Q3 − Q1 = 4,000 − 3,200 = **800 UGX**.
       - Upper fence = Q3 + 1.5 × IQR = 4,000 + 1,200 = **5,200 UGX**. Lower fence = 3,200 − 1,200 = **2,000
         UGX**.
       - 6,900 > 5,200, so the row is **flagged** as an outlier.
@@ -226,15 +254,15 @@ examples:
     answer: Yes — it is above the 5,200 UGX upper fence.
     takeaway: The fence is a flag for investigation, not an automatic delete.
   - title: Mean vs median imputation
-    problem: "Five maize prices in Owino: 1,800, 1,900, 2,000, 2,100 and a typo of 9,700. A sixth price is
-      missing. What would mean-imputation and median-imputation fill in?"
+    problem: "Five maize prices in Owino market: 1,800, 1,900, 2,000, 2,100 and a typo of 9,700. A sixth price is
+      missing. What would filling it with the mean, or with the median, put in?"
     steps:
       - Mean = (1,800 + 1,900 + 2,000 + 2,100 + 9,700) / 5 = 17,500 / 5 = **3,500 UGX**.
       - Sorted, the middle value is **2,000 UGX** — that's the median.
-      - Mean-imputation would invent a price 75% higher than any real maize price; the median stays at a
-        realistic level.
+      - Filling with the mean would invent a price 67% higher than any real maize price (3,500 vs 2,100); the median
+        stays at a realistic level.
     answer: Mean fills 3,500 UGX; median fills 2,000 UGX.
-    takeaway: One bad value is enough to make the mean misleading — that's what "not robust" means.
+    takeaway: One bad value is enough to make the average misleading. That's what "not robust" means.
 questions:
   - question: Describe the difference between profiling, validation and cleaning, giving one concrete example of
       each for the market-price data.

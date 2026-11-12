@@ -3,7 +3,7 @@ id: cv
 code: CSC3104
 title: Computer Vision & Deep Learning
 shortTitle: Computer Vision
-tagline: "Pixels to production: CNNs, detection, segmentation, transformers and responsible deployment."
+tagline: "How computers see: from pixels to finding objects, outlining them, linking pictures to words, and using it all responsibly."
 accent: "#E8590C"
 persona: You are an expert Computer Vision & Deep Learning professor (CSC3104) who examines students in 1-on-1
   oral exams and lab defences.
@@ -50,10 +50,7 @@ exam:
         - pixel
         - every pixel
         - instance
-      idealAnswer: Classification gives one label for the whole image, with no location. Detection outputs a class,
-        confidence and bounding box for each object — what and where. Semantic segmentation classifies every
-        pixel, giving exact shapes but not separating instances of the same class. Cost and annotation effort
-        increase from classification to segmentation.
+      idealAnswer: "Classification gives one label for the whole image, with no location. Detection outputs a class, a confidence score and a bounding box (a rectangle) for each object: what and where. Semantic segmentation classifies every pixel, giving exact shapes but not separating instances of the same class. Cost and annotation effort increase from classification to segmentation."
     - prompt: Why do convolutional networks outperform fully connected networks on images? Name the two key
         inductive biases.
       module: cnns
@@ -65,10 +62,7 @@ exam:
         - translation equivariance
         - fewer parameters
         - overfitting
-      idealAnswer: CNNs exploit local connectivity — each neuron sees a small receptive field — and parameter
-        sharing — the same kernel slides across the image. This cuts parameters massively and gives
-        translation equivariance, so a feature is detected anywhere. A fully connected net flattens the image,
-        ignores spatial structure, needs millions of weights and overfits.
+      idealAnswer: "CNNs use two built-in assumptions (inductive biases). Local connectivity: each neuron sees only a small patch of the image (its receptive field). Parameter sharing: the same small filter (kernel) slides across the whole image. This cuts parameters massively and gives translation equivariance, so a feature is detected anywhere. A fully connected net flattens the image, ignores spatial structure, needs millions of weights and overfits."
     - prompt: Your training accuracy is 99% but validation accuracy is 72%. What's happening, and what would you do?
       module: training-evaluation
       keywords:
@@ -81,10 +75,7 @@ exam:
         - early stopping
         - more data
         - leakage
-      idealAnswer: That gap means overfitting — high variance; the model memorises training data instead of
-        generalising. I'd add data augmentation, regularisation like weight decay or dropout, use early
-        stopping on validation loss, simplify the model or use transfer learning. I'd also check the split for
-        leakage or distribution differences between train and validation.
+      idealAnswer: "That gap means overfitting (high variance): the model memorises its training pictures instead of learning patterns that work on new ones (generalising). I'd add data augmentation, regularisation like weight decay or dropout, use early stopping on validation loss, simplify the model or use transfer learning. I'd also check the split for leakage or distribution differences between train and validation."
     - prompt: You have 500 medical X-ray images. How would you apply transfer learning from an ImageNet-pretrained
         ResNet-50? Explain your freezing strategy and learning rates.
       module: transfer-learning
@@ -100,7 +91,8 @@ exam:
         - domain shift
         - augmentation
       idealAnswer: With 500 images, training all 25M parameters would overfit. I'd replace the final layer with a
-        new head for my classes, freeze the backbone and train the head first. Because X-rays differ from
+        new head for my classes, freeze the backbone (the pretrained layers, so they can't change) and train the
+        head first. Because X-rays differ from
         ImageNet photos, I'd then unfreeze the top blocks and fine-tune with a small learning rate, around
         1e-5 to 1e-4, smaller for earlier layers, to avoid catastrophic forgetting — plus augmentation and
         careful validation.
@@ -116,10 +108,7 @@ exam:
         - threshold
         - greedy
         - duplicate
-      idealAnswer: NMS relies on confidence scores and IoU. Sort boxes by confidence, keep the top box, compute IoU
-        between it and each remaining box of the same class, and remove those above a threshold such as 0.5.
-        Repeat with the next highest box. The threshold trades off duplicates against wrongly suppressing
-        nearby objects in crowded scenes.
+      idealAnswer: "NMS removes duplicate boxes drawn on the same object. It relies on confidence scores and IoU (intersection over union: the overlap of two boxes divided by the total area they cover). Sort boxes by confidence, keep the top box, compute IoU between it and each remaining box of the same class, and remove those above a threshold such as 0.5. Repeat with the next highest box. The threshold trades off duplicates against wrongly suppressing nearby objects in crowded scenes."
     - prompt: In segmentation, what is the difference between IoU and Dice, and why are skip connections used in
         U-Net?
       module: segmentation
@@ -152,7 +141,7 @@ exam:
       idealAnswer: CNNs build in locality and translation equivariance. A ViT treats the image as a sequence of
         patch tokens with global self-attention and almost no built-in spatial assumptions, so it has to learn
         that neighbouring patches are related from data. With small data it underperforms; with large-scale
-        pretraining its flexibility and global context let it match or beat CNNs.
+        pretraining, its flexibility and ability to look at the whole image at once let it match or beat CNNs.
     - prompt: In multi-object tracking, why is a Kalman filter paired with the Hungarian algorithm in SORT? What
         limitation led to DeepSORT?
       module: video-tracking
@@ -169,10 +158,12 @@ exam:
         - appearance
         - occlusion
         - id switch
-      idealAnswer: The Kalman filter predicts each track's next position from a constant-velocity motion model. The
+      idealAnswer: The Kalman filter predicts where each tracked object will be in the next frame, assuming it keeps
+        moving at the same speed, then corrects that guess with the new detection. The
         Hungarian algorithm then finds the optimal one-to-one assignment between predictions and new
         detections using IoU cost. SORT relies only on motion and overlap, so occlusions and crossings cause
-        ID switches. DeepSORT adds appearance embeddings from a re-ID network to the matching.
+        ID switches. DeepSORT adds appearance embeddings (a numeric description of how each object looks) from a
+        re-identification network to the matching, so people can be recognised after being hidden.
     - prompt: Your model must run on a phone. How would you make it deployable, and what would you report about its
         limitations?
       module: deployment-responsible
@@ -190,8 +181,9 @@ exam:
         - subgroup
         - bias
         - model card
-      idealAnswer: "I'd shrink the model with INT8 quantisation, pruning or knowledge distillation into a mobile
-        backbone, export via ONNX or directly to TFLite or Core ML, and benchmark latency, memory and accuracy
+      idealAnswer: "I'd shrink the model: INT8 quantisation (storing weights as 8-bit whole numbers, 4× smaller),
+        pruning (removing weights that barely matter) or knowledge distillation (training a small model to copy a
+        big one), export via ONNX or directly to TFLite or Core ML, and benchmark latency, memory and accuracy
         on the actual device. For limitations I'd write a model card: intended use, training data, and
         accuracy broken down by subgroup and condition — lighting, skin tone, camera — plus known failure
         modes."

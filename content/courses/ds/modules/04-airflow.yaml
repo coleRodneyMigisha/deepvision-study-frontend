@@ -1,36 +1,42 @@
 id: airflow
 title: Workflow Orchestration with Apache Airflow
-subtitle: Schedule DAGs, manage dependencies & handle retries (Lab 5)
-recap: Airflow models a pipeline as a DAG of tasks with explicit dependencies, so a failed upstream task marks
-  downstream tasks upstream_failed and bad data never reaches storage. Give network-facing ingestion several
-  retries with exponential backoff; let deterministic validation fail fast. Because of retries and backfills,
-  every task must be idempotent.
+subtitle: Running pipeline steps in the right order, on schedule, and recovering from failures (Lab 5)
+recap: |
+  Airflow runs a pipeline as a DAG: a set of tasks connected by arrows that say "this must finish before that
+  starts", with no loops. If one task fails, every task after it is blocked (marked upstream_failed), so bad data
+  never reaches storage. Tasks that talk to the internet (like downloading data) should retry a few times, waiting
+  longer each time (exponential backoff), because network hiccups usually pass. Tasks that check rules should fail
+  straight away, because retrying won't fix broken data. And because Airflow re-runs tasks, every task must be
+  idempotent: safe to run twice.
 traps:
-  - Forgetting a dependency edge (e.g. stored >> report_gen) and creating a race condition.
-  - Retrying deterministic schema failures — they won't fix themselves.
-  - Passing whole DataFrames through XCom instead of small metadata like paths.
+  - "Forgetting an arrow (e.g. stored >> report_gen). Then two tasks can run at the same time and the report reads
+    data that isn't ready (a race condition)."
+  - "Retrying a task that failed a rule check. A broken schema won't fix itself, so retrying just delays the alert."
+  - "Passing whole tables (DataFrames) between tasks with XCom. XCom is for small notes like file paths; save the data
+    to storage instead."
 lesson:
   checkpointStep: 3
   steps:
-    - "Cron jobs are blind to data dependencies: if ingestion takes 10 minutes longer than usual, a
-      cron-scheduled cleaning script runs on yesterday's stale file or crashes silently."
-    - Apache Airflow models workflows as Directed Acyclic Graphs (DAGs). Nodes are tasks (Operators), and
-      directed edges enforce topological execution order with no cycles allowed.
-    - In Lab 5, we wired `ingest >> validated >> cleaned >> stored >> report_gen`. If `validated` fails,
-      downstream tasks (`cleaned`, `stored`, `report_gen`) are automatically blocked (`upstream_failed`) so
-      bad data never reaches the warehouse.
-    - "Checkpoint: why should ingestion tasks have more retries than local transformation tasks, and why must
-      every Airflow task be idempotent?"
-    - Ingestion talks to external APIs, SFTP servers, and networks that suffer transient glitches — so setting
-      `retries=3` with exponential backoff recovers automatically. Local validation errors are deterministic
-      schema bugs that won't fix themselves on retry.
-    - Because Airflow retries failed tasks and supports historical backfills (`catchup`), any non-idempotent
-      task will corrupt your warehouse with duplicate records whenever a retry or backfill occurs.
+    - "A cron job just runs a command at a set time. It doesn't know whether the step before it finished: if the
+      download takes 10 minutes longer than usual, the cleaning script runs on yesterday's file or quietly crashes."
+    - "Apache Airflow describes a workflow as a DAG (Directed Acyclic Graph): tasks joined by one-way arrows, with no
+      loops. The arrows decide the order things run in."
+    - "In Lab 5 we wired ingest >> validated >> cleaned >> stored >> report_gen. If validated fails, everything after
+      it (cleaned, stored, report_gen) is automatically blocked (marked upstream_failed), so bad data never reaches
+      the warehouse."
+    - "Checkpoint: why should download (ingestion) tasks get more retries than local cleaning tasks, and why must
+      every Airflow task be safe to run twice (idempotent)?"
+    - "Downloading talks to other computers over the network, which has temporary glitches. Setting retries=3 and
+      waiting longer each time (exponential backoff) usually recovers on its own. A failed rule check on local data
+      is a real problem, and retrying won't fix it."
+    - "Airflow re-runs failed tasks and can re-run past dates (backfills, catchup). Any task that isn't idempotent
+      will fill your warehouse with duplicate records every time that happens."
 checkpoint:
   question: In an Airflow DAG (`ingest >> validate >> clean >> store >> report`), why should retry counts and
     delays differ by stage, and what happens if `validate` fails?
-  hint: Distinguish transient network failures in `ingest` from deterministic schema failures in `validate`.
-    Also trace the state of downstream tasks when an upstream task fails.
+  hint: "Compare a download failing because the network blipped (it may work next time) with a rule check failing
+    because a column is missing (it will fail the same way every time). Then: what happens to the tasks after a
+    failed task?"
   keywords:
     - transient
     - network
@@ -45,23 +51,35 @@ checkpoint:
     - block
     - dag
     - acyclic
-  idealAnswer: Ingestion interacts with external networks, APIs, or remote filesystems prone to transient
-    timeouts, so it benefits from higher retries (e.g., 2–3 retries with backoff). Validation and cleaning run
-    deterministic logic on local data; if a schema check fails, retrying immediately wastes compute without
-    fixing the broken contract. When `validate` fails, Airflow marks it `failed` and sets all downstream tasks
-    (`clean`, `store`, `report`) to `upstream_failed`, halting the pipeline so corrupt data never overwrites
-    production tables.
+  idealAnswer: "Ingestion (downloading) talks to external networks, APIs or remote file servers, which have temporary
+    (transient) timeouts, so it benefits from more retries, e.g. 2–3 with backoff (waiting longer each time).
+    Validation and cleaning run the same (deterministic) logic on local data: if a schema check fails, retrying
+    straight away wastes computing time without fixing the broken data. When validate fails, Airflow marks it
+    failed and sets every downstream task (clean, store, report) to upstream_failed, which blocks them, so the
+    pipeline stops and bad data never overwrites the production tables. The DAG being acyclic (no loops) is what
+    guarantees there's always a clear order to run and block tasks in."
 terms:
-  - term: DAG
-    definition: "Directed Acyclic Graph: tasks with directed dependencies and zero loops."
-  - term: Operator / TaskFlow
-    definition: Template defining a unit of work (`@task` Python decorator or `BashOperator`).
-  - term: XCom
-    definition: Cross-communication mechanism for passing small metadata (like file paths or row counts) between tasks.
-  - term: Backfill & Catchup
-    definition: Running a DAG across historical logical date intervals (`data_interval_start`).
+  - term: Orchestrator
+    definition: A tool that runs tasks in the right order, retries failures, sends alerts and keeps logs. Airflow is
+      one.
+  - term: DAG (Directed Acyclic Graph)
+    definition: "Tasks joined by one-way arrows (directed) with no loops (acyclic), so there's always a valid order."
+  - term: Task / Operator
+    definition: One unit of work in a DAG, created with an operator (e.g. BashOperator) or the @task Python decorator.
+  - term: upstream_failed
+    definition: The state a task gets when a task before it failed. It doesn't run.
+  - term: Transient vs deterministic failure
+    definition: Transient failures (network blips) often fix themselves; deterministic ones (a missing column) fail the
+      same way every time.
   - term: Exponential backoff
-    definition: "Doubling the wait time between consecutive retry attempts: d, 2d, 4d, …"
+    definition: "Doubling the wait between retries: d, 2d, 4d, … Total wait for R retries = d × (2^R − 1)."
+  - term: Critical path
+    definition: The longest chain of tasks through the DAG. It decides how long the whole run takes.
+  - term: XCom
+    definition: Airflow's way of passing small notes between tasks, like a file path or a row count.
+  - term: Logical date, backfill and catchup
+    definition: The logical date is the period of data a run is responsible for. A backfill runs the DAG for past
+      dates; catchup=True does this automatically for missed dates.
 quiz:
   - question: In `ingest >> validated >> cleaned >> stored >> report_gen`, if `stored` is NOT wired before
       `report_gen` (`stored >> report_gen` omitted), what bug occurs?
@@ -89,7 +107,7 @@ quiz:
       - Tasks never fail
       - The DAG runs once
     answer: 1
-    explanation: Without cycles a topological order exists.
+    explanation: With no loops, there is always an order in which every task can run after the tasks it depends on.
   - question: validate fails. What state do clean, store and report get?
     options:
       - skipped
@@ -105,7 +123,7 @@ quiz:
       - a pure pandas transform
       - report formatting
     answer: 1
-    explanation: Network-facing tasks suffer transient failures; deterministic ones don't benefit.
+    explanation: Tasks that use the network hit temporary glitches that a retry can fix. Rule checks fail the same way every time, so retrying doesn't help.
   - question: What should be passed through XCom?
     options:
       - A 2 GB DataFrame
@@ -113,7 +131,7 @@ quiz:
       - The whole Parquet file
       - A database connection
     answer: 1
-    explanation: XCom is for small metadata; data belongs in storage.
+    explanation: XCom is for small notes like a file path or row count. The data itself belongs in storage.
   - question: With catchup=True and a DAG paused for 5 days, what happens when you unpause it (daily schedule)?
     options:
       - Nothing
@@ -121,7 +139,7 @@ quiz:
       - It creates runs for each missed day (a backfill)
       - It deletes old runs
     answer: 2
-    explanation: Catch-up schedules a run for every missed interval.
+    explanation: "With catchup on, Airflow creates a run for every day it missed: 5 runs."
   - question: retries = 3, retry_delay = 20 s, exponential. Total wait if all fail?
     options:
       - 60 s
@@ -164,56 +182,64 @@ lab:
 notes:
   - heading: Why cron isn't orchestration
     body: |
-      `cron` runs a command at a time. It has no idea whether yesterday's ingest finished, whether the input file exists, or whether the previous step failed. If ingest takes 10 minutes longer than usual, the 06:00 cleaning job happily processes *yesterday's* file — or crashes — and nobody is told.
+      **The idea:** an alarm clock rings at 6:00 whether or not you went to bed. An orchestrator is more like a relay race: each runner starts only when the baton arrives.
 
-      An **orchestrator** like Apache Airflow manages *dependencies* rather than just times: "run `clean` only after `validate` succeeds". It also gives you retries, alerts, logs per task, a UI showing every run, and the ability to rerun history.
+      `cron` runs a command at a set time. It has no idea whether yesterday's download finished, whether the input file exists, or whether the step before failed. If the download takes 10 minutes longer than usual, the 06:00 cleaning job happily processes *yesterday's* file, or crashes, and nobody is told.
+
+      An **orchestrator** like Apache Airflow manages *dependencies* instead of just times: "run `clean` only after `validate` succeeds". It also gives you retries, alerts, a log for every task, a web page showing every run, and the ability to re-run past dates.
   - heading: DAGs, tasks and states
     body: |
-      An Airflow pipeline is a **DAG** — a Directed Acyclic Graph:
+      **The idea:** draw each task as a box and connect them with arrows meaning "must finish first". That drawing is a DAG.
 
-      - **Directed:** edges have a direction (`ingest >> validate` means validate runs after ingest).
-      - **Acyclic:** no loops — a task can't (even indirectly) depend on itself, so there is always a valid order to run things.
+      An Airflow pipeline is a **DAG**, a Directed Acyclic Graph:
 
-      Tasks are created with operators or the TaskFlow `@task` decorator. Each task instance moves through states: `scheduled → queued → running → success` or `failed`. When a task fails, every task downstream of it becomes **`upstream_failed`** and does not run. That's the data-quality guarantee: if `validate` rejects the batch, `clean`, `store` and `report` never touch it.
+      - **Directed:** each arrow points one way. `ingest >> validate` means validate runs after ingest.
+      - **Acyclic:** no loops. A task can never (even indirectly) depend on itself, so there's always a valid order to run things in.
+
+      Tasks are created with **operators** or the `@task` decorator. Each run of a task moves through states: `scheduled → queued → running → success` or `failed`. When a task fails, every task after it becomes **`upstream_failed`** and doesn't run. That's the safety guarantee: if `validate` rejects the data, `clean`, `store` and `report` never touch it.
 
       ```python
-      ingest() >> validated() >> cleaned() >> stored() >> report_gen()
+      ingest() >> validated() >> cleaned() >> stored() >> report_gen()   # the arrows set the order
       ```
 
-      Forgetting an edge is a real bug: without `stored >> report_gen`, the report can run in parallel with the load and read stale or empty tables (the Lab 5 bug).
+      **Forgetting an arrow is a real bug.** Without `stored >> report_gen`, the report can run at the same time as the load and read old or empty tables. That was the Lab 5 bug.
   - heading: Retries, backoff and the critical path
     body: |
+      **The idea:** if a website doesn't answer, try again in a bit. If a form is filled in wrong, trying again won't help.
+
       Failures come in two kinds:
 
-      - **Transient** — network timeouts, a busy API, a locked file. Waiting and retrying usually works. Give these tasks `retries=3` with **exponential backoff**: wait d, then 2d, then 4d… Total wait for R retries = d × (2^R − 1).
-      - **Deterministic** — a missing column, a broken schema, a bug. Retrying produces the same failure, wastes time and delays the alert. Let these fail fast.
+      - **Transient (temporary):** a network timeout, a busy website, a locked file. Waiting and retrying usually works. Give these tasks `retries=3` with **exponential backoff**: wait d, then 2d, then 4d… Total waiting for R retries = d × (2^R − 1). Example: 20 s, 40 s, 80 s = 140 s.
+      - **Deterministic (always the same):** a missing column, broken data, a bug in the code. Retrying gives the same failure, wastes time and delays the alert. Let these **fail fast**.
 
-      When tasks can run in parallel (e.g. `validate_schema` and `profile_stats` both after `ingest`), the run's duration is set by the **critical path**: the longest chain through the DAG. Speeding up a task that isn't on the critical path makes the run no faster.
+      **The critical path.** When tasks can run side by side (e.g. `validate_schema` and `profile_stats` both after `ingest`), the run's total time is set by the **critical path**, the longest chain through the DAG. Speeding up a task that isn't on that chain doesn't make the run any faster.
   - heading: Backfills, XCom and idempotent tasks
     body: |
-      Every DAG run has a **logical date** (`data_interval_start`) — the period of data it is responsible for, not the time it actually runs. With `catchup=True`, Airflow creates runs for every missed interval — a **backfill**. Tasks should use the logical date to decide which data to process (`ds` in templates), so rerunning "2025-03-04" always processes March 4th.
+      **The idea:** every run is responsible for one specific day's data, and running it again for that day must give the same result.
 
-      **XCom** passes *small* metadata between tasks: a file path, a row count, a batch id. Don't push whole DataFrames through XCom — write data to storage and pass the path.
+      Each DAG run has a **logical date** (`data_interval_start`): the period of data it's responsible for, not the time it actually runs. With `catchup=True`, Airflow creates a run for every missed period: a **backfill**. Tasks should use the logical date (`ds` in templates) to decide which data to process, so re-running "2025-03-04" always processes March 4th.
 
-      Because of retries and backfills, **every task must be idempotent**: rerunning a task for the same logical date must produce the same result (overwrite that date's partition or upsert, never blind append).
+      **XCom** passes *small* notes between tasks: a file path, a row count, a batch ID. Don't push whole tables (DataFrames) through XCom; save the data to storage and pass its path.
+
+      Because of retries and backfills, **every task must be idempotent**: re-running it for the same logical date must give the same result. Overwrite that date's partition or upsert by key; never blindly append.
 examples:
   - title: Exponential backoff budget
-    problem: ingest has retries = 4, retry_delay = 15 s and exponential backoff. If every attempt fails, how long
-      does Airflow spend waiting between attempts?
+    problem: The ingest task has retries = 4, a first retry delay of 15 seconds, and exponential backoff (the wait doubles
+      each time). If every attempt fails, how long does Airflow spend waiting between attempts?
     steps:
       - "Waits: 15, 30, 60, 120 seconds."
       - Sum = 225 s, or by formula 15 × (2⁴ − 1) = 15 × 15 = **225 s** (3 min 45 s).
     answer: 225 seconds.
     takeaway: Backoff gives a flaky API more and more time to recover without hammering it.
   - title: Finding the critical path
-    problem: ingest (10 s) → [validate_schema (6 s) ∥ profile_stats (20 s)] → clean (15 s) → store (5 s). How long
-      does the run take, and how much faster would it be if validate_schema took 2 s?
+    problem: ingest (10 s) runs first. Then validate_schema (6 s) and profile_stats (20 s) run side by side. Then clean (15 s),
+      then store (5 s). How long does the whole run take, and how much faster would it be if validate_schema took only 2 s?
     steps:
       - Critical path = 10 + max(6, 20) + 15 + 5 = **50 s**.
       - profile_stats (20 s) is the slower branch, so it is on the critical path.
       - "Making validate_schema 2 s changes max(2, 20) = 20 → still **50 s**: no improvement."
     answer: 50 s; speeding up validate_schema saves nothing.
-    takeaway: Optimise the critical path, not whatever task looks slow.
+    takeaway: To make the run faster, speed up the tasks on the critical path (the longest chain), not whichever task looks slow.
 questions:
   - question: Explain why ingestion tasks should have more retries than validation tasks, and what Airflow does
       downstream when validation fails.

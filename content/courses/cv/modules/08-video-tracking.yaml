@@ -1,35 +1,40 @@
 id: video-tracking
 title: Video + Tracking
-subtitle: Connect detections across time
-recap: Tracking-by-detection detects objects every frame and links them into tracks. SORT predicts each
-  track's next position with a Kalman filter (constant velocity), builds a cost matrix such as 1 − IoU, and
-  solves it optimally with the Hungarian algorithm. DeepSORT adds a re-ID appearance embedding so identities
-  survive occlusions and crossings.
+subtitle: Following each object from frame to frame, and keeping track of who is who
+recap: |
+  A video is just many pictures (frames) in a row. To follow objects, most trackers first detect objects in
+  every frame, then link the detections over time into tracks, each with its own ID number. SORT guesses where
+  each tracked object will be next (a Kalman filter, assuming it keeps moving at the same speed), scores how
+  well each guess matches each new detection (cost = 1 − IoU), and finds the best overall pairing (the
+  Hungarian algorithm). DeepSORT also compares how objects look, so IDs survive when people cross or hide
+  behind something.
 traps:
-  - Greedy matching instead of the Hungarian algorithm's optimal one-to-one assignment.
-  - Expecting IoU-only matching to keep IDs through occlusion.
-  - Confusing optical flow (per-pixel motion) with box tracking.
+  - "Matching greedily (always grabbing the best-looking pair first) instead of finding the best overall pairing with
+    the Hungarian algorithm."
+  - "Expecting overlap (IoU) alone to keep IDs right when objects are hidden for a while. You need appearance too."
+  - "Mixing up optical flow (how every single pixel moves) with tracking boxes."
 lesson:
   checkpointStep: 3
   steps:
-    - "Video adds time: a clip is a tensor of shape frames × height × width × channels. Neighbouring frames
-      are very similar, so there's lots of redundancy to exploit."
-    - "Most multi-object trackers use tracking-by-detection: run a detector on every frame, then link
-      detections over time into tracks with stable IDs."
-    - SORT uses a Kalman filter to predict where each tracked object will be in the next frame, assuming
-      roughly constant velocity, then corrects the estimate with the new detection.
-    - "Checkpoint: what does the Hungarian algorithm do in SORT, and why did DeepSORT add a re-identification
-      network?"
-    - "The Hungarian algorithm solves the assignment problem: given a cost matrix — for example 1 − IoU
-      between predictions and detections — it finds the optimal one-to-one matching."
-    - With motion and IoU only, SORT swaps IDs when objects cross or are occluded. DeepSORT adds an appearance
-      embedding from a re-ID CNN, so it can recognise the same person after occlusion.
-    - Without boxes, optical flow estimates a motion vector for every pixel between two frames. RAFT is a
-      well-known deep optical-flow model.
+    - "Video adds time: a clip is a stack of frames, with shape frames × height × width × colour channels.
+      Neighbouring frames look almost the same, which a model can take advantage of."
+    - "Most multi-object trackers use tracking-by-detection: run a detector on every frame, then link the detections
+      over time into tracks, each with a fixed ID number."
+    - "SORT uses a Kalman filter to guess where each tracked object will be in the next frame, assuming it keeps
+      moving at about the same speed, then corrects the guess using the new detection."
+    - "Checkpoint: what does the Hungarian algorithm do in SORT, and why did DeepSORT add a network that recognises
+      appearance?"
+    - "The Hungarian algorithm solves the pairing problem: given a table of costs (for example 1 − IoU between each
+      guess and each detection), it finds the one-to-one pairing with the lowest total cost."
+    - "Using only motion and overlap, SORT swaps IDs when people cross or are hidden. DeepSORT adds an appearance
+      embedding from a re-identification network, so it can recognise the same person afterwards."
+    - "Without any boxes, optical flow works out a movement arrow for every pixel between two frames. RAFT is a
+      well-known deep-learning model for it."
 checkpoint:
   question: Explain the roles of the Kalman filter and the Hungarian algorithm in SORT. Why was DeepSORT developed?
-  hint: "Kalman: predict + update motion state. Hungarian: optimal matching of predictions to detections.
-    DeepSORT: appearance features for occlusions and ID switches."
+  hint: "Kalman filter: guess where each object moves next, then correct the guess. Hungarian algorithm: pair the
+    guesses with the new detections in the best way overall. DeepSORT: what extra clue helps when people cross or
+    get hidden?"
   keywords:
     - kalman
     - predict
@@ -46,80 +51,92 @@ checkpoint:
     - re-identification
     - occlusion
     - id switch
-  idealAnswer: In SORT, a Kalman filter keeps a motion state for each track — position, box size and velocity —
-    predicts where it will be in the next frame, then updates with the matched detection. The Hungarian
-    algorithm finds the optimal one-to-one assignment between predicted tracks and new detections using an
-    IoU-based cost. SORT relies only on motion and overlap, so occlusions and crossings cause ID switches.
-    DeepSORT adds a deep appearance (re-ID) embedding to the matching cost so identities survive occlusion.
+  idealAnswer: "In SORT, a Kalman filter keeps a motion state for each track (position, box size and speed or
+    velocity). It predicts where the object will be in the next frame, then updates that estimate with the matched
+    detection. The Hungarian algorithm finds the best one-to-one assignment (matching) between the predicted tracks
+    and the new detections, using a cost based on IoU (1 − IoU). SORT relies only on motion and overlap, so when
+    objects are hidden (occlusion) or cross paths, IDs get swapped (ID switches). DeepSORT adds a deep appearance
+    embedding from a re-identification (re-ID) network to the matching cost, so identities survive occlusion."
 terms:
-  - term: Tracklet / track
-    definition: A sequence of detections linked as one object over time.
+  - term: Frame
+    definition: One picture in a video. 30 frames per second means 30 pictures every second.
+  - term: Track
+    definition: The chain of detections that belong to the same object over time, with one ID number.
+  - term: Tracking-by-detection
+    definition: Detect objects in every frame first, then link the detections into tracks.
   - term: Kalman filter
-    definition: "Predict → update loop for a state with uncertainty (here: position + velocity)."
+    definition: "A predict-then-correct loop: guess the next position from the current position and speed, then
+      blend in the new measurement, trusting whichever is less uncertain."
+  - term: Cost matrix
+    definition: A table of how bad each possible pairing is, e.g. rows = tracks, columns = detections, values = 1 − IoU.
   - term: Hungarian algorithm
-    definition: Optimal one-to-one assignment for a cost matrix, O(n³).
+    definition: A method that finds the one-to-one pairing with the lowest total cost in a cost matrix (in time that
+      grows like n³).
   - term: ID switch
-    definition: Tracker swaps identities of two objects — a key MOT error.
+    definition: When a tracker swaps two objects' IDs, or gives a returning object a new ID. A key tracking error.
+  - term: Re-identification (re-ID)
+    definition: Recognising the same object (usually a person) again from how it looks, using an appearance
+      embedding.
   - term: Optical flow
-    definition: Per-pixel motion field between consecutive frames.
+    definition: An arrow for every pixel showing how it moved between two frames.
 quiz:
-  - question: In SORT, what fills the Hungarian cost matrix?
+  - question: In SORT, what goes into the Hungarian algorithm's cost table?
     options:
       - Class probabilities
       - 1 − IoU between predicted and detected boxes
       - Pixel colours
       - Optical flow
     answer: 1
-    explanation: SORT uses IoU distance between Kalman-predicted boxes and new detections.
-  - question: Two pedestrians cross and SORT swaps their IDs. DeepSORT's fix?
+    explanation: Each cell is 1 − IoU between a track's predicted box and a new detection. Big overlap means low cost.
+  - question: Two people cross paths and SORT swaps their IDs. How does DeepSORT fix this?
     options:
-      - Higher frame rate
+      - A higher frame rate
       - Appearance (re-ID) embeddings
-      - Larger NMS threshold
+      - A larger NMS threshold
       - Grayscale input
     answer: 1
-    explanation: Appearance features let the tracker tell the two people apart after overlap.
+    explanation: Comparing how the two people look lets the tracker tell them apart after they overlap.
   - question: What does the Kalman filter's predict step assume in SORT?
     options:
       - Random motion
       - Roughly constant velocity
-      - The object is stationary
-      - Appearance is constant
+      - The object is standing still
+      - Appearance stays the same
     answer: 1
-    explanation: It extrapolates using the estimated velocity.
+    explanation: It assumes the object keeps moving at about the same speed and direction.
   - question: The Hungarian algorithm finds…
     options:
       - The best detector
-      - The optimal one-to-one assignment minimising total cost
+      - The one-to-one pairing with the lowest total cost
       - Optical flow
       - The IoU of two boxes
     answer: 1
-    explanation: It solves the assignment problem exactly.
-  - question: What happens to an unmatched detection in SORT?
+    explanation: It solves the pairing (assignment) problem exactly, looking at all pairings together.
+  - question: What happens to a detection that doesn't match any track in SORT?
     options:
       - It's ignored forever
-      - It starts a new track with a new id
+      - It starts a new track with a new ID
       - It's merged into the nearest track
       - It's deleted
     answer: 1
-    explanation: New objects (or lost ones!) get new ids.
-  - question: Why did DeepSORT add a re-ID network?
+    explanation: It might be a new object arriving, or a lost one coming back. Either way it gets a new track.
+  - question: Why did DeepSORT add a re-identification (re-ID) network?
     options:
       - To detect more objects
-      - To use appearance to keep identities through occlusions and crossings
+      - To use appearance to keep identities through hiding and crossings
       - To speed up the Kalman filter
       - To compute optical flow
     answer: 1
-    explanation: Appearance distinguishes people when motion is ambiguous.
-  - question: Optical flow gives…
+    explanation: When motion alone is confusing, how someone looks tells them apart.
+  - question: Optical flow gives you…
     options:
       - A box per object
-      - A motion vector per pixel
-      - An id per object
+      - A movement arrow per pixel
+      - An ID per object
       - A class per frame
     answer: 1
-    explanation: Dense motion between two frames.
-  - question: x = 50 px, v = 6 px/frame. Prediction after 5 frames?
+    explanation: It describes motion everywhere in the frame, not per object.
+  - question: An object is at x = 50 px, moving 6 px per frame. Where is it predicted after 5 frames?
     options:
       - "56"
       - "80"
@@ -129,9 +146,9 @@ quiz:
     explanation: 50 + 6 × 5 = 80.
 fact:
   title: RAFT changed optical flow
-  body: RAFT (ECCV 2020 best paper) builds a 4D correlation volume between all pixel pairs of two frames, then
-    refines a flow field iteratively with a recurrent unit. Its iterative-refinement design influenced later
-    trackers and point-tracking models like CoTracker.
+  body: RAFT (best paper at ECCV 2020) compares every pixel in one frame with every pixel in the next, then
+    improves its estimate of the motion step by step. That step-by-step refinement inspired later trackers and
+    point-tracking models like CoTracker.
 lab:
   title: Kalman prediction & matching
   variations:
@@ -140,7 +157,7 @@ lab:
         Where does the Kalman filter predict the box after <b>3</b> frames?
       answer: 136
       tolerance: 0
-      hint: x_pred = x + vx · Δt.
+      hint: "New position = old position + speed × number of frames: x_pred = x + vx · Δt."
       explanation: x̂ = 100 + 12 × 3 = 136 px.
     - title: Optimal Hungarian Assignment Cost
       question: Two tracks (T1, T2) and two detections (D1, D2) have cost matrix <code>[[0.15, 0.80], [0.25,
@@ -148,11 +165,12 @@ lab:
         decimals)
       answer: 0.55
       tolerance: 0.01
-      hint: Compare diagonal (T1→D1, T2→D2) vs off-diagonal (T1→D2, T2→D1).
+      hint: "There are only two ways to pair them up: T1→D1 with T2→D2, or T1→D2 with T2→D1. Add up each and pick the smaller."
       explanation: "Diagonal: 0.15 + 0.40 = 0.55. Off-diagonal: 0.80 + 0.25 = 1.05. Minimum total cost = 0.55."
     - title: DeepSORT Combined Matching Cost
-      question: For a track–detection pair, motion cost (1 − IoU) is <b>0.40</b> and cosine appearance distance is
-        <b>0.10</b>. With blending weight <b>λ = 0.5</b>, what is the combined cost? (2 decimals)
+      question: For a track–detection pair, the motion cost (1 − IoU, how badly the boxes overlap) is <b>0.40</b> and
+        the appearance distance (how different they look) is <b>0.10</b>. Mixing them half and half (<b>λ = 0.5</b>),
+        what is the combined cost? (2 decimals)
       answer: 0.25
       tolerance: 0.01
       hint: Cost = λ(0.40) + (1 − λ)(0.10).
@@ -160,57 +178,68 @@ lab:
 notes:
   - heading: Video adds time
     body: |
-      A video clip is a tensor of shape **T × H × W × C** (frames × height × width × channels). Neighbouring frames are nearly identical, which is both a burden (lots of redundant data) and a gift (strong continuity to exploit).
+      **The idea:** a video is a flip-book: many pictures (frames) shown quickly one after another.
 
-      Tasks include **action recognition** (what is happening — often with 3-D convolutions or video transformers over short clips), **optical flow** (how every pixel moves) and **multi-object tracking (MOT)** — following each object with a stable identity across frames.
+      A video clip is a stack of frames with shape **T × H × W × C** (frames × height × width × colour channels). At 30 frames per second, one minute is 1,800 frames. Neighbouring frames are almost identical. That's a burden (lots of repeated data) and a gift (things move smoothly, so you can predict where they'll be next).
+
+      Common video tasks:
+
+      - **Action recognition:** what is happening? ("running", "falling"), often using 3-D convolutions or video transformers over short clips.
+      - **Optical flow:** how does every pixel move between frames?
+      - **Multi-object tracking (MOT):** follow each object and keep the same ID number on it from frame to frame.
   - heading: Tracking-by-detection and the Kalman filter
     body: |
-      Most trackers use **tracking-by-detection**: run a detector on every frame, then link detections into **tracks** with stable ids.
+      **The idea:** spot everyone in each frame, then join the dots over time.
 
-      **SORT** (Simple Online and Realtime Tracking) does the linking with two tools. First, a **Kalman filter** per track, with state (position, size, velocity):
+      Most trackers use **tracking-by-detection**: run a detector on every frame, then link the detections into **tracks**, each with a fixed ID.
 
-      - **Predict** — move the box forward assuming roughly constant velocity: x̂ = x + v·Δt.
-      - **Update** — when a matching detection arrives, blend prediction and measurement, weighted by their uncertainties.
+      **SORT** (Simple Online and Realtime Tracking) links them using two tools. The first is a **Kalman filter** for each track. It remembers the object's position, box size and speed, and runs a two-step loop:
 
-      Prediction lets a track keep moving for a few frames even when its detection is missing (brief occlusion or a missed detection).
-  - heading: The Hungarian algorithm
+      - **Predict:** move the box forward assuming the speed stays about the same: x̂ = x + v·Δt. (A car at 100 px moving 12 px per frame is predicted at 136 px three frames later.)
+      - **Update:** when a matching detection arrives, blend the prediction and the measurement, trusting whichever is less uncertain.
+
+      Predicting lets a track keep moving for a few frames even if its detection goes missing, e.g. when someone walks briefly behind a pillar or the detector misses them once.
+  - heading: Pairing guesses with detections (the Hungarian algorithm)
     body: |
-      Each frame, SORT builds a **cost matrix** between predicted track boxes (rows) and new detections (columns) — typically **cost = 1 − IoU**. The **Hungarian algorithm** finds the **optimal one-to-one assignment** that minimises total cost (in polynomial time), rather than greedily grabbing the best pair first.
+      **The idea:** each frame you have several guesses (where tracks should be) and several new detections. Pair them up so the overall fit is best, not just the first pair you look at.
 
-      After assignment:
+      Each frame, SORT builds a **cost table** (cost matrix): one row per track's predicted box, one column per new detection, and each cell is usually **1 − IoU** (small when the boxes overlap a lot). The **Hungarian algorithm** finds the **one-to-one pairing with the lowest total cost**. It looks at all pairings together, instead of greedily grabbing the best-looking pair first, which can force a terrible match for whoever's left.
+
+      After pairing:
 
       - matched pairs update their tracks;
-      - pairs whose cost is too high (IoU below a gate) are rejected;
-      - **unmatched detections** start new tracks (new ids);
-      - **unmatched tracks** coast on their predictions and are deleted after a maximum age.
+      - pairs that fit too badly (IoU below a minimum, the "gate") are rejected;
+      - **unmatched detections** start new tracks with new IDs;
+      - **unmatched tracks** keep moving on their predictions for a while, and are deleted after a maximum number of frames (the "max age").
   - heading: ID switches, DeepSORT and optical flow
     body: |
-      With motion and IoU alone, SORT fails when objects **cross** or are **occluded** for longer: predictions drift, nothing overlaps on reappearance, and the person gets a **new id** — an **ID switch**, the main error MOT metrics count (alongside misses and false positives; see MOTA, IDF1).
+      **The problem:** with motion and overlap alone, SORT gets confused when people **cross paths** or are **hidden** (occluded) for a while. The predictions drift, nothing overlaps when the person reappears, and they get a **new ID**. That's an **ID switch**, the main mistake tracking scores count (along with misses and false alarms; see the MOTA and IDF1 scores).
 
-      **DeepSORT** adds an **appearance embedding** from a re-identification CNN trained so that crops of the same person are close in feature space. The cost combines motion (Mahalanobis/IoU) and appearance distance, so a lost track can be re-identified after occlusion.
+      **DeepSORT's fix: look at appearance too.** A **re-identification (re-ID)** network turns each person's crop into an **appearance embedding**, a list of numbers trained so that crops of the same person are close together. The matching cost combines motion and appearance, so a lost track can be recognised again after being hidden. Like recognising a friend by their red jacket after they walk behind a bus.
 
-      **Optical flow** estimates a motion vector for **every pixel** between two frames (no boxes). Deep models like **RAFT** compute it accurately; flow is used for motion analysis, video stabilisation and as an input feature for action recognition.
+      **Optical flow** is different: it estimates a movement arrow for **every pixel** between two frames, with no boxes at all. Deep models such as **RAFT** do it accurately. Flow is used to analyse motion, to steady shaky video, and as an extra input for action recognition.
 examples:
   - title: A Kalman prediction
-    problem: A track was at x = 180 px moving 14 px/frame. Its detection is missing for 3 frames. Where does the
-      tracker predict it, and what happens if it reappears at x = 214?
+    problem: A tracked person was at x = 180 px, moving 14 px per frame. Their detection goes missing for 3 frames.
+      Where does the tracker predict them, and what happens if they reappear at x = 214?
     steps:
       - "Prediction after 3 frames: 180 + 14 × 3 = **222 px**."
-      - Detection at 214 is 8 px away; with a ~36 px-wide box the IoU is still high → matched.
-      - The update step pulls the estimate towards 214 and adjusts the velocity (the person slowed down).
-    answer: Predicted 222 px; the reappearing detection is matched and the state corrected.
-    takeaway: Prediction bridges short gaps; the update corrects drift.
-  - title: Optimal vs greedy matching
-    problem: "Cost matrix (1 − IoU), tracks T1, T2 vs detections D1, D2: T1→D1 0.2, T1→D2 0.3, T2→D1 0.25, T2→D2
-      0.9. Compare greedy and Hungarian assignment."
+      - "The new detection at 214 is only 8 px away. With a box about 36 px wide, the overlap (IoU) is still high, so
+        it's matched to the same track."
+      - "The update step pulls the estimate towards 214 and lowers the speed: the person slowed down."
+    answer: Predicted 222 px; the reappearing detection is matched and the estimate corrected.
+    takeaway: Predicting bridges short gaps; updating corrects the drift.
+  - title: Best overall pairing vs greedy pairing
+    problem: "Costs (1 − IoU) for tracks T1, T2 and detections D1, D2: T1→D1 0.2, T1→D2 0.3, T2→D1 0.25, T2→D2 0.9.
+      Compare greedy pairing with the Hungarian algorithm."
     steps:
-      - "Greedy takes the cheapest pair first: T1→D1 (0.2); T2 is left with D2 (0.9). Total = **1.1**."
-      - "Hungarian considers all assignments: T1→D2 (0.3) + T2→D1 (0.25) = **0.55**."
-      - Hungarian picks the 0.55 assignment.
-    answer: Hungarian gives total cost 0.55 vs greedy 1.1.
-    takeaway: Locally best pairs can force a terrible match elsewhere.
+      - "Greedy grabs the cheapest pair first: T1→D1 (0.2). T2 is left with D2 (0.9). Total = **1.1**."
+      - "Hungarian checks every pairing: T1→D2 (0.3) + T2→D1 (0.25) = **0.55**."
+      - Hungarian picks the 0.55 pairing.
+    answer: Hungarian's total cost is 0.55; greedy's is 1.1.
+    takeaway: The best-looking single pair can force a terrible match somewhere else.
 questions:
-  - question: What does the Hungarian algorithm do in SORT, and why is it preferred to greedy matching?
+  - question: What does the Hungarian algorithm do in SORT, and why is it better than greedy matching?
     kind: short
     marks: 5
     keywords:
@@ -224,10 +253,10 @@ questions:
       - minimise total cost
       - greedy
       - suboptimal
-    idealAnswer: SORT builds a cost matrix between Kalman-predicted track boxes and new detections, usually 1 −
-      IoU. The Hungarian algorithm finds the one-to-one assignment with minimum total cost. Greedy matching
-      takes the cheapest pair first and can force poor matches for the remaining tracks; Hungarian considers
-      the whole matrix and is optimal.
+    idealAnswer: "SORT builds a cost matrix between the Kalman-predicted track boxes and the new detections, usually
+      1 − IoU. The Hungarian algorithm finds the one-to-one assignment that minimises the total cost, so it's
+      optimal. Greedy matching takes the cheapest pair first and can force bad matches on the remaining tracks, so
+      it's suboptimal; Hungarian considers the whole table at once."
   - question: Explain why SORT suffers ID switches and how DeepSORT reduces them.
     kind: short
     marks: 5
@@ -244,14 +273,14 @@ questions:
       - embedding
       - re-identification
       - cost
-    idealAnswer: SORT matches only on motion and IoU. When objects cross or are occluded for several frames, the
-      constant-velocity predictions drift, so on reappearance detections either match the wrong track or
-      overlap none and start new tracks — ID switches. DeepSORT adds a re-identification CNN's appearance
-      embedding to the matching cost, so a person can be recognised by how they look and keep their original
-      id after occlusion.
-  - question: Design a system to count customers entering a supermarket from a ceiling camera without double
-      counting. Describe detection, tracking, the counting logic, how you handle occlusions and crowds, and
-      how you evaluate it.
+    idealAnswer: "SORT matches using only motion and overlap (IoU only). When objects cross or are hidden (occlusion)
+      for several frames, the constant-speed predictions drift (prediction drift), so when an object reappears its
+      detection either matches the wrong track or has no overlap with any track and starts a new ID: an ID switch.
+      DeepSORT adds an appearance embedding from a re-identification network to the matching cost, so a person can
+      be recognised by how they look and keep their original ID after being hidden."
+  - question: Design a system that counts customers entering a supermarket from a ceiling camera, without counting
+      anyone twice. Describe detection, tracking, the counting rule, how you handle people hiding each other and
+      crowds, and how you'd evaluate it.
     kind: long
     marks: 12
     keywords:
@@ -272,14 +301,15 @@ questions:
       - mota
       - idf1
       - manual count
-    idealAnswer: "Detect people in each frame with a fast one-stage detector (fine-tuned on top-down views). Track
-      them with tracking-by-detection: Kalman prediction, Hungarian assignment with a cost combining IoU and a
-      re-ID appearance embedding (DeepSORT), a gate on cost, and a max-age so tracks survive brief occlusions.
-      Count a customer when a track's trajectory crosses a virtual line in the entering direction, counting
-      each track id at most once. Crowds and occlusions cause ID switches and fragmented tracks that would
-      double count, so use appearance features, tune max-age, require a minimum track length, and debounce
-      crossings. Evaluate tracking with MOTA, IDF1 and ID-switch counts on annotated video, and the business
-      metric — count error versus manual counts over several hours, including busy periods."
+    idealAnswer: "Detect people in each frame with a fast one-stage person detector, fine-tuned on top-down views.
+      Track them with tracking-by-detection: Kalman prediction, Hungarian matching with a cost that combines IoU and a
+      re-ID appearance embedding (as in DeepSORT), a gate that rejects bad matches, and a max age so tracks survive
+      people being briefly hidden (occlusion). Count a customer when a track's path crosses a virtual line in the
+      entering direction, counting each unique track ID at most once. In crowded scenes, people hiding each other
+      cause ID switches and broken tracks that would double count, so use appearance features, tune the max age,
+      require a minimum track length, and ignore rapid back-and-forth crossings. Evaluate tracking with MOTA, IDF1 and
+      the number of ID switches on labelled video, and the real goal: the counting error compared with manual counts
+      over several hours, including busy periods."
 coding:
   - id: sort-matching
     title: SORT's predict-and-match step

@@ -1,38 +1,42 @@
 id: pyspark
 title: Distributed Batch Processing with PySpark
-subtitle: Partitions, lazy evaluation, shuffles & caching (Lab 6 / Lab 8)
-recap: Spark splits DataFrames into partitions processed in parallel by executors; one partition is one task,
-  and stages run in waves of ceil(partitions / cores). Transformations are lazy until an action runs. Narrow
-  transformations stay inside a partition; wide ones (groupBy, join) shuffle data across the network. On small
-  data JVM and shuffle overhead dominate, so DuckDB can win and .cache() can even slow things down.
+subtitle: Splitting big jobs across many computers, and knowing when not to (Lab 6 / Lab 8)
+recap: |
+  When data is too big for one computer, Spark splits a table into chunks (partitions) and has many workers
+  (executors) process them at the same time. One chunk is one task, and tasks run in rounds (waves) of as many
+  as there are processor cores. Spark is lazy: it only plans your steps until you ask for a result (an action).
+  Some steps work inside each chunk (narrow); others, like grouping or joining, must move data between computers
+  (wide, a shuffle), which is slow. On small data, Spark's setup costs outweigh the benefit, so a single-computer
+  tool like DuckDB can be much faster, and caching can even slow things down.
 traps:
-  - Expecting a transformation to run before an action is called.
-  - Caching a DataFrame that is only used once.
-  - Choosing Spark for data that fits comfortably on one machine.
+  - "Expecting a step like filter() to run straight away. Nothing runs until an action such as count() or write()."
+  - "Caching a table that's only used once. Caching costs extra time up front and only pays off with reuse."
+  - "Choosing Spark for data that fits easily on one computer. The setup overhead makes it slower."
 lesson:
   checkpointStep: 3
   steps:
-    - When datasets outgrow a single machine's RAM, Apache Spark distributes data across a cluster as
-      partitioned DataFrames. A Driver coordinates the execution plan while Executors process partitions in
-      parallel.
-    - "Rule of thumb: 1 partition = 1 parallel task. If your DataFrame has 8 partitions and your executor pool
-      has 8 cores, all 8 partitions are processed simultaneously."
-    - "Spark transformations (`filter`, `withColumn`, `groupBy`) are lazy: they only build a logical DAG.
-      Nothing executes until an Action (`count`, `collect`, `write`) triggers the Catalyst optimiser to
-      compile a physical plan."
-    - "Checkpoint: what is the difference between a narrow transformation and a wide transformation in Spark,
-      and why can `.cache()` sometimes make a job slower?"
-    - "Narrow transformations (`filter`, `select`, `map`) stay within each partition with zero network
-      traffic. Wide transformations (`groupBy`, `join`, `orderBy`) require a Shuffle (`Exchange`): data is
-      hashed, written to disk, and sent across the network."
-    - In Lab 8 we measured DuckDB at 1.39s vs Spark at 11.21s on 10,000 rows, and saw `.cache()` take 8.85s vs
-      3.04s uncached! On small data, JVM startup, shuffle overhead, and cache materialisation outweigh
-      distributed parallelism.
+    - "When a dataset is too big for one computer's memory, Apache Spark spreads it across a group of computers (a
+      cluster) as a table split into chunks (partitions). A Driver program plans the work, and Executors process
+      the chunks in parallel."
+    - "Rule of thumb: 1 chunk (partition) = 1 task. If your table has 8 partitions and there are 8 processor cores,
+      all 8 are processed at the same time."
+    - "Spark's transformations (filter, withColumn, groupBy) are lazy: they only add steps to a plan. Nothing runs
+      until an action (count, collect, write) asks for a result. Then the Catalyst optimiser turns the plan into the
+      fastest version it can."
+    - "Checkpoint: what's the difference between a narrow and a wide transformation in Spark, and why can .cache()
+      sometimes make a job slower?"
+    - "Narrow transformations (filter, select, map) work inside each chunk, with no data sent between computers. Wide
+      transformations (groupBy, join, orderBy) need a shuffle (shown as Exchange): rows are sorted by key, written to
+      disk, and sent across the network."
+    - "In Lab 8 we measured DuckDB at 1.39 s vs Spark at 11.21 s on 10,000 rows, and .cache() took 8.85 s vs 3.04 s
+      without it! On small data, Spark's start-up, shuffling and caching costs are bigger than the benefit of
+      splitting the work."
 checkpoint:
   question: Explain the difference between narrow and wide transformations in PySpark. Why did DuckDB beat
     PySpark on our 10,000-row market dataset, and when does `.cache()` actually pay off?
-  hint: Mention partitions, network shuffle (`Exchange`), JVM/Catalyst overhead vs single-node vectorised C++,
-    and the materialisation cost of `.cache()` across multiple actions.
+  hint: "Narrow: each chunk can be done on its own. Wide: rows with the same key must be gathered together across the
+    network (a shuffle). Then think about Spark's fixed start-up costs on tiny data, and what .cache() costs the first
+    time it runs."
   keywords:
     - narrow
     - wide
@@ -47,24 +51,33 @@ checkpoint:
     - overhead
     - jvm
     - duckdb
-  idealAnswer: Narrow transformations (`filter`, `select`, `withColumn`) compute each output partition from a
-    single input partition in memory without moving data. Wide transformations (`groupBy`, `join`, `distinct`)
-    require a shuffle (`Exchange`), redistributing rows across partitions via disk and network I/O. On a
-    10,000-row dataset, DuckDB (~1.4s) beats PySpark (~11.2s) because Spark pays heavy fixed overhead for JVM
-    startup, Catalyst planning, task scheduling, and shuffle serialisation. Similarly, `.cache()` has an
-    upfront materialisation cost and only pays off when a large, expensive DataFrame is reused across multiple
-    downstream actions.
+  idealAnswer: "Narrow transformations (filter, select, withColumn) work out each output partition (chunk) from a single
+    input partition in memory, without moving data. Wide transformations (groupBy, join, distinct) need a shuffle,
+    shown as Exchange in the plan: rows are redistributed across partitions using disk and network. Spark is lazy,
+    so nothing runs until an action. On a 10,000-row dataset, DuckDB (about 1.4 s) beats PySpark (about 11.2 s)
+    because Spark pays a big fixed overhead: starting the JVM (the Java engine it runs on), planning with Catalyst,
+    scheduling tasks and preparing shuffles. Likewise, .cache() has an up-front cost to materialise (build) the
+    cached copy, so it only pays off when a large, expensive table is reused by several later actions."
 terms:
+  - term: Cluster, driver and executors
+    definition: A cluster is a group of computers working together. The driver plans the work; executors do it.
+  - term: Partition
+    definition: One chunk of a table's rows. Each partition is processed as one task on one core.
+  - term: Wave
+    definition: One round of tasks. With 8 cores, 20 partitions need ⌈20 / 8⌉ = 3 waves.
   - term: Lazy evaluation
-    definition: Transformations build a query plan; execution only starts when an Action is called.
+    definition: Steps only build a plan; the work starts when an action (count, collect, write) is called.
   - term: Narrow transformation
-    definition: 1-to-1 partition mapping (`filter`, `select`); pipelined in memory with no shuffle.
-  - term: Wide transformation
-    definition: Many-to-many partition mapping (`groupBy`, `join`); inserts an `Exchange` shuffle barrier.
-  - term: Catalyst & Tungsten
-    definition: Spark's query optimiser (predicate pushdown, column pruning) and off-heap code generation engine.
-  - term: Partial aggregate
-    definition: Map-side `HashAggregate` that pre-combines groups inside each partition before shuffling.
+    definition: A step that works inside each partition on its own (filter, select). No data moves between computers.
+  - term: Wide transformation / shuffle
+    definition: A step that needs rows with the same key gathered together (groupBy, join), so data is sent across the
+      network. Shown as Exchange in the plan.
+  - term: Catalyst and Tungsten
+    definition: Spark's query optimiser (it reorders and trims your plan) and its engine that generates fast code.
+  - term: Partial aggregation
+    definition: Each partition adds up its own groups first, so far fewer rows need to be shuffled.
+  - term: Cache
+    definition: Keeping a computed table in memory so later actions don't recompute it. Costs extra the first time.
 quiz:
   - question: In `df.filter(...).withColumn(...).groupBy('market').agg(avg('price')).collect()`, which call is the
       Action that triggers execution?
@@ -94,7 +107,7 @@ quiz:
       - groupBy
       - count
     answer: 3
-    explanation: count is an action; the others are lazy transformations.
+    explanation: count() asks for a result, so it is an action and starts the work. The others only add steps to the plan.
   - question: Which transformation causes a shuffle?
     options:
       - filter
@@ -102,7 +115,7 @@ quiz:
       - groupBy
       - withColumn
     answer: 2
-    explanation: groupBy needs all rows of a key together, so data moves across partitions.
+    explanation: groupBy needs all rows with the same key in one place, so rows are sent between partitions (a shuffle).
   - question: What does 'Exchange' in df.explain() indicate?
     options:
       - A cached table
@@ -110,7 +123,7 @@ quiz:
       - A pushed-down filter
       - A broadcast variable
     answer: 1
-    explanation: Exchange is Spark's physical operator for a shuffle.
+    explanation: Exchange is the step where Spark shuffles data between partitions.
   - question: 40 partitions, 16 cores, 2 s per task. Stage time?
     options:
       - 4 s
@@ -118,7 +131,7 @@ quiz:
       - 6 s
       - 80 s
     answer: 2
-    explanation: ⌈40/16⌉ = 3 waves × 2 s = 6 s.
+    explanation: 16 cores take 16 tasks per round, so 40 tasks need ⌈40/16⌉ = 3 rounds (waves). 3 × 2 s = 6 s.
   - question: Why can DuckDB beat Spark on 10,000 rows?
     options:
       - DuckDB is distributed
@@ -126,7 +139,7 @@ quiz:
       - Spark can't read Parquet
       - DuckDB caches everything
     answer: 1
-    explanation: On small data the overhead is bigger than the actual work.
+    explanation: On small data, Spark's fixed start-up and planning costs are bigger than the actual work.
   - question: What does partial aggregation reduce?
     options:
       - The number of columns
@@ -134,7 +147,7 @@ quiz:
       - The number of executors
       - Memory used by the driver
     answer: 1
-    explanation: Each partition pre-aggregates, so at most partitions × keys rows cross the network.
+    explanation: Each partition adds up its own groups first, so at most partitions × keys rows are sent across the network.
 fact:
   title: "Single-node first: most 'Big Data' fits in laptop RAM"
   body: A 2023 study of production cloud analytics jobs found that over 90% of queries scanned less than 10 GB
@@ -173,39 +186,47 @@ lab:
 notes:
   - heading: Driver, executors and partitions
     body: |
-      Spark spreads a DataFrame across a cluster as **partitions** — chunks of rows. A **driver** program plans the work; **executors** run it. Each executor has some **cores**, and each core processes one partition at a time as a **task**.
+      **The idea:** one person counting a million coins takes ages. Ten people each counting a pile finish ten times faster, as long as splitting the coins up doesn't take longer than counting them.
 
-      So the basic arithmetic is:
+      Spark spreads a table across a cluster as **partitions**: chunks of rows. A **driver** program plans the work; **executors** do it. Each executor has some **cores** (processors), and each core handles one partition at a time, as a **task**.
+
+      The basic arithmetic:
 
       - 1 partition → 1 task.
-      - Tasks run in **waves** of (total executor cores): waves = ⌈partitions ÷ cores⌉.
+      - Tasks run in **waves** (rounds) of as many tasks as there are cores: waves = ⌈partitions ÷ cores⌉ (⌈ ⌉ means round up).
       - Stage time ≈ waves × time per task.
 
-      20 partitions on 8 cores need 3 waves — and the last wave uses only 4 cores while 4 sit idle. Too few partitions leaves cores idle; far too many creates scheduling overhead. A common rule of thumb is 2–4 partitions per core.
+      **Tiny example:** 20 partitions on 8 cores need ⌈20 / 8⌉ = 3 waves, and in the last wave only 4 cores are busy while 4 sit idle. Too few partitions leaves cores idle; far too many adds scheduling overhead. A common rule of thumb is 2–4 partitions per core.
   - heading: Lazy evaluation, actions and Catalyst
     body: |
-      Transformations (`filter`, `select`, `withColumn`, `groupBy`, `join`) don't execute — they add steps to a **logical plan**. Only an **action** (`count`, `collect`, `show`, `write`) triggers execution.
+      **The idea:** Spark writes your whole shopping list before going to the shop, so it can plan the quickest route. It only goes when you ask for the result.
 
-      Laziness lets Spark's **Catalyst optimiser** rewrite your whole plan before running it: push filters down to the data source, drop unused columns, reorder joins, then the **Tungsten** engine generates efficient code. `df.explain()` shows the physical plan — look for `Exchange` (a shuffle) and `PushedFilters`.
+      Transformations (`filter`, `select`, `withColumn`, `groupBy`, `join`) don't run. They add steps to a **plan**. Only an **action** (`count`, `collect`, `show`, `write`) starts the work.
 
-      The flip side: every action re-runs the plan from the source unless you cache. Two `count()`s on the same DataFrame read the data twice.
+      Being lazy lets Spark's **Catalyst optimiser** improve the whole plan before running it: apply filters as early as possible (even inside the data source), drop columns nobody uses, reorder joins. Then the **Tungsten** engine generates efficient code. `df.explain()` shows the final plan: look for `Exchange` (a shuffle) and `PushedFilters`.
+
+      **The catch:** every action runs the plan again from the start unless you cache. Two `count()`s on the same table read the data twice.
   - heading: Narrow vs wide — the shuffle
     body: |
-      - **Narrow** transformations (`filter`, `select`, `withColumn`, `map`) work inside each partition. No data moves between machines.
-      - **Wide** transformations (`groupBy`, `join`, `orderBy`, `distinct`) need rows with the same key to end up together. Spark **shuffles**: hashes each row's key, writes partition files to disk, and sends them across the network. That's the `Exchange` in the plan and usually the most expensive part of a job.
+      **The idea:** some jobs each worker can do alone (narrow). Others need everyone to swap items so all of one kind end up together (wide), and that swapping is the slow part.
 
-      Spark reduces shuffle cost with **partial aggregation**: each partition first computes its own partial sums per key, so at most partitions × distinct keys rows are shuffled instead of every row. That's why `groupBy("commodity").avg("price")` on 10 million rows shuffles only a few thousand.
+      - **Narrow** transformations (`filter`, `select`, `withColumn`, `map`) work inside each partition. No data moves between computers.
+      - **Wide** transformations (`groupBy`, `join`, `orderBy`, `distinct`) need all rows with the same key in the same place. Spark **shuffles**: it works out which partition each row's key belongs to, writes the rows to disk, and sends them across the network. That's the `Exchange` in the plan, and usually the most expensive part of a job.
+
+      **Partial aggregation saves a lot.** Before shuffling, each partition first adds up its own rows per key. So at most *partitions × distinct keys* rows get shuffled, instead of every row. For example, 1,000,000 rows in 4 partitions with 5 markets: each partition sends at most 5 partial results, so only 4 × 5 = **20 rows** cross the network.
   - heading: When Spark is the wrong tool
     body: |
-      Spark's fixed costs — starting a JVM, planning, serialising tasks, scheduling, shuffles — are seconds, not milliseconds. On small data they dominate. In Lab 8 on 10,000 rows, **DuckDB took 1.39 s and Spark 11.21 s**.
+      **The idea:** hiring a removal lorry to move one box is slower than carrying it yourself.
 
-      `.cache()` also isn't free: the first action has to *materialise* the cached data in memory. It pays off only when the cached DataFrame is reused by enough later actions. In our benchmark, caching a DataFrame used by two actions made the script slower (8.85 s vs 3.04 s).
+      Spark has fixed costs every time it runs: starting the JVM (the Java engine it runs on), planning, packaging tasks, scheduling, shuffling. These take seconds, not milliseconds, and on small data they dominate. In Lab 8, on 10,000 rows, **DuckDB took 1.39 s and Spark took 11.21 s**.
 
-      Rule of thumb: if the data fits comfortably on one machine, use a single-node engine (DuckDB, Polars, pandas). Reach for Spark when data or compute genuinely exceeds one machine.
+      **`.cache()` isn't free either.** The first action has to build (*materialise*) the cached copy in memory. That only pays off if enough later actions reuse it. In our test, caching a table used by just two actions made the script slower (8.85 s vs 3.04 s).
+
+      **Rule of thumb:** if the data fits comfortably on one computer, use a single-computer tool (DuckDB, Polars, pandas). Reach for Spark only when the data or the work really is too big for one machine.
 examples:
   - title: Waves and idle cores
-    problem: A stage has 26 partitions, each task taking 5 s, on a cluster with 3 executors × 4 cores. How long
-      does the stage take, and how many core-slots are idle in the last wave?
+    problem: A stage has 26 partitions (chunks), each task takes 5 s, and the cluster has 3 executors with 4 cores each.
+      How long does the stage take, and how many cores sit idle in the last round (wave)?
     steps:
       - Total cores = 3 × 4 = **12**.
       - Waves = ⌈26 / 12⌉ = **3**; stage time = 3 × 5 = **15 s**.
@@ -214,8 +235,8 @@ examples:
     answer: 15 s, with 10 idle core-slots.
     takeaway: Partition counts that are multiples of the core count avoid a nearly empty last wave.
   - title: Cache break-even
-    problem: Each action on an uncached DataFrame takes 3 s. Caching costs an extra 4.5 s on the first action;
-      later actions take 0.5 s. From how many actions does caching win?
+    problem: Without caching, each action on a table takes 3 s. With caching, the first action costs an extra 4.5 s to
+      build the cache, and every later action takes only 0.5 s. From how many actions does caching become worth it?
     steps:
       - "Uncached: N × 3."
       - "Cached: (3 + 4.5) + (N − 1) × 0.5 = 7 + 0.5N."

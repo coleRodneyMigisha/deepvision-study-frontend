@@ -3,7 +3,7 @@ id: ds
 code: DSC3103
 title: "Data Science: Systems & Technologies"
 shortTitle: Data Science
-tagline: "Trusted data systems: cleaning, pipelines, warehouses, orchestration, Spark, streaming and serving."
+tagline: "How to build data systems people can trust: cleaning messy data, automating it, storing it for fast questions, and serving it to apps."
 accent: "#0B7A5B"
 persona: "You are an expert Data Engineering & Data Systems professor teaching DSC3103 Data Science (Systems &
   Technologies): data profiling/cleaning, ETL/ELT pipelines, DuckDB star schemas, Apache Airflow, PySpark,
@@ -56,7 +56,7 @@ exam:
         - processed
       idealAnswer: First, keep `data/raw/` strictly read-only so any bug in cleaning can be fixed and re-run from
         the original source. Next, profile the dataset to quantify null rates, types, duplicates, and
-        distributions. Then enforce a validation gate checking required columns, date formats, and domain
+        distributions. Then enforce a validation gate (checks the data must pass before going further) checking required columns, date formats, and domain
         bounds. In cleaning, standardise strings, drop rows missing primary keys (`date`, `market`,
         `commodity`), deduplicate on that composite key, impute missing prices using the per-commodity median
         (which is robust to skew and outliers), and write the result atomically to `data/processed/`.
@@ -75,7 +75,7 @@ exam:
         - atomic
         - temp file
         - overwrite
-      idealAnswer: "Idempotency means running a pipeline stage once or N times on the same input produces the exact
+      idealAnswer: "Idempotency (being safe to repeat) means running a pipeline stage once or N times on the same input produces the exact
         same stored dataset. A classic non-idempotent stage is appending rows (`mode='append'` or `INSERT
         INTO`) without a uniqueness constraint: if Airflow retries the task or runs a backfill, every row is
         duplicated. To fix it, enforce a primary key on `(date, market, commodity)` and use an atomic upsert
@@ -117,7 +117,7 @@ exam:
         - group by
         - fan trap
         - double count
-      idealAnswer: The grain defines what a single fact row represents — here, one daily observation per `(date,
+      idealAnswer: The grain (the level of detail) defines what a single fact row represents — here, one daily observation per `(date,
         market, commodity)`. `fact_market_prices` holds numeric measures (`price_ugx`, `rainfall_mm`) and
         surrogate foreign keys. `dim_market`, `dim_commodity`, and `dim_date` hold descriptive attributes
         (district, category, month, quarter) for filtering and grouping. Defining the grain first ensures all
@@ -137,7 +137,7 @@ exam:
         - deterministic
         - retries
         - backoff
-      idealAnswer: Airflow enforces a Directed Acyclic Graph (`ingest >> validate >> clean >> store >> report`). If
+      idealAnswer: Airflow enforces a Directed Acyclic Graph (tasks joined by one-way arrows, with no loops) (`ingest >> validate >> clean >> store >> report`). If
         `validate` detects a broken schema and raises an exception, Airflow marks downstream tasks as
         `upstream_failed`, preventing corrupt data from reaching storage or reports. Ingestion tasks should
         have multiple retries with backoff because external APIs and networks fail transiently, whereas
@@ -159,12 +159,7 @@ exam:
         - jvm
         - overhead
         - duckdb
-      idealAnswer: Narrow transformations (`filter`, `withColumn`) operate within each partition in memory, whereas
-        wide transformations (`groupBy`, `join`) require a shuffle (`Exchange`) across the network and disk.
-        On 10,000 rows, DuckDB finished in ~1.4s while Spark took ~11.2s because Spark incurs JVM startup,
-        Catalyst planning, task serialisation, and shuffle overhead that dwarf the tiny compute work. Calling
-        `.cache()` slowed our 2-action script down because materialising and storing the DataFrame in memory
-        cost more than simply reading the small Parquet file from OS page cache.
+      idealAnswer: "Narrow transformations (`filter`, `withColumn`) operate within each partition in memory, whereas wide transformations (`groupBy`, `join`) require a shuffle (`Exchange`: rows with the same key are sent between computers) across the network and disk. On 10,000 rows, DuckDB finished in ~1.4s while Spark took ~11.2s because Spark incurs JVM startup, Catalyst planning, task serialisation, and shuffle overhead that dwarf the tiny compute work. Calling `.cache()` slowed our 2-action script down because materialising and storing the DataFrame in memory cost more than simply reading the small Parquet file from OS page cache."
     - prompt: In a real-time market price stream, events arrive out of order over mobile networks. Explain how Event
         Time, Tumbling Windows, and Watermarks work together.
       module: streaming
@@ -198,7 +193,7 @@ exam:
         - column order
         - docker
         - pinned
-      idealAnswer: "First, training-serving skew: duplicating feature logic between training and API leads to silent
+      idealAnswer: "First, training-serving skew (features calculated differently in the live service than in training): duplicating feature logic between training and API leads to silent
         prediction drift; fix it by importing `make_features()` and `FEATURE_COLUMNS` from a single shared
         module (`src/common/features.py`). Second, loading `model.joblib` inside the `/predict` handler
         instead of once at startup, which adds hundreds of milliseconds of disk I/O to every request. Third,

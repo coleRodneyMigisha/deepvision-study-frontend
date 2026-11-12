@@ -398,8 +398,23 @@ export const scenes: Record<string, Scene> = {
       txt("CNN: local 3×3 window", 80, 100, {s:13.5, w:600, c:C.navy}); txt("ViT: global attention", 420, 100, {s:13.5, w:600, c:C.goldD});
       for (let r=0;r<6;r++) for (let c=0;c<6;c++){ const inW = Math.abs(r-2.5)<=1.5&&Math.abs(c-2.5)<=1.5&&r>0&&c>0&&r<5&&c<5 && r>=2&&r<=4&&c>=2&&c<=4; rect(80+c*34, 115+r*34, 32, 32, {f: inW?C.navy:C.navyL, r:3}); rect(420+c*34, 115+r*34, 32, 32, {f:C.gold, r:3}); }
       txt("strong bias → efficient with less data", 80, 340, {s:12, c:C.ink2}); txt("weak bias → needs huge data, scales better", 420, 340, {s:12, c:C.ink2});
+    } else if (ci === 6){
+      heading("The similarity table", "Every image vs every caption in the batch · true pairs on the diagonal");
+      const labels = ["dog photo","cat photo","car photo"], caps = ["“a dog”","“a cat”","“a car”"];
+      const S = [[0.82,0.31,0.05],[0.28,0.79,0.07],[0.04,0.09,0.88]], e = ease(p*1.4);
+      caps.forEach((c,j)=>txt(c, 250+j*90+40, 110, {a:"center", s:12.5, mono:true}));
+      labels.forEach((l,i)=>{ txt(l, 230, 150+i*60, {a:"right", s:12.5});
+        S[i].forEach((v,j)=>{ const x=250+j*90, y=125+i*60, diag=i===j; rect(x, y, 80, 50, {f: diag ? `rgba(176,141,60,${0.25+0.7*e})` : "#fff", s:C.line2, r:6}); txt(v.toFixed(2), x+40, y+30, {a:"center", mono:true, s:13, w: diag?700:500}); }); });
+      txt("training pushes the diagonal up", 560, 160, {s:12.5, w:600, c:C.goldD}); txt("and everything else down", 560, 180, {s:12.5, c:C.ink2});
+      txt("the other captions in the batch", 560, 220, {s:12, c:C.muted}); txt("act as the wrong answers", 560, 238, {s:12, c:C.muted});
+    } else if (ci === 8){
+      heading("What CLIP is good at, and where it slips", "Great at matching words to pictures · weak at counting and position");
+      txt("Good at", 80, 110, {s:14, w:600, c:C.sage});
+      ["searching photos with words","guiding text-to-image models","spotting things it was never labelled for"].forEach((x,i)=>txt(`✓ ${x}`, 80, 140+i*28, {s:12.5, c:C.ink2}));
+      txt("Slips on", 430, 110, {s:14, w:600, c:C.rust});
+      ["counting (“three apples”)","left vs right, on top vs under","text written on objects (typographic attack)","biases copied from web captions"].forEach((x,i)=>txt(`✗ ${x}`, 430, 140+i*28, {s:12.5, c:C.ink2}));
     } else {
-      heading(ci===5 ? "CLIP: contrastive image–text training" : "CLIP zero-shot classification", ci===5 ? "400M (image, caption) pairs · matching pairs pulled together" : "Pick the prompt with the highest cosine similarity");
+      heading(ci===5 ? "CLIP: learning from pictures and their captions" : "CLIP zero-shot classification", ci===5 ? "400M (image, caption) pairs from the web · matching pairs pulled together" : "Pick the prompt with the highest cosine similarity");
       rect(40, 100, 110, 90, {f:"#EADFC6", r:8}); circle(85, 150, 22, {f:"#B88A4A"}); circle(70,128,8,{f:"#9C6F35"}); circle(100,128,8,{f:"#9C6F35"});
       arrow(155, 145, 195, 145); rect(200, 115, 110, 60, {f:C.navy, r:10}); txt("image enc.", 255, 150, {a:"center", s:12, w:600, c:"#fff"});
       const prompts = ["a photo of a dog","a photo of a cat","a photo of a car"], sims = [0.31, 0.24, 0.12];
@@ -407,7 +422,7 @@ export const scenes: Record<string, Scene> = {
       prompts.forEach((pr,i)=>{ const y=230+i*36; txt(`“${pr}”`, 40, y+5, {s:12.5, mono:true}); arrow(205, y, 225, y, C.line2); rect(230, y-14, 80, 26, {f:C.goldL, r:6}); txt("text enc.", 270, y+4, {a:"center", s:11, w:600, c:C.goldD});
         const bw = 200*sims[i]/0.31*e; rect(400, y-10, bw, 20, {f: i===0?C.gold:C.line2, r:4}); txt(`cos ${sims[i].toFixed(2)}`, 410+bw, y+5, {mono:true, s:11.5, c:C.ink2}); });
       txt("similarity to the image embedding", 400, 210, {s:12, c:C.muted});
-      if (ci===6 && e>0.9) tag("prediction: dog", 400, 140, {f:C.sage, c:"#fff"});
+      if (ci===7 && e>0.9) tag("prediction: dog", 400, 140, {f:C.sage, c:"#fff"});
     }
   },
   "video-tracking": (kit, ci, p, t) => {

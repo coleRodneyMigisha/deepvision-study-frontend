@@ -1,37 +1,41 @@
 id: pipelines-parquet
 title: "Pipelines: ETL vs ELT, Parquet & Idempotency"
-subtitle: Build modular, repeatable pipelines with columnar storage (Lab 3)
-recap: "A pipeline is modular stages (profile → validate → clean → store) that can be re-run safely. ETL
-  transforms before loading; ELT loads raw first and transforms in-engine. Parquet is columnar, typed and
-  compressed, so queries read only the columns they need. Idempotency means running twice leaves the same
-  state: use atomic temp-file swaps (os.replace) and primary-key upserts or partition overwrites, never blind
-  appends."
+subtitle: Building data processes you can safely run again and again, and storing data efficiently (Lab 3)
+recap: |
+  A pipeline is a chain of small steps (profile → validate → clean → store) that a computer can re-run on its
+  own. ETL cleans the data before storing it; ELT stores the raw data first and cleans it inside the database.
+  Parquet is a file format that stores data column by column, with proper types and compression, so a query
+  only reads the columns it needs. A pipeline is idempotent if running it twice gives exactly the same result
+  as running it once. To get that, write to a temporary file and swap it in all at once (os.replace), and
+  replace rows by their key (upsert) instead of blindly adding (appending) them.
 traps:
-  - Using append mode — every retry or backfill duplicates rows.
-  - Writing directly to the final file so a crash leaves it half-written.
-  - Thinking Parquet compression is the only win — column pruning is usually bigger.
+  - "Using append mode. Every retry or re-run adds the same rows again, creating duplicates."
+  - "Writing straight to the final file. If the program crashes halfway, the file is left half-written and broken."
+  - "Thinking compression is Parquet's only advantage. Reading only the needed columns (column pruning) usually
+    saves even more."
 lesson:
   checkpointStep: 3
   steps:
-    - "A notebook that only works when you run cells in a secret order is not a pipeline. In Lab 3 we
-      refactored our code into modular stages: profile → validate → clean → store, orchestrated by
-      run_pipeline.py."
-    - In classic ETL, data is transformed on a staging server before loading into storage. In modern ELT, raw
-      data lands in a lake or warehouse first and transformations run in-engine using SQL or DuckDB.
-    - "Where should cleaned data live? CSV is row-oriented, untyped, and slow to parse. Apache Parquet is
-      columnar: it stores each column contiguously with explicit types, dictionary encoding, and Snappy
-      compression."
-    - "Checkpoint: what does it mean for a data pipeline to be idempotent, and how do you prevent duplicate
-      rows or half-written files when a job re-runs?"
-    - "An idempotent pipeline produces the exact same storage state whether run once or ten times on the same
-      input: f(f(x)) = f(x). Plain append violates idempotency by doubling row counts on every retry."
-    - To make file writes atomic and idempotent, write to a temporary file and call os.replace(tmp, target).
-      In databases, use primary-key upserts (INSERT OR REPLACE) or partition overwrite by date.
+    - "A notebook that only works if you run its cells in a secret order is not a pipeline. In Lab 3 we split our
+      code into separate steps: profile → validate → clean → store, run in order by run_pipeline.py."
+    - "In classic ETL (Extract, Transform, Load), data is cleaned on a separate machine before it's stored. In modern
+      ELT (Extract, Load, Transform), the raw data is stored first and cleaned inside the database, using SQL or
+      DuckDB."
+    - "Where should cleaned data live? CSV is plain text stored row by row, with no types, and slow to read. Apache
+      Parquet stores each column together, with its type recorded, and compresses it."
+    - "Checkpoint: what does it mean for a pipeline to be idempotent, and how do you stop re-runs from creating
+      duplicate rows or half-written files?"
+    - "An idempotent pipeline leaves storage in exactly the same state whether it runs once or ten times on the same
+      input: f(f(x)) = f(x). Plain append breaks this, because every retry adds the rows again."
+    - "To make file writes safe to repeat, write to a temporary file and then call os.replace(tmp, target), which
+      swaps it in all at once. In databases, replace rows by their key (an upsert, INSERT OR REPLACE) or overwrite
+      the whole day's data (partition overwrite)."
 checkpoint:
   question: Define idempotency in data pipelines. Why does a naive append mode break idempotency on retries, and
     how do you engineer both file outputs and database loads to be idempotent?
-  hint: Mathematically f(f(x)) = f(x). Think about what happens when a task fails at 99% and Airflow retries it.
-    Mention atomic temp-file replacement and primary-key upserts / partition overwrites.
+  hint: "In maths, f(f(x)) = f(x): doing it twice is the same as doing it once. Now imagine a job fails at 99% and the
+    scheduler (Airflow) runs it again. What happens to rows that were already added? Think about temporary files
+    and replacing rows by their key."
   keywords:
     - idempotent
     - idempotency
@@ -47,59 +51,72 @@ checkpoint:
     - primary key
     - partition
     - overwrite
-  idealAnswer: A pipeline is idempotent if running it multiple times on the same input leaves the target storage
-    in the exact same state as running it once. Naive append breaks this because any retry or backfill inserts
-    duplicate rows, inflating counts and corrupting aggregates. For file outputs, ensure idempotency by
-    writing to a temporary file and atomically swapping it into place (`os.replace`) or overwriting the
-    specific date partition. For database tables, enforce a composite primary key and use `INSERT OR REPLACE`
-    (upsert) or `DELETE WHERE date = ...` inside a single transaction before inserting.
+  idealAnswer: "A pipeline is idempotent if running it several times on the same input leaves storage in exactly the
+    same state as running it once. Naive append breaks this, because every retry or re-run inserts the rows again,
+    creating duplicates that inflate counts and totals. For files, write to a temporary file and swap it into place
+    in one atomic step (os.replace), or overwrite that date's whole partition. For database tables, set a primary
+    key on the columns that identify each row and use INSERT OR REPLACE (an upsert), or DELETE WHERE date = ... and
+    then insert, inside a single transaction so it all happens or none of it does."
 terms:
+  - term: Pipeline
+    definition: A chain of small, separate steps that process data automatically, each reading inputs and writing
+      outputs.
+  - term: ETL vs ELT
+    definition: Extract-Transform-Load cleans data before storing it; Extract-Load-Transform stores raw data first and
+      cleans it inside the database.
   - term: Idempotency
-    definition: Running a job N times has the exact same effect as running it once.
+    definition: Running a job many times has exactly the same effect as running it once.
   - term: Columnar storage (Parquet)
-    definition: Stores values column-by-column; enables column pruning and high compression ratios.
-  - term: Row group & predicate pushdown
-    definition: Parquet stores min/max statistics per block so engines skip irrelevant chunks without reading them.
+    definition: Storing data column by column instead of row by row, so a query can read just the columns it needs and
+      each column compresses well.
+  - term: Compression
+    definition: Storing data in fewer bytes, e.g. writing "Owino × 50,000" instead of the word 50,000 times.
+  - term: Row group and predicate pushdown
+    definition: Parquet splits data into blocks and records each column's smallest and largest value per block, so a
+      filter can skip blocks that can't match without reading them.
   - term: Atomic write
-    definition: Write to .tmp then os.replace() so readers never see a truncated or half-written file.
+    definition: Writing to a temporary file, then swapping it in with os.replace(), so nobody ever sees a half-written
+      file.
   - term: Upsert
-    definition: INSERT ... ON CONFLICT UPDATE (or INSERT OR REPLACE) keyed on the business key.
+    definition: Insert a row, or replace it if a row with the same key already exists (INSERT OR REPLACE / ON CONFLICT
+      UPDATE).
 quiz:
-  - question: A table has 12 columns (each 8 bytes/row) and 1,000,000 rows. A query selects only 2 columns.
-      Roughly how much less raw data does columnar storage scan than row-oriented CSV?
+  - question: A table has 12 columns (8 bytes each per row) and 1,000,000 rows. A query uses only 2 columns. Roughly how
+      much less data does column-by-column storage read than a row-by-row CSV?
     options:
       - 2× less
       - 6× less
       - 12× less
       - Same amount
     answer: 1
-    explanation: "Column pruning reads only 2 of the 12 columns: 12 / 2 = 6× less I/O before even counting compression."
-  - question: Why write to 'market_prices.parquet.tmp' and call os.replace() instead of writing directly to
-      'market_prices.parquet'?
+    explanation: "It only reads the 2 columns it needs out of 12: 12 / 2 = 6× less, before even counting compression."
+  - question: Why write to "market_prices.parquet.tmp" and then call os.replace(), instead of writing straight to
+      "market_prices.parquet"?
     options:
       - It compresses better
-      - It prevents corrupted half-written files if the process crashes mid-write
+      - It prevents a broken, half-written file if the program crashes mid-write
       - It skips schema validation
       - Parquet requires .tmp extensions
     answer: 1
-    explanation: os.replace() is an atomic filesystem rename on POSIX; downstream readers either see the old
-      complete file or the new complete file.
-  - question: In ELT, where do transformations usually run?
+    explanation: os.replace() swaps the file in one step, so readers see either the complete old file or the complete
+      new one, never half a file.
+  - question: In ELT, where does the cleaning (transforming) usually happen?
     options:
       - On the data source
-      - In a Python staging server
-      - Inside the warehouse/engine after loading
+      - On a separate Python machine
+      - Inside the database/engine, after loading
       - In the browser
     answer: 2
-    explanation: ELT loads raw data first, then transforms it in-engine (e.g. SQL in DuckDB).
+    explanation: ELT loads the raw data first, then transforms it inside the engine, e.g. with SQL in DuckDB.
   - question: Which Parquet feature lets a date filter skip whole blocks of data?
     options:
       - Dictionary encoding
-      - Row-group min/max statistics (predicate pushdown)
+      - Per-block min/max values (predicate pushdown)
       - Snappy compression
       - Column names
     answer: 1
-    explanation: Each row group stores min/max per column, so blocks that can't match are skipped.
+    explanation: Each block records each column's smallest and largest value, so blocks that can't match the filter are
+      skipped.
   - question: Why is os.replace(tmp, target) used when writing output files?
     options:
       - It compresses the file
@@ -107,7 +124,7 @@ quiz:
       - It validates the schema
       - It deletes the raw file
     answer: 1
-    explanation: Atomic replacement means the target is always either the old or the new complete file.
+    explanation: "Atomic means all at once: the target is always either the old or the new complete file."
   - question: f(f(x)) = f(x) is the definition of…
     options:
       - Determinism
@@ -115,28 +132,28 @@ quiz:
       - Immutability
       - Atomicity
     answer: 1
-    explanation: Applying an idempotent operation again changes nothing.
+    explanation: Doing an idempotent operation again changes nothing.
   - question: A CSV column contains "0012". What can go wrong that Parquet avoids?
     options:
       - Nothing
-      - Type inference may read it as the integer 12
-      - Parquet can't store strings
+      - The reader may guess it's the number 12
+      - Parquet can't store text
       - CSV can't store numbers
     answer: 1
-    explanation: CSV has no schema, so readers guess types; Parquet stores the declared type.
-  - question: What's the main benefit of splitting a pipeline into stages?
+    explanation: A CSV doesn't record column types, so readers guess. Parquet stores the declared type, so "0012" stays
+      text.
+  - question: What's the main benefit of splitting a pipeline into separate steps?
     options:
       - Fewer files
       - "Each stage can be tested, rerun and retried on its own"
       - It removes the need for logging
       - It makes Python faster
     answer: 1
-    explanation: Small stages with clear inputs/outputs are testable and recoverable.
+    explanation: Small steps with clear inputs and outputs can be tested and re-run one at a time.
 fact:
-  title: Why Parquet + DuckDB beats CSV by 20×–100×
-  body: Because all values of a column sit together in Parquet, a single column of market names like 'Owino'
-    repeated 50,000 times collapses to a tiny integer dictionary plus run-length encoding — shrinking size by
-    80%+ and allowing SIMD vectorised scans.
+  title: Why Parquet + DuckDB can beat CSV by 20–100×
+  body: Parquet stores all values of a column together, so a column with "Owino" repeated 50,000 times shrinks to a
+    tiny list of codes plus counts. Files get 80%+ smaller, and the computer can process many values at once.
 lab:
   title: Parquet Columnar I/O & Idempotency Simulator
   variations:
@@ -172,47 +189,55 @@ lab:
 notes:
   - heading: From notebook to pipeline
     body: |
-      A notebook is great for exploring and terrible for production: cells can run out of order, state hides in memory, and "it worked yesterday" is not a guarantee. A **pipeline** is the same logic split into small, named stages with clear inputs and outputs:
+      **The idea:** a notebook is like cooking from memory; a pipeline is a written recipe that anyone (or any computer) can follow the same way every time.
 
-      `profile.py → validate.py → clean.py → store.py`, orchestrated by `run_pipeline.py`.
+      Notebooks are great for exploring and bad for running every day: cells can run out of order, results hide in memory, and "it worked yesterday" proves nothing. A **pipeline** is the same code split into small, named steps, each with clear inputs and outputs:
 
-      Each stage reads files, does one job, writes files and logs what it did (row counts, durations). That gives you three things a notebook can't: you can **rerun one stage** without the others, you can **test each stage**, and a scheduler like Airflow can **retry the stage that failed** instead of everything.
+      `profile.py → validate.py → clean.py → store.py`, run in order by `run_pipeline.py`.
+
+      Each step reads files, does one job, writes files, and logs what it did (rows in and out, how long it took). That gives you three things a notebook can't: you can **rerun one step** without the others, you can **test each step**, and a scheduler like Airflow can **retry just the step that failed**.
   - heading: ETL vs ELT
     body: |
+      **The idea:** do you wash vegetables before putting them in the fridge (ETL), or put them in the fridge and wash them when you cook (ELT)?
+
       | | ETL | ELT |
       |---|---|---|
       | Order | Extract → Transform → Load | Extract → Load → Transform |
-      | Where transforms run | in Python on a staging machine | inside the warehouse/engine (SQL, DuckDB) |
-      | Raw data kept? | often not | yes — raw lands first |
-      | Good when | data is small, transforms are complex Python | the engine is powerful and you want to re-transform later |
+      | Where cleaning happens | in Python on a separate machine | inside the database (SQL, DuckDB) |
+      | Raw data kept? | often not | yes, the raw data lands first |
+      | Good when | data is small and cleaning needs complex Python | the database is powerful and you may want to redo the cleaning later |
 
-      Modern analytics leans towards **ELT** because storage is cheap and engines like DuckDB, BigQuery or Snowflake are fast: land the raw data once, then build cleaned tables with SQL that can be changed and rerun at any time. Our course pipeline is a hybrid — Python cleaning, then DuckDB for modelling and queries.
+      Modern data work leans towards **ELT**, because storage is cheap and engines like DuckDB, BigQuery or Snowflake are fast: store the raw data once, then build cleaned tables with SQL that you can change and rerun any time. Our course pipeline mixes both: Python for cleaning, then DuckDB for modelling and queries.
   - heading: Why Parquet beats CSV
     body: |
-      CSV is **row-oriented text**: every query has to read and parse every byte of every column, and the types are guessed each time (`"0012"` becomes 12, dates become strings).
+      **The idea:** imagine a phone book you could only read line by line, versus one where all the surnames are in one list and all the numbers in another. To count surnames, you'd only open the surname list.
 
-      Parquet is a **binary, columnar** format:
+      A **CSV** is plain text stored **row by row**. Every query has to read every byte of every column, and the computer *guesses* the types each time (`"0012"` becomes 12; dates become plain text).
 
-      - **Column pruning** — values of each column are stored together, so `SELECT AVG(price_ugx)` reads only that column. Reading 2 of 10 columns reads ~20% of the data.
-      - **Compression that works** — a column of market names repeats the same few strings, so dictionary + run-length encoding shrinks it dramatically.
-      - **Typed schema** — integers stay integers, dates stay dates.
-      - **Row-group statistics** — each block stores min/max per column, so a filter like `date >= '2025-03-01'` can skip whole blocks (*predicate pushdown*).
+      **Parquet** is a **column-by-column** file format:
 
-      Bytes scanned ≈ CSV size × (columns read ÷ total columns) ÷ compression ratio.
+      - **Column pruning:** each column's values are stored together, so `SELECT AVG(price_ugx)` reads only that one column. Reading 2 of 10 columns reads about 20% of the data.
+      - **Compression that works:** a column of market names repeats the same few words, so it can be stored as small codes plus counts (dictionary and run-length encoding).
+      - **Types are stored:** whole numbers stay whole numbers, dates stay dates.
+      - **Block summaries:** each block records each column's smallest and largest value, so a filter like `date >= '2025-03-01'` can skip whole blocks without reading them (*predicate pushdown*).
+
+      A handy estimate: **bytes read ≈ CSV size × (columns read ÷ total columns) ÷ compression ratio.**
   - heading: Idempotency, atomic writes and upserts
     body: |
-      A stage is **idempotent** if running it once or ten times on the same input leaves the same result: f(f(x)) = f(x). This matters because schedulers *will* retry failed tasks and run backfills.
+      **The idea:** pressing a lift button twice doesn't call two lifts. A good pipeline step works the same way: running it again changes nothing.
 
-      The classic violation is **append**: each retry inserts the batch again, so a table with 10,000 rows and a 1,500-row batch has 14,500 rows after three runs instead of 11,500.
+      A step is **idempotent** if running it once or ten times on the same input gives the same result: f(f(x)) = f(x). This matters because schedulers **will** retry failed jobs and re-run old dates (backfills).
+
+      The classic mistake is **append** (always adding rows). Each retry adds the batch again. A table with 10,000 rows and a 1,500-row batch ends up with 14,500 rows after three runs, instead of 11,500.
 
       Two standard fixes:
 
-      - **Files:** write to a temporary path and atomically swap it in — `os.replace("out.parquet.tmp", "out.parquet")`. Readers see either the old complete file or the new complete one, never half a file. Or overwrite the whole partition for that date.
-      - **Tables:** enforce a primary key on the business key and **upsert** (`INSERT OR REPLACE`, `ON CONFLICT DO UPDATE`), or `DELETE WHERE date = :d` then `INSERT`, inside one transaction.
+      - **For files:** write to a temporary file, then swap it in all at once (atomically) with `os.replace("out.parquet.tmp", "out.parquet")`. Readers see either the complete old file or the complete new one, never half a file. Or overwrite that date's whole folder (partition).
+      - **For database tables:** set a **primary key** on the columns that identify a row, and **upsert**: insert, or replace if the key already exists (`INSERT OR REPLACE`, `ON CONFLICT DO UPDATE`). Or `DELETE WHERE date = :d` then `INSERT`, inside one **transaction**, so either everything happens or nothing does.
 examples:
   - title: How much does DuckDB scan?
-    problem: A 10-column market table is 300 MB as CSV. Stored as Parquet with 4× compression, how much does a
-      query reading 3 columns scan?
+    problem: A market table with 10 columns is 300 MB as a CSV. Stored as Parquet, it compresses 4×. How much data does a
+      query that uses only 3 of the columns need to read?
     steps:
       - "Column pruning: 3 of 10 columns → 300 × 3/10 = **90 MB** of the uncompressed data."
       - "Compression: 90 ÷ 4 = **22.5 MB**."
@@ -220,8 +245,9 @@ examples:
     answer: About 22.5 MB.
     takeaway: Pruning and compression multiply — that's why columnar formats are so fast for analytics.
   - title: Counting the damage of append
-    problem: A table has 8,000 rows. A 1,200-row batch (300 of its keys already exist) is loaded, the task fails
-      at the end, and Airflow retries twice. How many rows with append, and how many with an upsert?
+    problem: A table has 8,000 rows. A batch of 1,200 rows is loaded (300 of them are updates to rows that already exist).
+      The job fails at the very end, and Airflow retries it twice. How many rows end up in the table with append, and
+      how many with an upsert (replace by key)?
     steps:
       - "Append runs 3 times: 8,000 + 3 × 1,200 = **11,600 rows**."
       - "Upsert: 300 keys are updated in place; 900 are new → 8,000 + 900 = **8,900 rows**, whatever the
