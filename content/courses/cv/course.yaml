@@ -50,10 +50,7 @@ exam:
         - pixel
         - every pixel
         - instance
-      idealAnswer: Classification gives one label for the whole image, with no location. Detection outputs a class,
-        a confidence score and a bounding box (a rectangle) for each object: what and where. Semantic segmentation classifies every
-        pixel, giving exact shapes but not separating instances of the same class. Cost and annotation effort
-        increase from classification to segmentation.
+      idealAnswer: "Classification gives one label for the whole image, with no location. Detection outputs a class, a confidence score and a bounding box (a rectangle) for each object: what and where. Semantic segmentation classifies every pixel, giving exact shapes but not separating instances of the same class. Cost and annotation effort increase from classification to segmentation."
     - prompt: Why do convolutional networks outperform fully connected networks on images? Name the two key
         inductive biases.
       module: cnns
@@ -65,11 +62,7 @@ exam:
         - translation equivariance
         - fewer parameters
         - overfitting
-      idealAnswer: CNNs use two built-in assumptions (inductive biases). Local connectivity: each neuron sees only a
-        small patch of the image (its receptive field). Parameter sharing: the same small filter (kernel) slides
-        across the whole image. This cuts parameters massively and gives
-        translation equivariance, so a feature is detected anywhere. A fully connected net flattens the image,
-        ignores spatial structure, needs millions of weights and overfits.
+      idealAnswer: "CNNs use two built-in assumptions (inductive biases). Local connectivity: each neuron sees only a small patch of the image (its receptive field). Parameter sharing: the same small filter (kernel) slides across the whole image. This cuts parameters massively and gives translation equivariance, so a feature is detected anywhere. A fully connected net flattens the image, ignores spatial structure, needs millions of weights and overfits."
     - prompt: Your training accuracy is 99% but validation accuracy is 72%. What's happening, and what would you do?
       module: training-evaluation
       keywords:
@@ -82,10 +75,7 @@ exam:
         - early stopping
         - more data
         - leakage
-      idealAnswer: That gap means overfitting (high variance): the model memorises its training pictures instead
-        of learning patterns that work on new ones (generalising). I'd add data augmentation, regularisation like weight decay or dropout, use early
-        stopping on validation loss, simplify the model or use transfer learning. I'd also check the split for
-        leakage or distribution differences between train and validation.
+      idealAnswer: "That gap means overfitting (high variance): the model memorises its training pictures instead of learning patterns that work on new ones (generalising). I'd add data augmentation, regularisation like weight decay or dropout, use early stopping on validation loss, simplify the model or use transfer learning. I'd also check the split for leakage or distribution differences between train and validation."
     - prompt: You have 500 medical X-ray images. How would you apply transfer learning from an ImageNet-pretrained
         ResNet-50? Explain your freezing strategy and learning rates.
       module: transfer-learning
@@ -118,11 +108,7 @@ exam:
         - threshold
         - greedy
         - duplicate
-      idealAnswer: NMS removes duplicate boxes drawn on the same object. It relies on confidence scores and IoU
-        (intersection over union: the overlap of two boxes divided by the total area they cover). Sort boxes by confidence, keep the top box, compute IoU
-        between it and each remaining box of the same class, and remove those above a threshold such as 0.5.
-        Repeat with the next highest box. The threshold trades off duplicates against wrongly suppressing
-        nearby objects in crowded scenes.
+      idealAnswer: "NMS removes duplicate boxes drawn on the same object. It relies on confidence scores and IoU (intersection over union: the overlap of two boxes divided by the total area they cover). Sort boxes by confidence, keep the top box, compute IoU between it and each remaining box of the same class, and remove those above a threshold such as 0.5. Repeat with the next highest box. The threshold trades off duplicates against wrongly suppressing nearby objects in crowded scenes."
     - prompt: In segmentation, what is the difference between IoU and Dice, and why are skip connections used in
         U-Net?
       module: segmentation
