@@ -1,35 +1,42 @@
 id: training-evaluation
 title: Training & Evaluation
-subtitle: Train, validate & diagnose classifier behaviour
-recap: "Training is forward → loss → backprop → optimiser step, repeated over epochs. Tune on validation,
-  touch test once, and guard against leakage. Read the curves: train falls but val rises means overfitting;
-  both high means underfitting. On imbalanced data accuracy lies — use precision, recall, F1 and the confusion
-  matrix."
+subtitle: How a network learns from mistakes, and how to tell whether it really works
+recap: |
+  Training is a loop: the network guesses, we measure how wrong it was (the loss), work out which way to nudge
+  every weight to be less wrong (backpropagation), nudge them (the optimiser), and repeat many times. Keep three
+  separate piles of data: training (to learn from), validation (to make choices with) and test (to check once at
+  the very end). Watch the loss curves: if training gets better while validation gets worse, the model is
+  memorising (overfitting). And on lopsided data, accuracy can fool you; use precision, recall and F1 instead.
 traps:
-  - Reporting accuracy on a 99%-negative dataset.
-  - "Forgetting model.eval(): BatchNorm and Dropout behave differently at inference."
-  - Tuning hyper-parameters on the test set — that's leakage too.
+  - "Reporting accuracy when 99% of cases are negative. A model that always says \"no\" scores 99% and is useless."
+  - "Forgetting `model.eval()` before testing. BatchNorm and Dropout behave differently while training, so your
+    test results come out noisy and wrong."
+  - "Choosing settings (hyper-parameters) by looking at test results. That leaks test information into your choices,
+    so the final score is too optimistic."
 lesson:
   checkpointStep: 3
   steps:
-    - "Training is a loop: forward pass to get predictions, compute a loss such as cross-entropy,
-      backpropagate gradients, and update the weights with an optimiser like SGD or AdamW. Repeat for many
-      epochs."
-    - Split data into train, validation and test. Tune on validation; touch test once at the end. Watch for
-      leakage — for example, the same patient's scans in both train and test.
-    - Diagnose with curves. Training loss keeps falling but validation loss turns upward? The model is
-      memorising — overfitting, high variance. Both stay high? Underfitting, high bias.
-    - "Checkpoint: why does batch normalisation behave differently in training mode versus evaluation mode?"
-    - Fight overfitting with more or augmented data, dropout, weight decay, and early stopping — keep the
-      weights from the epoch with the best validation loss.
-    - Accuracy lies on imbalanced data. If 99% of patients are healthy, a model that always says ‘healthy’
-      scores 99% and catches zero cancers.
-    - Use precision — of my positive predictions, how many were right — and recall — of real positives, how
-      many did I find. F1 is their harmonic mean. Look at the confusion matrix.
+    - "Training is a loop. The network makes predictions (forward pass), we score how wrong they are with a loss
+      such as cross-entropy, backpropagation works out how each weight should change, and an optimiser like SGD or
+      AdamW nudges the weights. One pass through all the training data is an epoch; we do many."
+    - "Split your data into three piles: training, validation and test. Make your choices using validation, and look
+      at test only once at the end. Watch for leakage, e.g. the same patient's scans in both training and test,
+      which makes the score look better than it really is."
+    - "Read the loss curves. Training loss keeps falling but validation loss starts rising? The model is memorising:
+      overfitting. Both stay high? It hasn't learned enough: underfitting."
+    - "Checkpoint: why does batch normalisation behave differently while training compared with when we test the
+      model?"
+    - "To stop overfitting: get more data or make variations of it (augmentation), randomly switch off some neurons
+      during training (dropout), discourage large weights (weight decay), and stop at the best point (early
+      stopping: keep the weights from the epoch with the lowest validation loss)."
+    - "Accuracy can lie when one answer is much more common. If 99% of patients are healthy, a model that always says
+      \"healthy\" scores 99% and catches zero cancers."
+    - "Use precision (of the cases I flagged, how many were real?) and recall (of the real cases, how many did I
+      catch?). F1 combines them into one number. The confusion matrix shows all four counts."
 checkpoint:
   question: Why does Batch Normalization behave differently during training versus evaluation mode?
-  hint: "Training: statistics from the current mini-batch. Evaluation: what does it use when there might be only
-    one image?"
+  hint: "While training, BatchNorm averages over the current batch of pictures. When testing, the \"batch\" might be a
+    single picture. What should it use then?"
   keywords:
     - mini-batch
     - batch
@@ -42,92 +49,112 @@ checkpoint:
     - inference
     - deterministic
     - model.eval
-  idealAnswer: "BatchNorm normalises activations using a mean and variance. In training it uses the statistics
-    of the current mini-batch, and also updates running averages of them. In evaluation mode it uses those
-    stored running averages instead, because at inference the batch may be a single image and predictions must
-    be deterministic and independent of other samples. Forgetting model.eval() is a classic bug: outputs
-    depend on the batch and accuracy drops."
+  idealAnswer: "Batch normalisation rescales a layer's outputs using a mean and variance. While training, it uses the
+    mean and variance of the current mini-batch, and keeps running averages of them along the way. In evaluation
+    mode it uses those stored running averages instead, because at test time the batch may be just one picture,
+    and a prediction must be the same every time (deterministic) and not depend on which other pictures happen
+    to be in the batch. Forgetting model.eval() is a classic bug: outputs depend on the batch and accuracy drops."
 terms:
+  - term: Loss
+    definition: One number measuring how wrong the predictions are. Training tries to make it smaller.
+  - term: Cross-entropy
+    definition: The usual loss for classification, −log(probability given to the correct answer). Confidently wrong
+      answers cost a lot.
+  - term: Backpropagation
+    definition: The method that works out, for every weight, which direction to change it to reduce the loss (its
+      gradient).
+  - term: Optimiser (SGD, AdamW)
+    definition: The rule for nudging the weights using those gradients. The learning rate sets the size of each nudge.
   - term: Epoch
-    definition: One full pass over the training set.
+    definition: One full pass through all the training data.
   - term: Overfitting
-    definition: Train performance ≫ validation performance; the model memorised noise.
+    definition: The model does much better on training data than on new data, because it memorised details and noise
+      instead of the general pattern.
+  - term: Underfitting
+    definition: The model does badly even on training data; it's too simple or hasn't trained enough.
   - term: Precision
-    definition: TP / (TP + FP) — how trustworthy a positive prediction is.
+    definition: TP / (TP + FP). Of everything the model flagged, the share that was really positive.
   - term: Recall
-    definition: TP / (TP + FN) — how many real positives were found.
+    definition: TP / (TP + FN). Of all the real positives, the share the model caught.
+  - term: Confusion matrix
+    definition: "A 2 × 2 table of counts: true positives (TP), false positives (FP), false negatives (FN) and true
+      negatives (TN)."
   - term: Data leakage
-    definition: Test information sneaking into training, making scores unrealistically high.
+    definition: Information from the test data sneaking into training or into your choices, making scores look better
+      than they really are.
 quiz:
-  - question: Train loss 0.02, validation loss 1.9 and rising. Best first fix?
+  - question: Training loss is 0.02, but validation loss is 1.9 and rising. What's the best first fix?
     options:
       - Train longer
-      - Bigger model
+      - Use a bigger model
       - More augmentation / regularisation
-      - Higher learning rate
+      - A higher learning rate
     answer: 2
-    explanation: That's overfitting. Add data/augmentation, dropout, weight decay or stop early.
-  - question: "Cancer screening: what matters most if missing a cancer is very costly?"
+    explanation: The model is memorising (overfitting). Give it more variety (data, augmentation), use dropout or
+      weight decay, or stop earlier.
+  - question: "In cancer screening, missing a cancer is very costly. Which number matters most?"
     options:
       - Precision
       - Recall
       - Accuracy
       - Training loss
     answer: 1
-    explanation: Missed cancers are false negatives; recall = TP/(TP+FN) measures how many you catch.
-  - question: Which set should be used to choose the learning rate?
+    explanation: A missed cancer is a false negative. Recall = TP / (TP + FN) measures how many real cases you catch.
+  - question: Which pile of data should you use to choose the learning rate?
     options:
       - Training
       - Validation
       - Test
       - All of them
     answer: 1
-    explanation: The test set is for the final, untouched estimate.
-  - question: Training loss falls; validation loss rises. Diagnosis?
+    explanation: Make choices with validation. Keep the test set untouched for the final, honest score.
+  - question: Training loss falls while validation loss rises. What's going on?
     options:
       - Underfitting
       - Overfitting
-      - LR too low
-      - Perfect fit
+      - Learning rate too low
+      - A perfect fit
     answer: 1
-    explanation: The model is memorising the training set.
-  - question: What happens if you forget model.eval() before testing a network with BatchNorm and Dropout?
+    explanation: "The model is getting better at its training examples but worse at new ones: it's memorising."
+  - question: What happens if you forget model.eval() before testing a network that has BatchNorm and Dropout?
     options:
       - Nothing
       - "Batch statistics and dropout are used, giving noisy, wrong outputs"
       - It runs faster
       - It trains on the test set
     answer: 1
-    explanation: Eval mode uses running statistics and disables dropout.
-  - question: TP = 30, FP = 10, FN = 30. Recall?
+    explanation: Evaluation mode switches BatchNorm to its stored averages and turns dropout off. Without it, results
+      change from run to run and are worse.
+  - question: TP = 30, FP = 10, FN = 30. What is the recall?
     options:
       - "0.25"
       - "0.5"
       - "0.75"
       - "0.6"
     answer: 1
-    explanation: 30 / (30 + 30) = 0.5.
-  - question: How should a medical-scan dataset be split to avoid leakage?
+    explanation: Recall = TP / (TP + FN) = 30 / (30 + 30) = 0.5. Half the real cases were caught.
+  - question: How should you split a dataset of medical scans to avoid leakage?
     options:
       - Randomly by image
       - By patient
       - By file size
       - By date taken only
     answer: 1
-    explanation: The same patient's scans must not appear in both train and test.
-  - question: A loss curve that jumps up and down without decreasing suggests…
+    explanation: One patient's scans look alike. If some are in training and others in test, the test is too easy.
+  - question: A loss curve that jumps up and down without going down suggests…
     options:
       - Too much data
-      - Learning rate too high
+      - The learning rate is too high
       - Too few epochs
       - Perfect convergence
     answer: 1
-    explanation: Lower the LR or add warm-up.
+    explanation: The steps are too big, so the weights keep overshooting. Lower the learning rate or warm it up
+      gradually.
 fact:
-  title: Soft labels beat hard ones
-  body: Mixup blends two images and their labels; CutMix pastes a patch of one image onto another and mixes
-    labels by area (e.g. 0.7 cat, 0.3 dog). Combined with label smoothing, these are standard in modern
-    ImageNet training recipes and reduce over-confident predictions.
+  title: Mixed-up labels help
+  body: Mixup blends two photos and their labels; CutMix pastes a patch of one photo onto another and mixes the
+    labels by area (e.g. 0.7 cat, 0.3 dog). With label smoothing (never saying 100% sure), these are standard in
+    modern ImageNet training and stop models being over-confident.
 lab:
   title: Metrics from a confusion matrix
   variations:
@@ -136,7 +163,7 @@ lab:
         a decimal between 0 and 1, rounded to 2 decimals)?"
       answer: 0.73
       tolerance: 0.01
-      hint: Compute Precision = TP/(TP+FP) and Recall = TP/(TP+FN), then F1 = 2PR/(P+R).
+      hint: "First Precision = TP/(TP+FP) (how many alarms were real), then Recall = TP/(TP+FN) (how many real cases were caught), then F1 = 2PR/(P+R)."
       explanation: Precision = 40/50 = 0.80, Recall = 40/60 = 0.6667 → F1 = 2(0.80)(0.6667)/(1.4667) = 0.727 ≈ 0.73.
     - title: Imbalanced Recall Trap
       question: "In a defect detector: <b>TP = 18, FP = 2, FN = 42, TN = 938</b> (overall accuracy is 95.6%!). What
@@ -145,7 +172,7 @@ lab:
       tolerance: 0.1
       hint: Recall = TP / (TP + FN) × 100.
       explanation: Total real positives = TP + FN = 18 + 42 = 60. Recall = 18 / 60 = 0.30 = 30%.
-    - title: Specificity vs False Positive Rate
+    - title: Precision of a Screening Model
       question: A screening model produces <b>TP = 90, FN = 10, FP = 50, TN = 450</b>. What is its <b>Precision</b>
         (as a decimal 0–1, to 2 decimals)?
       answer: 0.64
@@ -155,75 +182,96 @@ lab:
 notes:
   - heading: The training loop
     body: |
-      Every supervised network trains with the same loop, repeated over **epochs** (passes through the training set) in **mini-batches**:
+      **The idea:** a network starts with random weights and gets better by making guesses, seeing how wrong they were, and adjusting. Like practising free throws: shoot, see where it lands, adjust your aim, shoot again.
 
-      1. **Forward pass** — compute predictions for a batch.
-      2. **Loss** — measure how wrong they are; for classification, **cross-entropy** = −log(probability of the true class).
-      3. **Backward pass** — backpropagation computes the gradient of the loss with respect to every weight.
-      4. **Update** — an optimiser moves the weights against the gradient: SGD with momentum, or **AdamW** (Adam with decoupled weight decay).
+      Every training run repeats four steps, a small batch of examples at a time (a **mini-batch**), for many passes through the data (**epochs**):
+
+      1. **Forward pass:** the network makes predictions for the batch.
+      2. **Loss:** one number for how wrong they are. For classification it's usually **cross-entropy**: −log(the probability the model gave the right answer). If the model said 90% for the right class, the loss is −log 0.9 ≈ 0.11; if it said 10%, the loss is −log 0.1 ≈ 2.3.
+      3. **Backward pass (backpropagation):** works out, for every weight, which direction to change it to lower the loss. These directions are the **gradients**.
+      4. **Update:** the **optimiser** nudges every weight a little in that direction. Common choices: SGD with momentum, or **AdamW**.
 
       ```python
-      for x, y in loader:
-          opt.zero_grad()
-          loss = F.cross_entropy(model(x), y)
-          loss.backward()
-          opt.step()
+      for x, y in loader:                         # one mini-batch of pictures x and labels y
+          opt.zero_grad()                         # clear the previous gradients
+          loss = F.cross_entropy(model(x), y)     # forward pass + loss
+          loss.backward()                         # backpropagation
+          opt.step()                              # nudge the weights
       ```
 
-      The **learning rate** is the most important hyper-parameter: too high and the loss jumps around or diverges; too low and training crawls. Warm-up plus cosine decay is a robust default schedule.
-  - heading: Splits and leakage
+      The **learning rate** sets the size of each nudge, and it matters most. Too big: the loss jumps around or explodes. Too small: training crawls. A safe default is to start small, ramp up (warm-up), then slowly lower it (cosine decay).
+  - heading: Three piles of data, and leakage
     body: |
-      - **Training set** — the model learns from it.
-      - **Validation set** — you choose hyper-parameters, architecture, and the epoch to stop at.
-      - **Test set** — touched **once**, at the end, to report performance.
+      **The idea:** you can't judge a student with the exact questions they practised on. Keep some data hidden.
 
-      Because you make many decisions using the validation set, it slowly becomes "seen"; the test set is the honest estimate.
+      - **Training set:** what the model learns from.
+      - **Validation set:** what *you* use to make choices: settings (hyper-parameters), which design, and when to stop.
+      - **Test set:** looked at **once**, at the very end, to report how good the model is.
 
-      **Leakage** in vision is often subtle: the same patient's scans in train and test, near-duplicate frames from one video split across sets, or augmenting before splitting. Split by the unit that must generalise — patient, video, location — not by image.
-  - heading: Diagnosing with learning curves
+      Every time you make a choice using the validation set, it becomes a little "seen". That's why you need the separate test set for an honest final score.
+
+      **Leakage** means test information sneaks into training, so scores look better than they really are. In vision it's often sneaky:
+
+      - the same patient's scans in both training and test;
+      - almost-identical frames from one video split across the piles;
+      - augmenting the data before splitting it.
+
+      **Rule:** split by the thing that must generalise (the patient, the video, the location), not by individual picture.
+  - heading: Reading the learning curves
     body: |
-      Plot training and validation loss per epoch:
+      **The idea:** plot the training loss and the validation loss after every epoch. The shape of the two lines tells you what's wrong.
 
-      | Pattern | Diagnosis | Fixes |
+      | What you see | What it means | What to try |
       |---|---|---|
-      | Train ↓, validation ↓ then ↑ | **Overfitting** (high variance) | more data/augmentation, dropout, weight decay, **early stopping**, smaller model |
-      | Both high and flat, close together | **Underfitting** (high bias) | bigger model, train longer, less regularisation, better features |
-      | Jagged, not decreasing | **Learning rate too high** | lower LR, warm-up, gradient clipping |
-      | Both low and close | **Good fit** | keep the best-validation checkpoint |
+      | Training ↓, validation ↓ then ↑ | **Overfitting**: memorising the training data (high variance) | more data or augmentation, dropout, weight decay, **early stopping**, a smaller model |
+      | Both high and flat, close together | **Underfitting**: not learning enough (high bias) | a bigger model, train longer, less regularisation |
+      | Jagged, not going down | **Learning rate too high** | lower it, warm it up, clip big gradients |
+      | Both low and close | **A good fit** | keep the checkpoint with the best validation loss |
 
-      **Batch normalisation** behaves differently in the two modes: in training it normalises with the current batch's statistics and updates running averages; in evaluation it uses the stored running averages. Dropout is active only in training. Forgetting `model.eval()` at test time gives noisy, wrong results.
-  - heading: Metrics that don't lie
+      **Batch normalisation (BatchNorm)** is a layer that rescales its inputs using an average and spread. It acts differently in the two modes. While training, it uses the *current batch's* average and spread, and keeps running averages. When testing, it uses those *stored* running averages, since the "batch" might be one picture. **Dropout** (randomly switching off neurons) only happens while training. So always call `model.eval()` before testing; forgetting it gives noisy, wrong results.
+  - heading: Numbers that don't lie
     body: |
-      **Accuracy** fails on imbalanced data: if 99% of scans are healthy, "always healthy" scores 99% and finds no disease.
+      **The idea:** if almost every answer is "no", a model that always says "no" looks great on accuracy and is useless.
 
-      From the confusion matrix:
+      Example: 99% of scans are healthy. "Always healthy" scores **99% accuracy** and finds **zero** diseases.
 
-      - **Precision** = TP / (TP + FP) — of my positive predictions, how many were right?
-      - **Recall** = TP / (TP + FN) — of the real positives, how many did I find?
-      - **F1** = 2PR / (P + R) — their harmonic mean (punishes imbalance between them).
-      - **Specificity** = TN / (TN + FP).
+      Instead, count four kinds of result in a **confusion matrix**:
 
-      Which matters depends on the cost of each mistake: cancer screening wants high recall; a spam filter that deletes mail wants high precision. Curves (ROC, precision–recall) show the trade-off across thresholds.
+      | | Really positive | Really negative |
+      |---|---|---|
+      | **Flagged positive** | TP (true positive) | FP (false alarm) |
+      | **Flagged negative** | FN (missed) | TN (true negative) |
+
+      Then:
+
+      - **Precision** = TP / (TP + FP): of the cases I flagged, how many were real?
+      - **Recall** = TP / (TP + FN): of the real cases, how many did I catch?
+      - **F1** = 2PR / (P + R): one number combining both. It's low if either one is low.
+      - **Specificity** = TN / (TN + FP): of the real negatives, how many did I correctly leave alone?
+
+      Which one matters depends on which mistake costs more. Cancer screening wants high **recall** (don't miss anyone). A spam filter that deletes email wants high **precision** (don't delete real mail). ROC and precision–recall curves show the trade-off as you move the decision threshold.
 examples:
-  - title: Metrics from a confusion matrix
-    problem: "A defect detector on 1,000 parts: TP = 45, FN = 15, FP = 30, TN = 910. Compute accuracy, precision,
-      recall and F1."
+  - title: Numbers from a confusion matrix
+    problem: "A defect detector checks 1,000 parts. It catches 45 real defects (TP), misses 15 (FN), raises 30 false
+      alarms (FP), and correctly passes 910 good parts (TN). Work out accuracy, precision, recall and F1."
     steps:
-      - Accuracy = (45 + 910) / 1,000 = **95.5%**.
-      - Precision = 45 / (45 + 30) = **0.60**.
-      - Recall = 45 / (45 + 15) = **0.75**.
-      - F1 = 2 × 0.60 × 0.75 / 1.35 = **0.667**.
-    answer: 95.5% accuracy, P = 0.60, R = 0.75, F1 ≈ 0.67.
-    takeaway: High accuracy can hide a detector that raises 30 false alarms and misses a quarter of defects.
-  - title: Where to stop training
-    problem: "Validation loss by epoch: 0.92, 0.71, 0.58, 0.51, 0.49, 0.50, 0.54, 0.61. Training loss keeps
-      falling. Which checkpoint do you keep, and what is happening after it?"
+      - "Accuracy = all correct / all parts = (45 + 910) / 1,000 = **95.5%**."
+      - "Precision = TP / (TP + FP) = 45 / (45 + 30) = **0.60**. Only 60% of alarms were real."
+      - "Recall = TP / (TP + FN) = 45 / (45 + 15) = **0.75**. It caught three-quarters of the defects."
+      - "F1 = 2 × 0.60 × 0.75 / (0.60 + 0.75) = 0.9 / 1.35 = **0.667**."
+    answer: 95.5% accuracy, precision 0.60, recall 0.75, F1 ≈ 0.67.
+    takeaway: A high accuracy can hide a detector that raises 30 false alarms and misses a quarter of the defects.
+  - title: When to stop training
+    problem: "Validation loss after each epoch: 0.92, 0.71, 0.58, 0.51, 0.49, 0.50, 0.54, 0.61. Training loss keeps
+      falling the whole time. Which epoch's weights should you keep, and what happens after it?"
     steps:
-      - The minimum validation loss is **0.49 at epoch 5**.
-      - After epoch 5 validation loss rises while training loss falls → overfitting.
-      - Early stopping with patience 2 would stop at epoch 7 and restore the epoch-5 weights.
+      - "The lowest validation loss is **0.49, at epoch 5**."
+      - "After epoch 5, validation loss rises while training loss keeps falling: the model has started memorising
+        (overfitting)."
+      - "Early stopping with \"patience 2\" (wait 2 epochs for an improvement) would stop at epoch 7 and go back to the
+        epoch-5 weights."
     answer: Keep epoch 5.
-    takeaway: Select checkpoints on validation loss, not on the last epoch.
+    takeaway: Pick the weights with the best validation loss, not simply the last epoch.
 questions:
   - question: Why does batch normalisation behave differently in training and evaluation mode?
     kind: short
@@ -238,10 +286,11 @@ questions:
       - model.eval
       - deterministic
       - dropout
-    idealAnswer: In training, BatchNorm normalises each batch with that batch's mean and variance and updates
-      running averages of them. In evaluation it uses the stored running averages, so a single input's output
-      doesn't depend on whatever else is in the batch and inference is deterministic. Calling model.eval()
-      switches this (and disables dropout); forgetting it gives noisy, incorrect predictions.
+    idealAnswer: "While training, BatchNorm rescales each batch using that batch's own mean and variance (its batch
+      statistics) and updates running averages of them. In evaluation mode it uses the stored running averages, so
+      one picture's prediction doesn't depend on whatever else is in the batch, and the result is the same every time
+      (deterministic). Calling model.eval() switches this on (and turns dropout off); forgetting it gives noisy,
+      wrong predictions."
   - question: Explain precision and recall, and give one application where each matters most.
     kind: short
     marks: 5
@@ -256,13 +305,14 @@ questions:
       - false negatives
       - spam
       - false positives
-    idealAnswer: "Precision = TP/(TP+FP): of everything predicted positive, the share that was right. Recall =
-      TP/(TP+FN): of all actual positives, the share that was found. Recall matters most when missing a
-      positive is costly, e.g. cancer screening; precision matters most when false alarms are costly, e.g. a
-      spam filter that deletes mail or an automated system that triggers expensive inspections."
-  - question: Your defect-detection CNN reaches 98% training accuracy and 81% validation accuracy, and defects are
-      only 4% of parts. Diagnose the situation, list the fixes you'd try in order, and explain how you would
-      evaluate the final model honestly.
+    idealAnswer: "Precision = TP / (TP + FP): of everything predicted positive, the share that really was positive.
+      Recall = TP / (TP + FN): of all the actual positives, the share the model found. Recall matters most when
+      missing a positive (a false negative) is costly, e.g. cancer screening. Precision matters most when false
+      alarms (false positives) are costly, e.g. a spam filter that deletes mail, or a system that triggers expensive
+      inspections."
+  - question: Your defect-detection CNN gets 98% accuracy on training data but 81% on validation data, and only 4% of
+      parts are defective. Explain what's wrong, list the fixes you'd try in order, and explain how you'd evaluate
+      the final model honestly.
     kind: long
     marks: 12
     keywords:
@@ -284,14 +334,15 @@ questions:
       - threshold
       - test set once
       - split by
-    idealAnswer: "The 17-point gap between training and validation accuracy indicates overfitting (high variance),
-      and with 4% defects accuracy itself is misleading — a model predicting 'no defect' gets 96%. Fixes,
-      roughly in order: start from a pretrained backbone; add augmentation (flips, crops, colour jitter); use
-      weight decay and dropout; early stopping on validation loss; collect or synthesise more defect examples
-      and use class weighting or focal loss; reduce model size if needed. Evaluate with precision, recall, F1
-      and the precision–recall curve on the defect class, choose the decision threshold on the validation set
-      according to the cost of missed defects vs false alarms, make sure splits are by production batch or
-      part (no near-duplicates across sets), and report the final numbers once on the untouched test set."
+    idealAnswer: "The 17-point gap between training and validation accuracy means overfitting (high variance): the
+      model memorised its training parts. With only 4% defects, accuracy itself is misleading, since always saying
+      'no defect' scores 96%. Fixes, roughly in order: start from a pretrained model; add augmentation (flips, crops,
+      colour changes); use weight decay and dropout; stop early using validation loss; collect or create more defect
+      examples and give the rare class more weight (class weighting or focal loss); shrink the model if needed. To
+      evaluate honestly, use precision, recall, F1 and the precision–recall curve for the defect class; choose the
+      decision threshold on the validation set based on the cost of missed defects versus false alarms; split the
+      data by production batch or part so near-duplicates aren't in both sets; and report the final numbers once on
+      the untouched test set."
 coding:
   - id: confusion-metrics
     title: Metrics from predictions
